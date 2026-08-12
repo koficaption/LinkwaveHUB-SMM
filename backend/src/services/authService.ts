@@ -23,7 +23,7 @@ export async function registerUser(input: {
   const existing = await queryOne(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [input.email]);
   if (existing) throw new AppError("An account with this email already exists", 409);
 
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
     const user = await queryOne(
@@ -51,16 +51,17 @@ export async function registerUser(input: {
       );
     }
 
-    await notify({
-      userId: user.id,
-      title: "Welcome to LinkWaveHub",
-      body: "Your account is ready. Add funds to your wallet to start placing orders.",
-      type: "account",
-    });
-
     const token = signToken({ id: user.id, role: user.role, email: user.email });
     return { user, token };
   });
+
+  await notify({
+    userId: result.user.id,
+    title: "Welcome to LinkWaveHub",
+    body: "Your account is ready. Add funds to your wallet to start placing orders.",
+    type: "account",
+  });
+  return result;
 }
 
 export async function loginUser(email: string, password: string, ip?: string, userAgent?: string) {

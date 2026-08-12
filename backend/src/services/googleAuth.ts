@@ -104,12 +104,13 @@ async function upsertGoogleUser(profile: GoogleProfile) {
   const verified = profile.email_verified !== false && profile.email_verified !== "false";
   if (!verified) throw new AppError("Google email is not verified", 401);
 
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     let user = await queryOne(
       `SELECT ${publicUser} FROM users WHERE google_id = $1 OR LOWER(email) = $2`,
       [profile.sub, email],
       client
     );
+    let created = false;
 
     if (!user) {
       user = await queryOne(
@@ -120,12 +121,7 @@ async function upsertGoogleUser(profile: GoogleProfile) {
         client
       );
       await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id], client);
-      await notify({
-        userId: user!.id,
-        title: "Welcome to LinkWaveHub",
-        body: "You signed in with Google. Add funds to your wallet to start placing orders.",
-        type: "account",
-      });
+      created = true;
     } else {
       user = await queryOne(
         `UPDATE users SET
@@ -144,6 +140,16 @@ async function upsertGoogleUser(profile: GoogleProfile) {
     if (!user) throw new AppError("Unable to sign in with Google", 500);
     if (user.status === "suspended") throw new AppError("Account is suspended", 403);
     const token = signToken({ id: user.id, role: user.role, email: user.email });
-    return { user, token };
+    return { user, token, created };
   });
+
+  if (result.created) {
+    await notify({
+      userId: result.user.id,
+      title: "Welcome to LinkWaveHub",
+      body: "You signed in with Google. Add funds to your wallet to start placing orders.",
+      type: "account",
+    });
+  }
+  return { user: result.user, token: result.token };
 }
