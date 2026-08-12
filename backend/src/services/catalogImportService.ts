@@ -1,0 +1,285 @@
+import { query, queryOne, withTransaction } from "../db.js";
+import { AppError } from "../errors.js";
+import { makeSlug } from "../utils.js";
+import { writeAudit } from "./auditService.js";
+import { getSettings } from "./settingsService.js";
+import { listProviderServices } from "./providerService.js";
+import type { AuthUser } from "../middleware/auth.js";
+
+const PLATFORM_RULES: { test: RegExp; name: string; slug: string; icon: string; color: string }[] = [
+  { test: /tiktok/i, name: "TikTok", slug: "tiktok", icon: "Music2", color: "#111111" },
+  { test: /instagram|\big\b/i, name: "Instagram", slug: "instagram", icon: "Instagram", color: "#E1306C" },
+  { test: /youtube|yt\b/i, name: "YouTube", slug: "youtube", icon: "Youtube", color: "#FF0000" },
+  { test: /facebook|\bfb\b/i, name: "Facebook", slug: "facebook", icon: "Facebook", color: "#1877F2" },
+  { test: /\bx\b|twitter/i, name: "X", slug: "x", icon: "Twitter", color: "#0F1419" },
+  { test: /telegram/i, name: "Telegram", slug: "telegram", icon: "Send", color: "#229ED9" },
+  { test: /spotify/i, name: "Spotify", slug: "spotify", icon: "Music", color: "#1DB954" },
+  { test: /threads/i, name: "Threads", slug: "threads", icon: "AtSign", color: "#000000" },
+  { test: /snapchat/i, name: "Snapchat", slug: "snapchat", icon: "Smile", color: "#FFFC00" },
+  { test: /linkedin/i, name: "LinkedIn", slug: "linkedin", icon: "Globe", color: "#0A66C2" },
+  { test: /whatsapp/i, name: "WhatsApp", slug: "whatsapp", icon: "MessageCircle", color: "#25D366" },
+  { test: /discord/i, name: "Discord", slug: "discord", icon: "MessageCircle", color: "#5865F2" },
+  { test: /twitch/i, name: "Twitch", slug: "twitch", icon: "Eye", color: "#9146FF" },
+  { test: /pinterest/i, name: "Pinterest", slug: "pinterest", icon: "Heart", color: "#E60023" },
+  { test: /reddit/i, name: "Reddit", slug: "reddit", icon: "Globe", color: "#FF4500" },
+  { test: /soundcloud/i, name: "SoundCloud", slug: "soundcloud", icon: "Music", color: "#FF5500" },
+  { test: /audiomack/i, name: "Audiomack", slug: "audiomack", icon: "Music", color: "#FFA200" },
+  { test: /apple music/i, name: "Apple Music", slug: "apple-music", icon: "Music", color: "#FA243C" },
+  { test: /deezer/i, name: "Deezer", slug: "deezer", icon: "Music", color: "#A238FF" },
+  { test: /kick\b/i, name: "Kick", slug: "kick", icon: "Eye", color: "#53FC18" },
+  { test: /rumble/i, name: "Rumble", slug: "rumble", icon: "Youtube", color: "#85C742" },
+  { test: /likee/i, name: "Likee", slug: "likee", icon: "Music2", color: "#FF1C6C" },
+  { test: /kwai/i, name: "Kwai", slug: "kwai", icon: "Music2", color: "#FF4906" },
+  { test: /website|traffic|seo|visit/i, name: "Website Traffic", slug: "website-traffic", icon: "Globe", color: "#0D9488" },
+];
+
+function detectPlatform(category: string, name: string) {
+  const haystack = `${category} ${name}`;
+  return PLATFORM_RULES.find((rule) => rule.test.test(haystack)) ?? {
+    name: "Other",
+    slug: "other",
+    icon: "Globe",
+    color: "#0D9488",
+  };
+}
+
+function money4(value: number) {
+  return Number(Math.max(0, value).toFixed(4));
+}
+
+function categorySlug(name: string) {
+  const slug = makeSlug(name).slice(0, 70);
+  return slug || `cat-${Buffer.from(name).toString("hex").slice(0, 10)}`;
+}
+
+export async function importProviderPackages(providerId: string, actor: AuthUser, ip?: string) {
+  const { provider, services } = await listProviderServices(providerId);
+  if (!services.length) throw new AppError("This provider returned no packages to import", 400);
+
+  const settings = await getSettings();
+  const pricing = (settings.pricing ?? {}) as {
+    customerMarkupPercent?: number;
+    resellerMarkupPercent?: number;
+    minimumProfitPer1000?: number;
+    usdToGhs?: number;
+    importMarkupPercent?: number;
+  };
+  const usdToGhs = Number(pricing.usdToGhs ?? 15.4);
+  const markup = Number(pricing.importMarkupPercent ?? pricing.customerMarkupPercent ?? 40);
+  const resellerMarkup = Number(pricing.resellerMarkupPercent ?? 15);
+  const minProfit = Number(pricing.minimumProfitPer1000 ?? 0.5);
+
+  const result = await withTransaction(async (client) => {
+    await client.query("SET LOCAL statement_timeout = '120s'");
+    const platforms = await query<{ id: string; slug: string }>(`SELECT id, slug FROM platforms`, [], client);
+    const categories = await query<{ id: string; slug: string }>(`SELECT id, slug FROM categories`, [], client);
+    const platformBySlug = new Map(platforms.map((row) => [row.slug, row.id]));
+    const categoryBySlug = new Map(categories.map((row) => [row.slug, row.id]));
+    let platformsCreated = 0;
+    let categoriesCreated = 0;
+
+    async function ensurePlatform(meta: { name: string; slug: string; icon: string; color: string }) {
+      const existing = platformBySlug.get(meta.slug);
+      if (existing) return existing;
+      const row = await queryOne<{ id: string }>(
+        `INSERT INTO platforms (name, slug, description, icon, color, sort_order, is_active)
+         VALUES ($1,$2,$3,$4,$5,(SELECT COALESCE(MAX(sort_order),0)+1 FROM platforms), TRUE)
+         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [meta.name, meta.slug, `${meta.name} services imported from the connected panel`, meta.icon, meta.color],
+        client
+      );
+      platformBySlug.set(meta.slug, row!.id);
+      platformsCreated += 1;
+      return row!.id;
+    }
+
+    async function ensureCategory(name: string) {
+      const slug = categorySlug(name);
+      const existing = categoryBySlug.get(slug);
+      if (existing) return existing;
+      const row = await queryOne<{ id: string }>(
+        `INSERT INTO categories (name, slug, description, sort_order, is_active)
+         VALUES ($1,$2,$3,(SELECT COALESCE(MAX(sort_order),0)+1 FROM categories), TRUE)
+         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [name.slice(0, 80), slug, "Imported from the connected SMM provider"],
+        client
+      );
+      categoryBySlug.set(slug, row!.id);
+      categoriesCreated += 1;
+      return row!.id;
+    }
+
+    const linked = new Set<string>();
+    const rows: {
+      platformId: string;
+      categoryId: string;
+      name: string;
+      slug: string;
+      description: string;
+      minQty: number;
+      maxQty: number;
+      price: number;
+      cost: number;
+      reseller: number;
+      delivery: string;
+      serviceId: string;
+      features: string;
+    }[] = [];
+    for (const service of services) {
+      if (!/[a-z0-9]/i.test(String(service.name || ""))) continue;
+      const panelCategory = String(service.category || "General").slice(0, 80);
+      const platform = detectPlatform(panelCategory, service.name);
+      const platformId = await ensurePlatform(platform);
+      const categoryId = await ensureCategory(panelCategory);
+      const linkKey = `${platformId}:${categoryId}`;
+      if (!linked.has(linkKey)) {
+        await query(
+          `INSERT INTO platform_categories (platform_id, category_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+          [platformId, categoryId],
+          client
+        );
+        linked.add(linkKey);
+      }
+      const rateUsd = Number(service.rate ?? 0);
+      const cost = money4(rateUsd * usdToGhs);
+      const priced = money4(cost * (1 + markup / 100));
+      const price = money4(Math.max(priced, cost + minProfit));
+      const reseller = money4(Math.max(cost * (1 + resellerMarkup / 100), cost));
+      let minQty = Math.max(1, Number(service.min ?? 1) || 1);
+      let maxQty = Math.max(minQty, Number(service.max ?? minQty) || minQty);
+      const serviceId = String(service.service);
+      const features = [
+        service.type ? String(service.type) : "",
+        service.refill ? "Refill available" : "",
+        service.cancel ? "Cancel available" : "",
+      ].filter(Boolean);
+      rows.push({
+        platformId,
+        categoryId,
+        name: String(service.name).slice(0, 180),
+        slug: `p-${String(provider.id).replace(/-/g, "").slice(0, 8)}-${serviceId}`.toLowerCase(),
+        description: `${panelCategory} · imported from ${provider.name}`,
+        minQty,
+        maxQty,
+        price,
+        cost,
+        reseller,
+        delivery: /instant|fast/i.test(service.name) ? "instant" : "gradual",
+        serviceId,
+        features: JSON.stringify(features),
+      });
+    }
+
+    const batchSize = 400;
+    let upserted = 0;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize);
+      await query(
+        `INSERT INTO products (
+           platform_id, category_id, provider_id, name, slug, description,
+           min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
+           status, delivery_type, avg_delivery_time, provider_service_id, features
+         )
+         SELECT
+           x.platform_id, x.category_id, $1::uuid, x.name, x.slug, x.description,
+           x.min_quantity, x.max_quantity, x.price_per_1000, x.cost_per_1000, x.reseller_price_per_1000,
+           'active', x.delivery_type::delivery_type, 'Panel delivery', x.provider_service_id, x.features::jsonb
+         FROM unnest(
+           $2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::text[],
+           $7::int[], $8::int[], $9::numeric[], $10::numeric[], $11::numeric[],
+           $12::text[], $13::text[], $14::text[]
+         ) AS x(
+           platform_id, category_id, name, slug, description,
+           min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
+           delivery_type, provider_service_id, features
+         )
+         ON CONFLICT (provider_id, provider_service_id) WHERE provider_id IS NOT NULL AND provider_service_id IS NOT NULL
+         DO UPDATE SET
+           name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           min_quantity = EXCLUDED.min_quantity,
+           max_quantity = EXCLUDED.max_quantity,
+           price_per_1000 = EXCLUDED.price_per_1000,
+           cost_per_1000 = EXCLUDED.cost_per_1000,
+           reseller_price_per_1000 = EXCLUDED.reseller_price_per_1000,
+           status = 'active',
+           delivery_type = EXCLUDED.delivery_type,
+           features = EXCLUDED.features,
+           updated_at = NOW()`,
+        [
+          providerId,
+          batch.map((row) => row.platformId),
+          batch.map((row) => row.categoryId),
+          batch.map((row) => row.name),
+          batch.map((row) => row.slug),
+          batch.map((row) => row.description),
+          batch.map((row) => row.minQty),
+          batch.map((row) => row.maxQty),
+          batch.map((row) => row.price),
+          batch.map((row) => row.cost),
+          batch.map((row) => row.reseller),
+          batch.map((row) => row.delivery),
+          batch.map((row) => row.serviceId),
+          batch.map((row) => row.features),
+        ],
+        client
+      );
+      upserted += batch.length;
+    }
+
+    const serviceIds = rows.map((row) => row.serviceId);
+    const deactivated = await queryOne<{ count: string }>(
+      `WITH updated AS (
+         UPDATE products SET status = 'inactive', updated_at = NOW()
+         WHERE provider_id = $1
+           AND provider_service_id IS NOT NULL
+           AND NOT (provider_service_id = ANY($2::text[]))
+           AND status = 'active'
+         RETURNING id
+       )
+       SELECT COUNT(*) FROM updated`,
+      [providerId, serviceIds],
+      client
+    );
+
+    return {
+      packages: services.length,
+      upserted,
+      platformsCreated,
+      categoriesCreated,
+      deactivated: Number(deactivated?.count ?? 0),
+      usdToGhs,
+      markupPercent: markup,
+    };
+  });
+
+  await writeAudit({
+    actor,
+    action: "provider.import",
+    targetType: "provider",
+    targetId: providerId,
+    details: result,
+    ip,
+  });
+  return result;
+}
+
+export function shouldImportPackages(input: Record<string, unknown>, adapter?: string) {
+  const usedAdapter = String(input.adapter || adapter || "generic_http");
+  if (usedAdapter !== "generic_http") return false;
+  if (input.importPackages === true) return true;
+  if (input.importPackages === false) return false;
+  return Boolean(input.apiKey);
+}
+
+export type ImportResult = {
+  packages: number;
+  upserted: number;
+  platformsCreated: number;
+  categoriesCreated: number;
+  deactivated: number;
+  usdToGhs: number;
+  markupPercent: number;
+};

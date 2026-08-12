@@ -36,6 +36,7 @@ import {
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
+import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
 import { clientIp } from "../utils.js";
 
@@ -396,10 +397,22 @@ admin.post("/resellers/:id/status", asyncHandler(async (req, res) => {
 
 admin.get("/providers", asyncHandler(async (_req, res) => res.json(ok(await providers.listProviders()))));
 admin.post("/providers", validate(providerSchema), asyncHandler(async (req, res) => {
-  res.status(201).json(ok(await providers.createProvider(req.body, req.user!, clientIp(req)), "Provider created"));
+  req.setTimeout(180000);
+  const created = await providers.createProvider(req.body, req.user!, clientIp(req));
+  let imported = null;
+  if (catalogImport.shouldImportPackages(req.body, created.adapter as string)) {
+    imported = await catalogImport.importProviderPackages(String(created.id), req.user!, clientIp(req));
+  }
+  res.status(201).json(ok({ ...created, imported }, imported ? `Provider created and ${imported.upserted} packages imported` : "Provider created"));
 }));
 admin.patch("/providers/:id", validate(providerSchema.partial()), asyncHandler(async (req, res) => {
-  res.json(ok(await providers.updateProvider(req.params.id, req.body, req.user!, clientIp(req))));
+  req.setTimeout(180000);
+  const updated = await providers.updateProvider(req.params.id, req.body, req.user!, clientIp(req));
+  let imported = null;
+  if (catalogImport.shouldImportPackages(req.body, updated.adapter as string)) {
+    imported = await catalogImport.importProviderPackages(String(updated.id), req.user!, clientIp(req));
+  }
+  res.json(ok({ ...updated, imported }, imported ? `Provider saved and ${imported.upserted} packages imported` : "Provider saved"));
 }));
 admin.delete("/providers/:id", asyncHandler(async (req, res) => {
   await providers.deleteProvider(req.params.id, req.user!, clientIp(req));
@@ -410,6 +423,11 @@ admin.post("/providers/:id/balance", asyncHandler(async (req, res) => {
 }));
 admin.get("/providers/:id/services", asyncHandler(async (req, res) => {
   res.json(ok(await providers.listProviderServices(req.params.id)));
+}));
+admin.post("/providers/:id/import", asyncHandler(async (req, res) => {
+  req.setTimeout(180000);
+  const imported = await catalogImport.importProviderPackages(req.params.id, req.user!, clientIp(req));
+  res.json(ok(imported, `${imported.upserted} packages imported from the provider`));
 }));
 
 admin.get("/payments", asyncHandler(async (req, res) => {

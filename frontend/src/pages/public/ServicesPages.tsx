@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import type { Category, Platform, Product } from "@/types";
-import { Button, Card, EmptyState, Input, Select, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -16,14 +16,15 @@ export function ServicesPage() {
   const platform = params.get("platform") || "";
   const category = params.get("category") || "";
   const search = params.get("q") || "";
+  const page = Number(params.get("page") || 1);
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
   const categories = useQuery({
     queryKey: ["categories", platform],
     queryFn: () => api<Category[]>(`/categories${platform ? `?platformId=${platforms.data?.find((p) => p.slug === platform)?.id || platform}` : ""}`),
   });
   const products = useQuery({
-    queryKey: ["products", platform, category, search],
-    queryFn: () => api<{ items: Product[] }>(`/products?limit=60${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+    queryKey: ["products", platform, category, search, page],
+    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=24&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`),
   });
 
   return (
@@ -31,12 +32,12 @@ export function ServicesPage() {
       <h1 className="text-3xl font-extrabold">Services marketplace</h1>
       <p className="mt-2 text-slate-500">Platform → category → product. Everything below is loaded from the database.</p>
       <div className="mt-6 grid gap-3 md:grid-cols-4">
-        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => setParams((p) => { p.set("q", e.target.value); return p; })} />
-        <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "" })}>
+        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => setParams((p) => { p.set("q", e.target.value); p.set("page", "1"); return p; })} />
+        <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
           <option value="">All platforms</option>
           {platforms.data?.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
         </Select>
-        <Select value={category} onChange={(e) => setParams((p) => { p.set("category", e.target.value); return p; })}>
+        <Select value={category} onChange={(e) => setParams((p) => { p.set("category", e.target.value); p.set("page", "1"); return p; })}>
           <option value="">All categories</option>
           {categories.data?.map((c) => <option key={c.id} value={c.slug}>{c.name}</option>)}
         </Select>
@@ -63,6 +64,14 @@ export function ServicesPage() {
           </Link>
         ))}
       </div>
+      {products.data && (
+        <Pagination
+          page={products.data.page}
+          total={products.data.total}
+          limit={products.data.limit}
+          onPage={(next) => setParams((p) => { p.set("page", String(next)); return p; })}
+        />
+      )}
     </div>
   );
 }

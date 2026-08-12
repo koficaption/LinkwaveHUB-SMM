@@ -11,7 +11,7 @@ export function HomePage() {
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
   const products = useQuery({
     queryKey: ["featured-products"],
-    queryFn: () => api<{ items: Product[] }>("/products?limit=8"),
+    queryFn: () => api<{ items: Product[] }>("/products?limit=8&sort=name"),
   });
 
   return (

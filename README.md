@@ -55,7 +55,7 @@ From **Admin → Settings** you can set the customer service number, WhatsApp nu
 
 From **Admin → Payments** you can add or edit **manual** payment details (MoMo network and number, account name, bank name and account number, extra instructions). Customers see those details when they fund their wallet. An admin then confirms the deposit.
 
-From **Admin → Providers** you can add your SMM API now: paste `https://resellersmm.com/api/v2`, the API key, and adapter `generic_http`. Use **Test** to read the panel balance and **Services** to list panel service IDs for your products.
+From **Admin → Providers** you can add your SMM API now: paste `https://resellersmm.com/api/v2`, the API key, and adapter `generic_http`. Saving a key (or clicking **Import packages**) pulls the panel service list into the catalog as products, grouped by platform. **Test** reads panel balance.
 
 ## Local development
 

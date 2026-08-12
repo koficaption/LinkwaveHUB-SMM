@@ -30,6 +30,8 @@ const defaults: Record<string, unknown> = {
     customerMarkupPercent: 0,
     resellerMarkupPercent: 15,
     minimumProfitPer1000: 0.5,
+    usdToGhs: 15.4,
+    importMarkupPercent: 40,
   },
   notifications: {
     emailEnabled: false,

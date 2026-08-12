@@ -35,7 +35,7 @@ export function AdminProducts() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Products</h1>
-          <p className="text-sm text-slate-500">Add a service and it appears on the customer marketplace immediately.</p>
+          <p className="text-sm text-slate-500">Add a service or import packages from a connected API provider. They appear on the customer marketplace immediately.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add product</Button>
       </div>
@@ -280,7 +280,7 @@ export function AdminProviders() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">API providers</h1>
-          <p className="text-sm text-slate-500">Add your SMM panel now (resellersmm.com /api/v2 or any PerfectPanel). The API key is encrypted and never shown in the browser.</p>
+          <p className="text-sm text-slate-500">Connect a panel and import its packages into the catalog. Selling prices use your USD→GHS rate and markup from Settings.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add provider</Button>
       </div>
@@ -304,7 +304,21 @@ export function AdminProviders() {
                       qc.invalidateQueries({ queryKey: ["/admin/providers"] });
                     } catch (e) { toast.error(e instanceof ApiError ? e.message : "Balance check failed"); }
                   }}>Test</button>
-                  <button className="font-semibold text-brand-700" onClick={() => setServicesFor(String(row.id))}>Services</button>
+                  <button className="font-semibold text-brand-700" onClick={async () => {
+                    const toastId = toast.loading("Importing packages from the provider…");
+                    try {
+                      const result = await api<{ upserted: number; packages: number; deactivated: number }>(`/admin/providers/${row.id}/import`, { method: "POST" });
+                      toast.success(`Imported ${result.upserted} packages`, { id: toastId });
+                      qc.invalidateQueries({ queryKey: ["admin-products"] });
+                      qc.invalidateQueries({ queryKey: ["products"] });
+                      qc.invalidateQueries({ queryKey: ["platforms"] });
+                      qc.invalidateQueries({ queryKey: ["platforms-all"] });
+                      qc.invalidateQueries({ queryKey: ["categories-all"] });
+                    } catch (e) {
+                      toast.error(e instanceof ApiError ? e.message : "Import failed", { id: toastId });
+                    }
+                  }}>Import packages</button>
+                  <button className="font-semibold text-brand-700" onClick={() => setServicesFor(String(row.id))}>Preview</button>
                 </td>
               </tr>
             ))}
@@ -333,7 +347,7 @@ export function AdminProviders() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-xs text-slate-500">Copy a service ID into Admin → Products → Provider service ID when you add your own products.</p>
+          <p className="mt-3 text-xs text-slate-500">This is a preview. Use <strong>Import packages</strong> to add them to the website catalog.</p>
         </Modal>
       )}
     </div>
@@ -350,6 +364,7 @@ function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; o
     currency: String(row?.currency ?? "USD"),
     notes: String(row?.notes ?? ""),
     status: String(row?.status ?? "active"),
+    importPackages: !row,
   });
   return (
     <Modal open title={row ? "Edit API provider" : "Add API provider"} onClose={onClose}>
@@ -371,6 +386,11 @@ function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; o
           </Select>
         </label>
         <label className="block"><span className="label">Notes</span><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.importPackages} onChange={(e) => setForm({ ...form, importPackages: e.target.checked })} />
+          Import all packages into the catalog now
+        </label>
+        <p className="text-xs text-slate-500">If you already saved the key, you can also use <strong>Import packages</strong> on the provider list. A new key on save will import automatically when this box is checked.</p>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -378,10 +398,16 @@ function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; o
           const payload: Record<string, unknown> = { ...form };
           if (!form.apiKey) delete payload.apiKey;
           try {
-            if (row) await api(`/admin/providers/${row.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-            else await api("/admin/providers", { method: "POST", body: JSON.stringify(payload) });
-            toast.success("Provider saved");
+            const toastId = form.importPackages && (form.apiKey || !row) ? toast.loading("Saving provider and importing packages…") : undefined;
+            const result = row
+              ? await api<{ imported?: { upserted: number } }>(`/admin/providers/${row.id}`, { method: "PATCH", body: JSON.stringify(payload) })
+              : await api<{ imported?: { upserted: number } }>("/admin/providers", { method: "POST", body: JSON.stringify(payload) });
+            const imported = result.imported?.upserted;
+            toast.success(imported ? `Provider saved. Imported ${imported} packages.` : "Provider saved", toastId ? { id: toastId } : undefined);
             qc.invalidateQueries({ queryKey: ["/admin/providers"] });
+            qc.invalidateQueries({ queryKey: ["admin-products"] });
+            qc.invalidateQueries({ queryKey: ["products"] });
+            qc.invalidateQueries({ queryKey: ["platforms"] });
             onClose();
           } catch (e) { toast.error(e instanceof ApiError ? e.message : "Save failed"); }
         }}>Save</Button>

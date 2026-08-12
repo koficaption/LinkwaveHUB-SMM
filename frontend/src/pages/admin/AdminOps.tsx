@@ -524,6 +524,7 @@ export function AdminSettings() {
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
+      <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
     </div>
   );
 }
@@ -569,6 +570,42 @@ function AffiliateSettingsCard({
         minimumPayout: Number(values.minimumPayout),
         lifetime: true,
       })}>Save affiliates</Button>
+    </Card>
+  );
+}
+
+function PricingSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    usdToGhs: String(source.usdToGhs ?? 15.4),
+    importMarkupPercent: String(source.importMarkupPercent ?? 40),
+    resellerMarkupPercent: String(source.resellerMarkupPercent ?? 15),
+    minimumProfitPer1000: String(source.minimumProfitPer1000 ?? 0.5),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Provider import pricing</h2>
+      <p className="mt-1 text-sm text-slate-500">Panel rates are usually USD per 1,000. LinkWaveHub sells in GHS. Re-import packages after you change these numbers.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block"><span className="label">USD to GHS rate</span><Input type="number" value={values.usdToGhs} onChange={(e) => setForm({ ...values, usdToGhs: e.target.value })} /></label>
+        <label className="block"><span className="label">Import markup %</span><Input type="number" value={values.importMarkupPercent} onChange={(e) => setForm({ ...values, importMarkupPercent: e.target.value })} /></label>
+        <label className="block"><span className="label">Reseller markup %</span><Input type="number" value={values.resellerMarkupPercent} onChange={(e) => setForm({ ...values, resellerMarkupPercent: e.target.value })} /></label>
+        <label className="block"><span className="label">Minimum profit / 1,000 (GHS)</span><Input type="number" value={values.minimumProfitPer1000} onChange={(e) => setForm({ ...values, minimumProfitPer1000: e.target.value })} /></label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        usdToGhs: Number(values.usdToGhs),
+        importMarkupPercent: Number(values.importMarkupPercent),
+        resellerMarkupPercent: Number(values.resellerMarkupPercent),
+        minimumProfitPer1000: Number(values.minimumProfitPer1000),
+      })}>Save pricing</Button>
     </Card>
   );
 }

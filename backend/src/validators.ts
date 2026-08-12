@@ -111,6 +111,7 @@ export const providerSchema = z.object({
   isActive: z.boolean().optional(),
   currency: z.string().max(8).optional(),
   notes: z.string().max(1000).optional().nullable(),
+  importPackages: z.boolean().optional(),
 });
 
 export const paymentMethodSchema = z.object({
