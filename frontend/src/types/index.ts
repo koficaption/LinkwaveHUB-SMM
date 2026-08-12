@@ -116,3 +116,38 @@ export type ApiSuccess<T> = {
   message: string;
   data: T;
 };
+
+export type ChannelLink = {
+  name: string;
+  url: string;
+  kind?: string;
+};
+
+export type PublicSettings = {
+  siteName?: string;
+  tagline?: string;
+  supportEmail?: string;
+  contactPhone?: string;
+  whatsappNumber?: string;
+  developer?: string;
+  currency?: string;
+  logoUrl?: string;
+  channels?: ChannelLink[];
+};
+
+export type PaymentMethod = {
+  id?: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  adapter: string;
+  is_enabled?: boolean;
+  config?: {
+    network?: string;
+    momoNumber?: string;
+    accountName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    instructions?: string;
+  };
+};

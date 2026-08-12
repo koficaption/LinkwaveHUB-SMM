@@ -15,14 +15,31 @@ export const mockAdapter: PaymentAdapter = {
   },
 };
 
+function manualInstructions(config: Record<string, unknown> | undefined, amount: number, reference: string) {
+  const network = String(config?.network ?? "").trim();
+  const momo = String(config?.momoNumber ?? "").trim();
+  const accountName = String(config?.accountName ?? "").trim();
+  const bankName = String(config?.bankName ?? "").trim();
+  const accountNumber = String(config?.accountNumber ?? "").trim();
+  const extra = String(config?.instructions ?? "").trim();
+  const parts = [`Send GHS ${amount.toFixed(2)}.`];
+  if (network || momo) {
+    parts.push(`${network || "Mobile Money"}: ${momo || "number not set"}${accountName ? ` (${accountName})` : ""}`);
+  }
+  if (bankName || accountNumber) {
+    parts.push(`Bank: ${[bankName, accountNumber, accountName].filter(Boolean).join(" · ")}`);
+  }
+  if (extra) parts.push(extra);
+  parts.push(`Use reference ${reference} as the payment note, then wait for admin confirmation.`);
+  return parts.join(" ");
+}
+
 export const manualAdapter: PaymentAdapter = {
   code: "manual",
   async initialize(input: PaymentInitInput): Promise<PaymentInitResult> {
-    const momo = (input.config?.momoNumber as string) || "024 000 0000";
-    const network = (input.config?.network as string) || "MTN Mobile Money";
     return {
       reference: input.reference,
-      instructions: `Send GHS ${input.amount.toFixed(2)} via ${network} to ${momo}. Use reference ${input.reference} as the payment note, then wait for admin confirmation.`,
+      instructions: manualInstructions(input.config, input.amount, input.reference),
       autoComplete: false,
     };
   },

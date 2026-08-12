@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, money, ApiError } from "@/api/client";
-import type { Order, Paginated, Platform, User } from "@/types";
+import type { Order, Paginated, PaymentMethod, Platform, User } from "@/types";
 import { Badge, Button, Card, Input, Modal, Pagination, Select, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 
@@ -238,22 +238,48 @@ export function AdminResellers() {
 export function AdminPayments() {
   const qc = useQueryClient();
   const payments = useQuery({ queryKey: ["admin-payments"], queryFn: () => api<Paginated<Record<string, unknown>>>("/admin/payments") });
-  const methods = useQuery({ queryKey: ["admin-methods"], queryFn: () => api<Record<string, unknown>[]>("/admin/payments/methods") });
+  const methods = useQuery({ queryKey: ["admin-methods"], queryFn: () => api<PaymentMethod[]>("/admin/payments/methods") });
+  const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold">Payments</h1>
-      <p className="text-sm text-slate-500">Use Instant Demo Top-up and Mobile Money for now. Korapay (instant and manual) will be added after the website is complete.</p>
-      <Card>
-        <h2 className="font-bold">Methods</h2>
-        <ul className="mt-3 space-y-2">
-          {methods.data?.map((m) => (
-            <li key={String(m.id)} className="flex items-center justify-between">
-              <span>{String(m.name)} <span className="text-xs text-slate-500">({String(m.adapter)})</span></span>
-              <Button variant="outline" onClick={async () => { await api(`/admin/payments/methods/${m.id}`, { method: "PATCH", body: JSON.stringify({ isEnabled: !m.is_enabled }) }); qc.invalidateQueries({ queryKey: ["admin-methods"] }); }}>{m.is_enabled ? "Disable" : "Enable"}</Button>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">Payments</h1>
+          <p className="text-sm text-slate-500">Add Mobile Money, bank or other manual details. Customers see them when they fund their wallet. Instant providers like Korapay can be added later.</p>
+        </div>
+        <Button onClick={() => setEditing("new")}>Add manual method</Button>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {methods.data?.map((m) => {
+          const cfg = m.config ?? {};
+          return (
+            <Card key={String(m.id)}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold">{m.name}</h2>
+                  <p className="text-xs text-slate-500">{m.adapter} · {m.code}</p>
+                </div>
+                <Badge className={statusTone[m.is_enabled ? "active" : "inactive"]}>{m.is_enabled ? "Enabled" : "Disabled"}</Badge>
+              </div>
+              <div className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+                {cfg.network && <p>Network: {cfg.network}</p>}
+                {cfg.momoNumber && <p>Number: {cfg.momoNumber}</p>}
+                {cfg.accountName && <p>Account name: {cfg.accountName}</p>}
+                {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
+                {cfg.instructions && <p>{cfg.instructions}</p>}
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button variant="outline" onClick={() => setEditing(m)}>Edit details</Button>
+                <Button variant="outline" onClick={async () => {
+                  await api(`/admin/payments/methods/${m.id}`, { method: "PATCH", body: JSON.stringify({ isEnabled: !m.is_enabled }) });
+                  qc.invalidateQueries({ queryKey: ["admin-methods"] });
+                }}>{m.is_enabled ? "Disable" : "Enable"}</Button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      {editing && <PaymentMethodModal method={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       <Card className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead><tr className="text-slate-500">{["Reference","User","Amount","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
@@ -278,6 +304,73 @@ export function AdminPayments() {
         </table>
       </Card>
     </div>
+  );
+}
+
+function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const cfg = method?.config ?? {};
+  const [form, setForm] = useState({
+    name: method?.name ?? "Mobile Money",
+    description: method?.description ?? "Manual confirmation after the customer pays.",
+    adapter: method?.adapter ?? "manual",
+    isEnabled: method?.is_enabled !== false,
+    network: cfg.network ?? "MTN Mobile Money",
+    momoNumber: cfg.momoNumber ?? "",
+    accountName: cfg.accountName ?? "",
+    bankName: cfg.bankName ?? "",
+    accountNumber: cfg.accountNumber ?? "",
+    instructions: cfg.instructions ?? "",
+  });
+  const set = (key: string, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  return (
+    <Modal open title={method ? "Edit payment details" : "Add manual payment"} onClose={onClose}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block sm:col-span-2"><span className="label">Display name</span><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></label>
+        <label className="block"><span className="label">Type</span>
+          <Select value={form.adapter} onChange={(e) => set("adapter", e.target.value)} disabled={Boolean(method)}>
+            <option value="manual">Manual (MoMo / bank)</option>
+            <option value="mock">Instant demo top-up</option>
+          </Select>
+        </label>
+        <label className="flex items-center gap-2 pt-6 text-sm">
+          <input type="checkbox" checked={form.isEnabled} onChange={(e) => set("isEnabled", e.target.checked)} /> Enabled
+        </label>
+        <label className="block"><span className="label">Network</span><Input placeholder="MTN / Telecel / AirtelTigo" value={form.network} onChange={(e) => set("network", e.target.value)} /></label>
+        <label className="block"><span className="label">MoMo / wallet number</span><Input value={form.momoNumber} onChange={(e) => set("momoNumber", e.target.value)} /></label>
+        <label className="block"><span className="label">Account name</span><Input value={form.accountName} onChange={(e) => set("accountName", e.target.value)} /></label>
+        <label className="block"><span className="label">Bank name</span><Input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} /></label>
+        <label className="block sm:col-span-2"><span className="label">Bank account number</span><Input value={form.accountNumber} onChange={(e) => set("accountNumber", e.target.value)} /></label>
+        <label className="block sm:col-span-2"><span className="label">Extra instructions</span><Textarea placeholder="Send as merchant payment. Use the deposit reference as the note." value={form.instructions} onChange={(e) => set("instructions", e.target.value)} /></label>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={async () => {
+          const payload = {
+            name: form.name,
+            description: form.description,
+            adapter: form.adapter,
+            isEnabled: form.isEnabled,
+            config: {
+              network: form.network,
+              momoNumber: form.momoNumber,
+              accountName: form.accountName,
+              bankName: form.bankName,
+              accountNumber: form.accountNumber,
+              instructions: form.instructions,
+            },
+          };
+          try {
+            if (method?.id) await api(`/admin/payments/methods/${method.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+            else await api("/admin/payments/methods", { method: "POST", body: JSON.stringify(payload) });
+            toast.success("Payment details saved");
+            qc.invalidateQueries({ queryKey: ["admin-methods"] });
+            qc.invalidateQueries({ queryKey: ["pay-methods"] });
+            onClose();
+          } catch (e) { toast.error(e instanceof ApiError ? e.message : "Save failed"); }
+        }}>Save</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -367,21 +460,68 @@ export function AdminSettings() {
     await api(`/admin/settings/${key}`, { method: "PUT", body: JSON.stringify({ value }) });
     toast.success("Settings saved");
     qc.invalidateQueries({ queryKey: ["settings"] });
+    qc.invalidateQueries({ queryKey: ["public-settings"] });
   };
   const g = settings.data?.general ?? {};
   const [general, setGeneral] = useState<Record<string, string> | null>(null);
-  const form = general ?? Object.fromEntries(Object.entries(g).map(([k, v]) => [k, String(v ?? "")]));
+  const form = general ?? {
+    siteName: String(g.siteName ?? ""),
+    tagline: String(g.tagline ?? ""),
+    supportEmail: String(g.supportEmail ?? ""),
+    contactPhone: String(g.contactPhone ?? ""),
+    whatsappNumber: String(g.whatsappNumber ?? ""),
+    address: String(g.address ?? ""),
+    developer: String(g.developer ?? ""),
+    currency: String(g.currency ?? "GHS"),
+  };
+  const channelItems = ((settings.data?.channels?.items as { name?: string; url?: string; kind?: string }[]) ?? []);
+  const [channels, setChannels] = useState<{ name: string; url: string; kind: string }[] | null>(null);
+  const items = channels ?? channelItems.map((c) => ({ name: String(c.name ?? ""), url: String(c.url ?? ""), kind: String(c.kind ?? "other") }));
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Settings</h1>
       <Card>
-        <h2 className="font-bold">General</h2>
+        <h2 className="font-bold">Business & customer service</h2>
+        <p className="mt-1 text-sm text-slate-500">These details appear on the website footer and the support page.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
-          {["siteName","tagline","supportEmail","contactPhone","address","developer","currency"].map((k) => (
-            <label key={k} className="block"><span className="label">{k}</span><Input value={form[k] ?? ""} onChange={(e) => setGeneral({ ...form, [k]: e.target.value })} /></label>
-          ))}
+          <label className="block"><span className="label">Site name</span><Input value={form.siteName} onChange={(e) => setGeneral({ ...form, siteName: e.target.value })} /></label>
+          <label className="block"><span className="label">Currency</span><Input value={form.currency} onChange={(e) => setGeneral({ ...form, currency: e.target.value })} /></label>
+          <label className="block md:col-span-2"><span className="label">Tagline</span><Input value={form.tagline} onChange={(e) => setGeneral({ ...form, tagline: e.target.value })} /></label>
+          <label className="block"><span className="label">Support email</span><Input value={form.supportEmail} onChange={(e) => setGeneral({ ...form, supportEmail: e.target.value })} /></label>
+          <label className="block"><span className="label">Customer service number</span><Input placeholder="+233 24 000 0000" value={form.contactPhone} onChange={(e) => setGeneral({ ...form, contactPhone: e.target.value })} /></label>
+          <label className="block"><span className="label">WhatsApp number</span><Input placeholder="233240000000" value={form.whatsappNumber} onChange={(e) => setGeneral({ ...form, whatsappNumber: e.target.value })} /></label>
+          <label className="block"><span className="label">Address</span><Input value={form.address} onChange={(e) => setGeneral({ ...form, address: e.target.value })} /></label>
         </div>
-        <Button className="mt-4" onClick={() => save("general", form)}>Save general</Button>
+        <Button className="mt-4" onClick={() => save("general", { ...g, ...form })}>Save contact details</Button>
+      </Card>
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold">Channels & communities</h2>
+            <p className="mt-1 text-sm text-slate-500">Add Telegram, WhatsApp community, Discord or any other public link.</p>
+          </div>
+          <Button variant="outline" onClick={() => setChannels([...items, { name: "", url: "", kind: "telegram" }])}>Add link</Button>
+        </div>
+        <div className="mt-4 space-y-3">
+          {items.map((item, index) => (
+            <div key={index} className="grid gap-2 md:grid-cols-7">
+              <Select className="md:col-span-2" value={item.kind} onChange={(e) => setChannels(items.map((row, i) => i === index ? { ...row, kind: e.target.value } : row))}>
+                <option value="telegram">Telegram</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="community">Community</option>
+                <option value="discord">Discord</option>
+                <option value="facebook">Facebook</option>
+                <option value="instagram">Instagram</option>
+                <option value="other">Other</option>
+              </Select>
+              <Input className="md:col-span-2" placeholder="Label (e.g. Telegram channel)" value={item.name} onChange={(e) => setChannels(items.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} />
+              <Input className="md:col-span-2" placeholder="https://t.me/yourchannel" value={item.url} onChange={(e) => setChannels(items.map((row, i) => i === index ? { ...row, url: e.target.value } : row))} />
+              <Button variant="outline" onClick={() => setChannels(items.filter((_, i) => i !== index))}>Remove</Button>
+            </div>
+          ))}
+          {!items.length && <p className="text-sm text-slate-500">No channel links yet.</p>}
+        </div>
+        <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
     </div>

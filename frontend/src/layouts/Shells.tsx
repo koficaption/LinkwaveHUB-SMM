@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui";
 import { money } from "@/api/client";
+import { ContactLinks, usePublicSettings } from "@/components/ContactLinks";
 
 const publicLinks = [
   { to: "/", label: "Home" },
@@ -19,6 +20,7 @@ export function PublicLayout() {
   const { dark, setDark } = useTheme();
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const settings = usePublicSettings();
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -66,9 +68,12 @@ export function PublicLayout() {
       </header>
       <Outlet key={location.pathname} />
       <footer className="border-t border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950">
-        <div className="container-page flex flex-col gap-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} LinkWaveHub SMM. Developed by OB CodeLab.</p>
-          <p>Ghana · Social media services marketplace</p>
+        <div className="container-page flex flex-col gap-4 text-sm text-slate-500 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "LinkWaveHub SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
+            {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
+          </div>
+          <ContactLinks />
         </div>
       </footer>
     </div>

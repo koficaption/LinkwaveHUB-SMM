@@ -49,6 +49,14 @@ When the website is complete:
 - **Korapay** for instant and manual payments
 - **resellersmm.com `/api/v2`** (PerfectPanel: `key` + `action=services|add|status|refill|cancel|balance`) via Admin → Providers, adapter `generic_http`, API URL `https://resellersmm.com/api/v2`
 
+## Admin configuration
+
+From **Admin → Settings** you can set the customer service number, WhatsApp number, and channel/community links (Telegram, WhatsApp community, etc.). They appear in the public footer and on the support page.
+
+From **Admin → Payments** you can add or edit **manual** payment details (MoMo network and number, account name, bank name and account number, extra instructions). Customers see those details when they fund their wallet. An admin then confirms the deposit.
+
+From **Admin → Providers** you can add your SMM API now: paste `https://resellersmm.com/api/v2`, the API key, and adapter `generic_http`. Use **Test** to read the panel balance and **Services** to list panel service IDs for your products.
+
 ## Local development
 
 PostgreSQL 16+ is required.

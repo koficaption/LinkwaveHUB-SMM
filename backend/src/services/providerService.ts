@@ -38,8 +38,8 @@ export async function createProvider(input: Record<string, unknown>, actor: Auth
       uniqueSlug(String(input.name)),
       input.apiUrl ?? null,
       encrypted,
-      input.adapter ?? "mock",
-      input.status ?? "active",
+      input.adapter ?? "generic_http",
+      input.status ?? (input.isActive === false ? "inactive" : "active"),
       input.currency ?? "GHS",
       input.notes ?? null,
     ]
@@ -68,7 +68,7 @@ export async function updateProvider(id: string, input: Record<string, unknown>,
       input.apiUrl ?? null,
       encrypted,
       input.adapter ?? null,
-      input.status ?? null,
+      input.status ?? (input.isActive === false ? "inactive" : input.isActive === true ? "active" : null),
       input.currency ?? null,
       input.notes ?? null,
     ]
@@ -84,14 +84,35 @@ export async function deleteProvider(id: string, actor: AuthUser, ip?: string) {
 }
 
 export async function refreshProviderBalance(id: string) {
+  try {
+    const creds = await providerCredentials(id);
+    const balance = await creds.adapter.getBalance(creds);
+    await query(`UPDATE providers SET balance = $2 WHERE id = $1`, [id, balance]);
+    return { ...publicProvider(creds.row), balance };
+  } catch (err) {
+    throw new AppError(err instanceof Error ? err.message : "Could not read provider balance", 502);
+  }
+}
+
+export async function listProviderServices(id: string) {
+  try {
+    const creds = await providerCredentials(id);
+    const services = await creds.adapter.listServices(creds);
+    return { provider: publicProvider(creds.row), services };
+  } catch (err) {
+    throw new AppError(err instanceof Error ? err.message : "Could not load provider services", 502);
+  }
+}
+
+async function providerCredentials(id: string) {
   const row = await queryOne<Record<string, unknown>>(`SELECT * FROM providers WHERE id = $1`, [id]);
   if (!row) throw new AppError("Provider not found", 404);
   const adapter = getSmmAdapter(String(row.adapter || "mock"));
   const apiKey = row.api_key_encrypted ? decryptSecret(String(row.api_key_encrypted)) : undefined;
-  const balance = await adapter.getBalance({
+  return {
+    row,
+    adapter,
     apiUrl: row.api_url as string | undefined,
     apiKey,
-  });
-  await query(`UPDATE providers SET balance = $2 WHERE id = $1`, [id, balance]);
-  return { ...publicProvider(row), balance };
+  };
 }

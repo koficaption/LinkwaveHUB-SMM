@@ -32,6 +32,7 @@ import {
   providerSchema,
   storefrontSchema,
   resellerPriceSchema,
+  paymentMethodSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
@@ -407,6 +408,9 @@ admin.delete("/providers/:id", asyncHandler(async (req, res) => {
 admin.post("/providers/:id/balance", asyncHandler(async (req, res) => {
   res.json(ok(await providers.refreshProviderBalance(req.params.id)));
 }));
+admin.get("/providers/:id/services", asyncHandler(async (req, res) => {
+  res.json(ok(await providers.listProviderServices(req.params.id)));
+}));
 
 admin.get("/payments", asyncHandler(async (req, res) => {
   res.json(ok(await wallet.listPayments({
@@ -416,9 +420,11 @@ admin.get("/payments", asyncHandler(async (req, res) => {
   })));
 }));
 admin.get("/payments/methods", asyncHandler(async (_req, res) => res.json(ok(await wallet.listPaymentMethods(true)))));
-admin.patch("/payments/methods/:id", asyncHandler(async (req, res) => {
-  const body = z.object({ isEnabled: z.boolean() }).parse(req.body);
-  res.json(ok(await wallet.togglePaymentMethod(req.params.id, body.isEnabled, req.user!, clientIp(req))));
+admin.post("/payments/methods", validate(paymentMethodSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await wallet.createPaymentMethod(req.body, req.user!, clientIp(req)), "Payment method created"));
+}));
+admin.patch("/payments/methods/:id", validate(paymentMethodSchema.partial()), asyncHandler(async (req, res) => {
+  res.json(ok(await wallet.updatePaymentMethod(req.params.id, req.body, req.user!, clientIp(req)), "Payment method saved"));
 }));
 admin.post("/payments/:reference/confirm", asyncHandler(async (req, res) => {
   res.json(ok(await wallet.confirmPayment(req.params.reference, req.user!, clientIp(req)), "Payment confirmed"));

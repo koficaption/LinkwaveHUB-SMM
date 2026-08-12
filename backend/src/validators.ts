@@ -108,8 +108,26 @@ export const providerSchema = z.object({
   apiKey: z.string().max(500).optional().nullable(),
   adapter: z.string().max(40).optional(),
   status: z.enum(["active", "inactive"]).optional(),
+  isActive: z.boolean().optional(),
   currency: z.string().max(8).optional(),
   notes: z.string().max(1000).optional().nullable(),
+});
+
+export const paymentMethodSchema = z.object({
+  name: z.string().min(2).max(80),
+  code: z.string().max(40).optional(),
+  description: z.string().max(500).optional().nullable(),
+  adapter: z.enum(["manual", "mock", "paystack"]).optional(),
+  isEnabled: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  config: z.object({
+    network: z.string().max(80).optional(),
+    momoNumber: z.string().max(80).optional(),
+    accountName: z.string().max(120).optional(),
+    bankName: z.string().max(120).optional(),
+    accountNumber: z.string().max(80).optional(),
+    instructions: z.string().max(2000).optional(),
+  }).optional(),
 });
 
 export const storefrontSchema = z.object({

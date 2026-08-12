@@ -1,6 +1,6 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { parsePagination } from "../utils.js";
+import { uniqueSlug, parsePagination } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { getPaymentAdapter } from "../providers/payment/index.js";
@@ -242,9 +242,69 @@ export async function listPayments(opts: { status?: string; search?: string; pag
 }
 
 export async function togglePaymentMethod(id: string, isEnabled: boolean, actor: AuthUser, ip?: string) {
-  const row = await queryOne(`UPDATE payment_methods SET is_enabled = $2 WHERE id = $1 RETURNING id, code, name, is_enabled`, [id, isEnabled]);
-  if (!row) throw new AppError("Payment method not found", 404);
-  await writeAudit({ actor, action: "payment_method.toggle", targetType: "payment_method", targetId: id, details: { isEnabled }, ip });
+  return updatePaymentMethod(id, { isEnabled }, actor, ip);
+}
+
+export async function createPaymentMethod(input: {
+  name: string;
+  code?: string;
+  description?: string | null;
+  adapter?: string;
+  isEnabled?: boolean;
+  sortOrder?: number;
+  config?: Record<string, unknown>;
+}, actor: AuthUser, ip?: string) {
+  const code = (input.code?.trim() || uniqueSlug(input.name)).toLowerCase();
+  const row = await queryOne(
+    `INSERT INTO payment_methods (code, name, description, adapter, is_enabled, sort_order, config)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id, code, name, description, adapter, is_enabled, sort_order, config`,
+    [
+      code,
+      input.name,
+      input.description ?? null,
+      input.adapter ?? "manual",
+      input.isEnabled !== false,
+      input.sortOrder ?? 10,
+      JSON.stringify(input.config ?? {}),
+    ]
+  );
+  await writeAudit({ actor, action: "payment_method.create", targetType: "payment_method", targetId: row?.id, ip });
+  return row;
+}
+
+export async function updatePaymentMethod(id: string, input: {
+  name?: string;
+  description?: string | null;
+  adapter?: string;
+  isEnabled?: boolean;
+  sortOrder?: number;
+  config?: Record<string, unknown>;
+}, actor: AuthUser, ip?: string) {
+  const current = await queryOne<Record<string, unknown>>(`SELECT * FROM payment_methods WHERE id = $1`, [id]);
+  if (!current) throw new AppError("Payment method not found", 404);
+  const nextConfig = { ...((current.config as Record<string, unknown>) || {}), ...(input.config || {}) };
+  const row = await queryOne(
+    `UPDATE payment_methods SET
+       name = COALESCE($2, name),
+       description = COALESCE($3, description),
+       adapter = COALESCE($4, adapter),
+       is_enabled = COALESCE($5, is_enabled),
+       sort_order = COALESCE($6, sort_order),
+       config = $7::jsonb,
+       updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, code, name, description, adapter, is_enabled, sort_order, config`,
+    [
+      id,
+      input.name ?? null,
+      input.description ?? null,
+      input.adapter ?? null,
+      input.isEnabled ?? null,
+      input.sortOrder ?? null,
+      JSON.stringify(nextConfig),
+    ]
+  );
+  await writeAudit({ actor, action: "payment_method.update", targetType: "payment_method", targetId: id, details: input, ip });
   return row;
 }
 

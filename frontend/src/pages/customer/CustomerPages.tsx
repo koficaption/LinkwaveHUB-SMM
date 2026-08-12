@@ -9,6 +9,8 @@ import { prettyStatus, statusTone } from "@/utils/cn";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { ContactLinks } from "@/components/ContactLinks";
+import type { PaymentMethod } from "@/types";
 
 export function CustomerHome() {
   const { me } = useAuth();
@@ -146,12 +148,16 @@ export function WalletPage() {
   const qc = useQueryClient();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
   const tx = useQuery({ queryKey: ["tx"], queryFn: () => api<Paginated<Record<string, unknown>>>("/wallet/transactions") });
-  const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<{ code: string; name: string; description?: string }[]>("/payments/methods") });
+  const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
   const [amount, setAmount] = useState("50");
-  const [method, setMethod] = useState("mock");
+  const [method, setMethod] = useState("");
+  const [lastInstructions, setLastInstructions] = useState("");
+  const selected = methods.data?.find((m) => m.code === method) ?? methods.data?.[0];
+  const methodCode = method || selected?.code || "mock";
   const deposit = useMutation({
-    mutationFn: () => api<{ instructions?: string }>("/payments/deposit", { method: "POST", body: JSON.stringify({ amount: Number(amount), methodCode: method }) }),
+    mutationFn: () => api<{ instructions?: string }>("/payments/deposit", { method: "POST", body: JSON.stringify({ amount: Number(amount), methodCode }) }),
     onSuccess: async (data) => {
+      setLastInstructions(data.instructions || "Deposit initiated");
       toast.success(data.instructions || "Deposit initiated");
       await qc.invalidateQueries({ queryKey: ["wallet"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
@@ -160,6 +166,7 @@ export function WalletPage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Deposit failed"),
   });
   const w = wallet.data;
+  const cfg = selected?.config ?? {};
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Card><p className="text-sm text-slate-500">Current / available</p><p className="mt-2 text-3xl font-extrabold">{money(w?.available_balance ?? w?.balance)}</p></Card>
@@ -169,10 +176,20 @@ export function WalletPage() {
         <h2 className="font-bold">Add money</h2>
         <div className="mt-4 space-y-3">
           <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+          <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
           </Select>
+          {selected?.adapter === "manual" && (
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
+              {cfg.accountName && <p>Name: {cfg.accountName}</p>}
+              {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
+              {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
+              <p className="mt-1 text-xs">After you pay, an admin confirms the deposit.</p>
+            </div>
+          )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending}>Deposit</Button>
+          {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
         </div>
       </Card>
       <Card className="lg:col-span-2">
@@ -253,6 +270,11 @@ export function SupportPage() {
         <h1 className="text-2xl font-extrabold">Support</h1>
         <Button onClick={() => setOpen(true)}>New ticket</Button>
       </div>
+      <Card className="mt-4">
+        <p className="text-sm font-semibold">Customer service</p>
+        <p className="mt-1 text-sm text-slate-500">Call, WhatsApp, or join a community using the links set by the admin.</p>
+        <ContactLinks className="mt-3" />
+      </Card>
       <Card className="mt-4">
         {!tickets.data?.length && <EmptyState title="No tickets" body="Create a ticket if you need help with an order or deposit." />}
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">

@@ -266,10 +266,126 @@ export function AdminCategories() {
 }
 
 export function AdminProviders() {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["/admin/providers"], queryFn: () => api<Record<string, unknown>[]>("/admin/providers") });
+  const [editing, setEditing] = useState<Record<string, unknown> | "new" | null>(null);
+  const [servicesFor, setServicesFor] = useState<string | null>(null);
+  const services = useQuery({
+    queryKey: ["provider-services", servicesFor],
+    queryFn: () => api<{ services: { service: string; name: string; category?: string; rate?: string; min?: string; max?: string }[] }>(`/admin/providers/${servicesFor}/services`),
+    enabled: !!servicesFor,
+  });
   return (
     <div>
-      <p className="mb-4 text-sm text-slate-500">Keep the adapter on <strong>mock</strong> for now. When the website is ready, switch to <strong>generic_http</strong> and paste the resellersmm.com /api/v2 key. Do not put live keys in the frontend.</p>
-      <AdminSimpleCrud title="Providers" path="/admin/providers" fields={[{ key: "name", label: "Name" }, { key: "apiUrl", label: "API URL" }, { key: "apiKey", label: "API key (stored encrypted, never shown again)" }, { key: "adapter", label: "Adapter (mock / generic_http)" }, { key: "currency", label: "Currency" }, { key: "notes", label: "Notes", type: "textarea" }]} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">API providers</h1>
+          <p className="text-sm text-slate-500">Add your SMM panel now (resellersmm.com /api/v2 or any PerfectPanel). The API key is encrypted and never shown in the browser.</p>
+        </div>
+        <Button onClick={() => setEditing("new")}>Add provider</Button>
+      </div>
+      <Card className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead><tr className="text-slate-500">{["Name","API URL","Adapter","Balance","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <tbody>
+            {(list.data ?? []).map((row) => (
+              <tr key={String(row.id)} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="p-2 font-medium">{String(row.name)}{row.has_api_key ? <span className="ml-2 text-xs text-emerald-600">key saved</span> : <span className="ml-2 text-xs text-amber-600">no key</span>}</td>
+                <td className="p-2 text-xs">{String(row.api_url || "—")}</td>
+                <td className="p-2">{String(row.adapter)}</td>
+                <td className="p-2">{row.balance != null ? String(row.balance) : "—"} {String(row.currency || "")}</td>
+                <td className="p-2"><Badge className={statusTone[String(row.status)]}>{String(row.status)}</Badge></td>
+                <td className="p-2 space-x-2">
+                  <button className="font-semibold text-brand-700" onClick={() => setEditing(row)}>Edit</button>
+                  <button className="font-semibold text-brand-700" onClick={async () => {
+                    try {
+                      const result = await api<{ balance: number }>(`/admin/providers/${row.id}/balance`, { method: "POST" });
+                      toast.success(`Balance: ${result.balance}`);
+                      qc.invalidateQueries({ queryKey: ["/admin/providers"] });
+                    } catch (e) { toast.error(e instanceof ApiError ? e.message : "Balance check failed"); }
+                  }}>Test</button>
+                  <button className="font-semibold text-brand-700" onClick={() => setServicesFor(String(row.id))}>Services</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      {editing && <ProviderForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {servicesFor && (
+        <Modal open title="Provider services" onClose={() => setServicesFor(null)}>
+          {services.isLoading && <p className="text-sm text-slate-500">Loading from the panel API…</p>}
+          {services.error && <p className="text-sm text-rose-600">{services.error instanceof ApiError ? services.error.message : "Could not load services"}</p>}
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead><tr className="text-slate-500">{["ID","Name","Category","Rate","Min","Max"].map((h) => <th key={h} className="p-1">{h}</th>)}</tr></thead>
+              <tbody>
+                {(services.data?.services ?? []).map((s) => (
+                  <tr key={s.service} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="p-1 font-mono">{s.service}</td>
+                    <td className="p-1">{s.name}</td>
+                    <td className="p-1">{s.category}</td>
+                    <td className="p-1">{s.rate}</td>
+                    <td className="p-1">{s.min}</td>
+                    <td className="p-1">{s.max}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Copy a service ID into Admin → Products → Provider service ID when you add your own products.</p>
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: String(row?.name ?? "ResellersMM"),
+    apiUrl: String(row?.api_url ?? "https://resellersmm.com/api/v2"),
+    apiKey: "",
+    adapter: String(row?.adapter ?? "generic_http"),
+    currency: String(row?.currency ?? "USD"),
+    notes: String(row?.notes ?? ""),
+    status: String(row?.status ?? "active"),
+  });
+  return (
+    <Modal open title={row ? "Edit API provider" : "Add API provider"} onClose={onClose}>
+      <div className="space-y-3">
+        <label className="block"><span className="label">Name</span><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+        <label className="block"><span className="label">API URL</span><Input value={form.apiUrl} onChange={(e) => setForm({ ...form, apiUrl: e.target.value })} /></label>
+        <label className="block"><span className="label">API key</span><Input type="password" placeholder={row?.has_api_key ? "Leave blank to keep the saved key" : "Paste panel API key"} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></label>
+        <label className="block"><span className="label">Adapter</span>
+          <Select value={form.adapter} onChange={(e) => setForm({ ...form, adapter: e.target.value })}>
+            <option value="generic_http">generic_http (resellersmm / PerfectPanel v2)</option>
+            <option value="mock">mock (no live orders)</option>
+          </Select>
+        </label>
+        <label className="block"><span className="label">Provider currency</span><Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} /></label>
+        <label className="block"><span className="label">Status</span>
+          <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </Select>
+        </label>
+        <label className="block"><span className="label">Notes</span><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={async () => {
+          const payload: Record<string, unknown> = { ...form };
+          if (!form.apiKey) delete payload.apiKey;
+          try {
+            if (row) await api(`/admin/providers/${row.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+            else await api("/admin/providers", { method: "POST", body: JSON.stringify(payload) });
+            toast.success("Provider saved");
+            qc.invalidateQueries({ queryKey: ["/admin/providers"] });
+            onClose();
+          } catch (e) { toast.error(e instanceof ApiError ? e.message : "Save failed"); }
+        }}>Save</Button>
+      </div>
+    </Modal>
   );
 }
