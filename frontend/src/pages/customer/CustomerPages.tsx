@@ -336,6 +336,7 @@ export function NotificationsPage() {
           <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
             <p className="font-semibold">{String(n.title)}</p>
             <p className="text-sm text-slate-500">{String(n.body)}</p>
+            {n.created_at ? <p className="mt-1 text-xs text-slate-400">{formatDate(String(n.created_at))}</p> : null}
           </li>
         ))}
       </ul>

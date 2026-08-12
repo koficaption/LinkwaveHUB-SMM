@@ -14,7 +14,7 @@ import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
 import {
-  AdminAudit, AdminOrders, AdminPayments, AdminResellers, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
+  AdminAudit, AdminNotifications, AdminOrders, AdminPayments, AdminResellers, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
 } from "@/pages/admin/AdminOps";
 
 const queryClient = new QueryClient({
@@ -68,7 +68,7 @@ export default function App() {
                   <Route path="/admin/payments" element={<AdminPayments />} />
                   <Route path="/admin/wallets" element={<AdminWallets />} />
                   <Route path="/admin/support" element={<AdminSupport />} />
-                  <Route path="/admin/notifications" element={<NotificationsPage />} />
+                  <Route path="/admin/notifications" element={<AdminNotifications />} />
                   <Route path="/admin/analytics" element={<AdminAnalytics />} />
                   <Route path="/admin/settings" element={<AdminSettings />} />
                   <Route path="/admin/audit" element={<AdminAudit />} />

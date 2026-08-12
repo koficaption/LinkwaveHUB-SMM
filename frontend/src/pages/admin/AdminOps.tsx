@@ -610,6 +610,159 @@ function PricingSettingsCard({
   );
 }
 
+const audienceLabels: Record<string, string> = {
+  customers: "Customers",
+  resellers: "Resellers",
+  child_panels: "Child panels",
+  all: "All users",
+  user: "One user",
+};
+
+export function AdminNotifications() {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [audience, setAudience] = useState("customers");
+  const [userSearch, setUserSearch] = useState("");
+  const [picked, setPicked] = useState<User | null>(null);
+  const counts = useQuery({
+    queryKey: ["admin-notification-counts"],
+    queryFn: () => api<{ customers: number; resellers: number; child_panels: number; all: number }>("/admin/notifications/counts"),
+  });
+  const sent = useQuery({
+    queryKey: ["admin-notifications"],
+    queryFn: () => api<Record<string, unknown>[]>("/admin/notifications"),
+  });
+  const users = useQuery({
+    queryKey: ["admin-notify-users", userSearch],
+    queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(userSearch)}&status=active`),
+    enabled: audience === "user" && userSearch.trim().length >= 2,
+  });
+  const recipientCount = audience === "user"
+    ? (picked ? 1 : 0)
+    : Number(counts.data?.[audience === "all" ? "all" : audience as "customers" | "resellers" | "child_panels"] ?? 0);
+
+  const send = useMutation({
+    mutationFn: () => api("/admin/notifications", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        body,
+        audience,
+        userId: audience === "user" ? picked?.id : undefined,
+      }),
+    }),
+    onSuccess: (data) => {
+      const count = (data as { recipientCount?: number })?.recipientCount ?? recipientCount;
+      toast.success(`Notification sent to ${count} ${count === 1 ? "recipient" : "recipients"}`);
+      setTitle("");
+      setBody("");
+      setPicked(null);
+      setUserSearch("");
+      qc.invalidateQueries({ queryKey: ["admin-notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to send"),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-extrabold">Notifications</h1>
+        <p className="mt-1 text-sm text-slate-500">Send an announcement to customers, resellers, or child panels. It appears in each recipient’s Notifications inbox.</p>
+      </div>
+      <Card>
+        <h2 className="font-bold">Compose</h2>
+        <div className="mt-3 space-y-3">
+          <label className="block">
+            <span className="label">Title</span>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Maintenance window, new services, promo…" />
+          </label>
+          <label className="block">
+            <span className="label">Message</span>
+            <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write the message recipients will see." />
+          </label>
+          <fieldset>
+            <legend className="label mb-2">Send to</legend>
+            <div className="grid gap-2 md:grid-cols-2">
+              {[
+                { value: "customers", label: "Customers", hint: `${counts.data?.customers ?? "…"} active customers` },
+                { value: "resellers", label: "Resellers", hint: `${counts.data?.resellers ?? "…"} reseller accounts` },
+                { value: "child_panels", label: "Child panels", hint: `${counts.data?.child_panels ?? "…"} with an active storefront` },
+                { value: "all", label: "Everyone", hint: `${counts.data?.all ?? "…"} customers and resellers` },
+                { value: "user", label: "One user", hint: "Search and pick a specific account" },
+              ].map((option) => (
+                <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${audience === option.value ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10" : "border-slate-200 dark:border-slate-800"}`}>
+                  <input type="radio" name="audience" className="mt-1" checked={audience === option.value} onChange={() => { setAudience(option.value); setPicked(null); }} />
+                  <span>
+                    <span className="block font-semibold">{option.label}</span>
+                    <span className="text-xs text-slate-500">{option.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {audience === "user" && (
+            <div>
+              <span className="label">Find user</span>
+              {picked ? (
+                <div className="mt-1 flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                  <div>
+                    <p className="font-semibold">{picked.full_name}</p>
+                    <p className="text-xs text-slate-500">{picked.email} · {picked.role}</p>
+                  </div>
+                  <Button variant="outline" onClick={() => setPicked(null)}>Change</Button>
+                </div>
+              ) : (
+                <>
+                  <Input className="mt-1" placeholder="Search name or email" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+                  <ul className="mt-2 max-h-48 space-y-1 overflow-auto">
+                    {users.data?.items.filter((u) => u.role !== "admin").map((u) => (
+                      <li key={u.id}>
+                        <button type="button" className="w-full rounded-xl p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setPicked(u)}>
+                          <p className="font-semibold">{u.full_name}</p>
+                          <p className="text-xs text-slate-500">{u.email} · {u.role}</p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">Will send to <strong>{recipientCount}</strong> {recipientCount === 1 ? "recipient" : "recipients"}.</p>
+            <Button disabled={send.isPending || !title.trim() || !body.trim() || recipientCount < 1} onClick={() => send.mutate()}>
+              {send.isPending ? "Sending…" : "Send notification"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <Card>
+        <h2 className="font-bold">Sent</h2>
+        <ul className="mt-3 space-y-3">
+          {sent.data?.length ? sent.data.map((n) => {
+            const meta = (n.metadata ?? {}) as Record<string, unknown>;
+            return (
+              <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold">{String(n.title)}</p>
+                  <p className="text-xs text-slate-500">{formatDate(String(n.created_at))}</p>
+                </div>
+                <p className="text-sm text-slate-500">{String(n.body)}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {audienceLabels[String(meta.audience)] ?? "Audience"} · {String(meta.recipientCount ?? 0)} recipients
+                  {meta.sentByName ? ` · ${String(meta.sentByName)}` : ""}
+                </p>
+              </li>
+            );
+          }) : <p className="text-sm text-slate-500">No admin notifications sent yet.</p>}
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
 export function AdminAudit() {
   const logs = useQuery({ queryKey: ["audit"], queryFn: () => api<Paginated<Record<string, unknown>>>("/admin/audit") });
   return (

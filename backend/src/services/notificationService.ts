@@ -1,4 +1,35 @@
-import { query } from "../db.js";
+import { query, queryOne, withTransaction } from "../db.js";
+import { AppError } from "../errors.js";
+import type { AuthUser } from "../middleware/auth.js";
+import { writeAudit } from "./auditService.js";
+
+export type BroadcastAudience = "customers" | "resellers" | "child_panels" | "all" | "user";
+
+function recipientWhere(audience: BroadcastAudience, userId: string | undefined, startAt: number) {
+  const params: unknown[] = [];
+  let index = startAt;
+  const next = (value: unknown) => {
+    params.push(value);
+    const placeholder = `$${index}`;
+    index += 1;
+    return placeholder;
+  };
+  const clauses = [`u.status = 'active'`, `u.role <> 'admin'`];
+  if (audience === "user") {
+    if (!userId) throw new AppError("Select a user to notify", 400);
+    clauses.push(`u.id = ${next(userId)}`);
+  } else if (audience === "customers") {
+    clauses.push(`u.role = 'customer'`);
+  } else if (audience === "resellers") {
+    clauses.push(`u.role = 'reseller'`);
+  } else if (audience === "child_panels") {
+    clauses.push(`u.role = 'reseller'`);
+    clauses.push(`EXISTS (SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.status = 'active')`);
+  } else {
+    clauses.push(`u.role IN ('customer', 'reseller')`);
+  }
+  return { sql: clauses.join(" AND "), params };
+}
 
 export async function notify(input: {
   userId?: string | null;
@@ -20,30 +51,116 @@ export async function notify(input: {
   );
 }
 
-export async function listNotifications(userId: string, role: string) {
-  if (role === "admin") {
-    return query(
-      `SELECT n.*, u.full_name AS user_name, u.email AS user_email
-       FROM notifications n
-       LEFT JOIN users u ON u.id = n.user_id
-       ORDER BY n.created_at DESC
-       LIMIT 200`
-    );
-  }
+export async function listNotifications(userId: string) {
   return query(
     `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
     [userId]
   );
 }
 
-export async function markRead(id: string, userId: string, role: string) {
-  if (role === "admin") {
-    await query(`UPDATE notifications SET is_read = TRUE WHERE id = $1`, [id]);
-    return;
-  }
+export async function markRead(id: string, userId: string) {
   await query(`UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2`, [id, userId]);
 }
 
 export async function markAllRead(userId: string) {
   await query(`UPDATE notifications SET is_read = TRUE WHERE user_id = $1`, [userId]);
+}
+
+export async function audienceCounts() {
+  const row = await queryOne<{ customers: string; resellers: string; child_panels: string; all_users: string }>(`
+    SELECT
+      COUNT(*) FILTER (WHERE u.role = 'customer')::text AS customers,
+      COUNT(*) FILTER (WHERE u.role = 'reseller')::text AS resellers,
+      COUNT(*) FILTER (
+        WHERE u.role = 'reseller' AND EXISTS (
+          SELECT 1 FROM resellers r WHERE r.user_id = u.id AND r.status = 'active'
+        )
+      )::text AS child_panels,
+      COUNT(*) FILTER (WHERE u.role IN ('customer', 'reseller'))::text AS all_users
+    FROM users u
+    WHERE u.status = 'active' AND u.role <> 'admin'
+  `);
+  return {
+    customers: Number(row?.customers ?? 0),
+    resellers: Number(row?.resellers ?? 0),
+    child_panels: Number(row?.child_panels ?? 0),
+    all: Number(row?.all_users ?? 0),
+  };
+}
+
+export async function listBroadcasts() {
+  return query(
+    `SELECT id, title, body, type, metadata, created_at
+     FROM notifications
+     WHERE type = 'broadcast' AND user_id IS NULL
+     ORDER BY created_at DESC
+     LIMIT 100`
+  );
+}
+
+export async function broadcastNotification(input: {
+  title: string;
+  body: string;
+  audience: BroadcastAudience;
+  userId?: string;
+  actor: AuthUser;
+  ip?: string;
+}) {
+  const { sql, params } = recipientWhere(input.audience, input.userId, 4);
+  const recipientMeta = JSON.stringify({
+    audience: input.audience,
+    sentBy: input.actor.id,
+    sentByName: input.actor.full_name,
+  });
+
+  const result = await withTransaction(async (client) => {
+    const recipients = await query<{ id: string }>(
+      `INSERT INTO notifications (user_id, title, body, type, metadata)
+       SELECT u.id, $1, $2, 'admin', $3::jsonb
+       FROM users u
+       WHERE ${sql}
+       RETURNING id`,
+      [input.title, input.body, recipientMeta, ...params],
+      client
+    );
+    if (!recipients.length) {
+      throw new AppError("No matching recipients for that audience", 400);
+    }
+    const log = await queryOne<{
+      id: string;
+      title: string;
+      body: string;
+      type: string;
+      metadata: unknown;
+      created_at: string;
+    }>(
+      `INSERT INTO notifications (user_id, title, body, type, metadata)
+       VALUES (NULL, $1, $2, 'broadcast', $3::jsonb)
+       RETURNING id, title, body, type, metadata, created_at`,
+      [
+        input.title,
+        input.body,
+        JSON.stringify({
+          audience: input.audience,
+          recipientCount: recipients.length,
+          sentBy: input.actor.id,
+          sentByName: input.actor.full_name,
+          userId: input.userId ?? null,
+        }),
+      ],
+      client
+    );
+    return { log, recipientCount: recipients.length };
+  });
+
+  await writeAudit({
+    actor: input.actor,
+    action: "notification.broadcast",
+    targetType: "notification",
+    targetId: result.log?.id,
+    details: { audience: input.audience, recipientCount: result.recipientCount, title: input.title },
+    ip: input.ip,
+  });
+
+  return { ...result.log, recipientCount: result.recipientCount };
 }

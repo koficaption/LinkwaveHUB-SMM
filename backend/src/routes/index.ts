@@ -33,6 +33,7 @@ import {
   storefrontSchema,
   resellerPriceSchema,
   paymentMethodSchema,
+  adminBroadcastSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
@@ -235,10 +236,10 @@ router.post("/support/:id/reply", requireAuth, validate(ticketReplySchema), asyn
 }));
 
 router.get("/notifications", requireAuth, asyncHandler(async (req, res) => {
-  res.json(ok(await notifications.listNotifications(req.user!.id, req.user!.role)));
+  res.json(ok(await notifications.listNotifications(req.user!.id)));
 }));
 router.post("/notifications/:id/read", requireAuth, asyncHandler(async (req, res) => {
-  await notifications.markRead(req.params.id, req.user!.id, req.user!.role);
+  await notifications.markRead(req.params.id, req.user!.id);
   res.json(ok(null));
 }));
 router.post("/notifications/read-all", requireAuth, asyncHandler(async (req, res) => {
@@ -463,6 +464,23 @@ admin.patch("/support/:id", asyncHandler(async (req, res) => {
 
 admin.get("/affiliates", asyncHandler(async (_req, res) => {
   res.json(ok(await affiliates.listAffiliatesAdmin()));
+}));
+
+admin.get("/notifications/counts", asyncHandler(async (_req, res) => {
+  res.json(ok(await notifications.audienceCounts()));
+}));
+admin.get("/notifications", asyncHandler(async (_req, res) => {
+  res.json(ok(await notifications.listBroadcasts()));
+}));
+admin.post("/notifications", validate(adminBroadcastSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await notifications.broadcastNotification({
+    title: req.body.title,
+    body: req.body.body,
+    audience: req.body.audience,
+    userId: req.body.userId,
+    actor: req.user!,
+    ip: clientIp(req),
+  }), "Notification sent"));
 }));
 
 admin.get("/settings", asyncHandler(async (_req, res) => res.json(ok(await settings.getSettings()))));

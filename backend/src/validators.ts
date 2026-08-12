@@ -144,3 +144,14 @@ export const resellerPriceSchema = z.object({
   sellingPrice: z.number().nonnegative(),
   isEnabled: z.boolean().optional(),
 });
+
+export const adminBroadcastSchema = z.object({
+  title: z.string().min(2).max(160),
+  body: z.string().min(2).max(4000),
+  audience: z.enum(["customers", "resellers", "child_panels", "all", "user"]),
+  userId: z.string().uuid().optional(),
+}).superRefine((value, ctx) => {
+  if (value.audience === "user" && !value.userId) {
+    ctx.addIssue({ code: "custom", message: "Select a user to notify", path: ["userId"] });
+  }
+});
