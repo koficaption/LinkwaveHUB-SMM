@@ -133,6 +133,11 @@ export type PublicSettings = {
   currency?: string;
   logoUrl?: string;
   channels?: ChannelLink[];
+  resellers?: {
+    upgradeEnabled?: boolean;
+    upgradeFee?: number;
+    upgradeNote?: string;
+  };
 };
 
 export type PaymentMethod = {

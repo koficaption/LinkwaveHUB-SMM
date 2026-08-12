@@ -155,3 +155,10 @@ export const adminBroadcastSchema = z.object({
     ctx.addIssue({ code: "custom", message: "Select a user to notify", path: ["userId"] });
   }
 });
+
+export const resellerUpgradeSchema = z.object({
+  storeName: z.string().min(2).max(80),
+  methodCode: z.string().min(1).max(40).optional(),
+  senderName: z.string().max(120).optional(),
+  senderNumber: z.string().max(30).optional(),
+});

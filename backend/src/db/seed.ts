@@ -224,7 +224,8 @@ export async function seed() {
      ('orders', '{"autoProcessing":false,"maxPendingPerUser":20,"refundWindowHours":48}'),
      ('pricing', '{"customerMarkupPercent":0,"resellerMarkupPercent":15,"minimumProfitPer1000":0.5}'),
      ('notifications', '{"emailEnabled":false,"orderNotifications":true,"depositNotifications":true}'),
-     ('affiliates', '{"enabled":true,"commissionPercent":7,"minimumPayout":10,"lifetime":true}')
+     ('affiliates', '{"enabled":true,"commissionPercent":7,"minimumPayout":10,"lifetime":true}'),
+     ('resellers', '{"upgradeEnabled":true,"upgradeFee":200,"upgradeNote":"Pay the reseller / child panel fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller."}')
      ON CONFLICT (key) DO NOTHING`
   );
 

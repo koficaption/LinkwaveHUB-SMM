@@ -18,6 +18,16 @@ type Me = {
     tagline?: string | null;
     markup_percent: number | string;
   } | null;
+  resellerApplication?: {
+    id: string;
+    store_name: string;
+    fee_amount: number | string;
+    currency: string;
+    status: string;
+    created_at: string;
+    payment_reference?: string | null;
+    payment_status?: string | null;
+  } | null;
 };
 
 type AuthContextValue = {

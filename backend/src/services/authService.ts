@@ -113,7 +113,17 @@ export async function getMe(userId: string) {
      FROM resellers WHERE user_id = $1`,
     [userId]
   );
-  return { user, wallet, reseller };
+  const resellerApplication = await queryOne(
+    `SELECT a.id, a.store_name, a.fee_amount, a.currency, a.status, a.created_at,
+            p.reference AS payment_reference, p.status AS payment_status
+     FROM reseller_applications a
+     LEFT JOIN payments p ON p.id = a.payment_id
+     WHERE a.user_id = $1
+     ORDER BY a.created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return { user, wallet, reseller, resellerApplication };
 }
 
 export async function updateProfile(userId: string, input: { fullName: string; phone?: string | null }) {

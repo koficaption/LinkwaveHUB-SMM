@@ -7,7 +7,7 @@ import { HomePage } from "@/pages/public/HomePage";
 import { LoginPage, RegisterPage, AuthCallbackPage } from "@/pages/auth/AuthPages";
 import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/ServicesPages";
 import {
-  CustomerHome, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
+  CustomerHome, BecomeResellerPage, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
 } from "@/pages/customer/CustomerPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "@/pages/reseller/ResellerPages";
@@ -46,6 +46,7 @@ export default function App() {
                   <Route path="/app/wallet" element={<WalletPage />} />
                   <Route path="/app/affiliates" element={<AffiliatePage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
+                  <Route path="/app/become-reseller" element={<BecomeResellerPage />} />
                   <Route path="/app/support" element={<SupportPage />} />
                   <Route path="/app/notifications" element={<NotificationsPage />} />
                   <Route path="/app/reseller" element={<Guard roles={["reseller", "admin"]}><ResellerDashboard /></Guard>} />

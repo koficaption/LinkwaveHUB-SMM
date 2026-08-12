@@ -50,6 +50,64 @@ export async function listPaymentMethods(includeDisabled = false) {
   });
 }
 
+function paymentMetadata(payment: Record<string, unknown>) {
+  const meta = payment.metadata;
+  if (meta && typeof meta === "object" && !Array.isArray(meta)) return meta as Record<string, unknown>;
+  return {};
+}
+
+export function isResellerUpgradePayment(payment: Record<string, unknown>) {
+  return paymentMetadata(payment).purpose === "reseller_upgrade";
+}
+
+export async function initiateDirectedPayment(
+  user: AuthUser,
+  amount: number,
+  methodCode: string,
+  extra: Record<string, unknown> = {}
+) {
+  const method = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
+    [methodCode]
+  );
+  if (!method) throw new AppError("Payment method is not available");
+
+  const reference = paymentReference();
+  const adapter = getPaymentAdapter(String(method.adapter));
+  const init = await adapter.initialize({
+    amount,
+    currency: "GHS",
+    email: user.email,
+    reference,
+    metadata: { userId: user.id, ...extra },
+    config: (method.config as Record<string, unknown>) || {},
+  });
+
+  const payment = await queryOne<Record<string, unknown>>(
+    `INSERT INTO payments (user_id, method_id, amount, currency, status, reference, provider_ref, metadata)
+     VALUES ($1,$2,$3,'GHS','pending',$4,$5,$6::jsonb) RETURNING *`,
+    [
+      user.id,
+      method.id,
+      amount,
+      init.reference,
+      init.providerRef ?? null,
+      JSON.stringify({
+        instructions: init.instructions,
+        checkoutUrl: init.checkoutUrl,
+        ...extra,
+      }),
+    ]
+  );
+
+  return {
+    payment,
+    method,
+    checkoutUrl: init.checkoutUrl,
+    instructions: init.instructions,
+  };
+}
+
 export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string) {
   const method = await queryOne<Record<string, unknown>>(
     `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
@@ -116,6 +174,10 @@ export async function confirmPayment(reference: string, actor: AuthUser, ip?: st
     [reference]
   );
   if (!payment) throw new AppError("Payment not found", 404);
+  if (isResellerUpgradePayment(payment)) {
+    const { approveUpgradeByPaymentReference } = await import("./resellerService.js");
+    return approveUpgradeByPaymentReference(reference, actor, ip);
+  }
   if (payment.status === "completed") return payment;
 
   await creditWallet({
@@ -148,6 +210,17 @@ export async function confirmPayment(reference: string, actor: AuthUser, ip?: st
 }
 
 export async function rejectPayment(reference: string, actor: AuthUser, ip?: string) {
+  const payment = await queryOne<Record<string, unknown>>(
+    `SELECT p.*, m.name AS method_name
+     FROM payments p LEFT JOIN payment_methods m ON m.id = p.method_id
+     WHERE p.reference = $1`,
+    [reference]
+  );
+  if (!payment) throw new AppError("Payment not found", 404);
+  if (isResellerUpgradePayment(payment)) {
+    const { rejectUpgradeByPaymentReference } = await import("./resellerService.js");
+    return rejectUpgradeByPaymentReference(reference, actor, ip);
+  }
   const updated = await queryOne(
     `UPDATE payments SET status = 'cancelled' WHERE reference = $1 AND status = 'pending' RETURNING *`,
     [reference]
@@ -229,7 +302,8 @@ export async function listPayments(opts: { status?: string; search?: string; pag
   );
   params.push(p.limit, p.offset);
   const items = await query(
-    `SELECT p.*, u.full_name, u.email, m.name AS method_name, m.code AS method_code
+    `SELECT p.*, u.full_name, u.email, m.name AS method_name, m.code AS method_code,
+            COALESCE(p.metadata->>'purpose', 'deposit') AS purpose
      FROM payments p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN payment_methods m ON m.id = p.method_id

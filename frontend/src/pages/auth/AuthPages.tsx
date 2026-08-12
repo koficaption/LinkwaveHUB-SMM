@@ -70,6 +70,8 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [asReseller, setAsReseller] = useState(false);
   const invitedBy = storedReferralCode();
+  const publicSettings = useQuery({ queryKey: ["public-settings"], queryFn: () => api<{ resellers?: { upgradeEnabled?: boolean; upgradeFee?: number } }>("/settings/public") });
+  const paidUpgrade = publicSettings.data?.resellers?.upgradeEnabled !== false;
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", storeName: "" } });
   return (
     <AuthCard title="Create your account" subtitle="Start growing in minutes">
@@ -84,7 +86,7 @@ export function RegisterPage() {
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
           try {
-            const me = await register({ ...values, asReseller, storeName: values.storeName });
+            const me = await register({ ...values, asReseller: paidUpgrade ? false : asReseller, storeName: values.storeName });
             toast.success("Account created");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
           } catch (e) {
@@ -98,11 +100,19 @@ export function RegisterPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={asReseller} onChange={(e) => setAsReseller(e.target.checked)} />
-          Register as a reseller
-        </label>
-        {asReseller && <Field label="Store name"><Input {...form.register("storeName")} /></Field>}
+        {paidUpgrade ? (
+          <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            Want a reseller / child panel? Create this customer account first, then pay the upgrade fee from your dashboard. Admin confirms the Mobile Money payment and switches you to reseller.
+          </p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={asReseller} onChange={(e) => setAsReseller(e.target.checked)} />
+              Register as a reseller
+            </label>
+            {asReseller && <Field label="Store name"><Input {...form.register("storeName")} /></Field>}
+          </>
+        )}
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
         </Button>

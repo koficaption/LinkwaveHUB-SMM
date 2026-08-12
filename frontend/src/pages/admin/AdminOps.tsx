@@ -206,11 +206,55 @@ export function AdminUserDetail() {
 export function AdminResellers() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["resellers"], queryFn: () => api<Record<string, unknown>[]>("/admin/resellers") });
+  const applications = useQuery({ queryKey: ["reseller-applications"], queryFn: () => api<Record<string, unknown>[]>("/admin/reseller-applications") });
+  const pendingApps = applications.data?.filter((a) => String(a.status) === "pending_review" || String(a.status) === "pending_payment") ?? [];
   return (
-    <div>
+    <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Resellers</h1>
-      <Card className="mt-4 overflow-x-auto">
-        <table className="w-full text-left text-sm">
+      <Card className="overflow-x-auto">
+        <h2 className="font-bold">Upgrade applications</h2>
+        <p className="mt-1 text-sm text-slate-500">Customers who paid the reseller / child panel fee. Confirm after you see the Mobile Money payment, and their dashboard switches to reseller.</p>
+        <table className="mt-3 w-full text-left text-sm">
+          <thead><tr className="text-slate-500">{["Customer","Store","Fee","MoMo","Payment","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <tbody>
+            {(applications.data ?? []).map((a) => (
+              <tr key={String(a.id)} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="p-2">{String(a.full_name)}<div className="text-xs text-slate-500">{String(a.email)}</div></td>
+                <td className="p-2">{String(a.store_name)}</td>
+                <td className="p-2">{money(Number(a.fee_amount))}</td>
+                <td className="p-2 text-xs">{[a.sender_name, a.sender_number].filter(Boolean).map(String).join(" · ") || "—"}</td>
+                <td className="p-2 font-mono text-xs">{String(a.payment_reference || "—")}<div className="font-sans text-slate-500">{prettyStatus(String(a.payment_status || a.method_name || ""))}</div></td>
+                <td className="p-2"><Badge className={statusTone[String(a.status)]}>{prettyStatus(String(a.status))}</Badge></td>
+                <td className="p-2 space-x-2">
+                  {(String(a.status) === "pending_review" || String(a.status) === "pending_payment") && (
+                    <>
+                      <button className="font-semibold text-brand-700" onClick={async () => {
+                        await api(`/admin/reseller-applications/${a.id}/approve`, { method: "POST" });
+                        toast.success("Promoted to reseller");
+                        qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                        qc.invalidateQueries({ queryKey: ["resellers"] });
+                        qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                      }}>Confirm & promote</button>
+                      <button className="font-semibold text-rose-600" onClick={async () => {
+                        await api(`/admin/reseller-applications/${a.id}/reject`, { method: "POST", body: JSON.stringify({}) });
+                        toast.success("Application rejected");
+                        qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                        qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                      }}>Reject</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!applications.data?.length && (
+              <tr><td className="p-2 text-slate-500" colSpan={7}>{pendingApps.length ? "" : "No upgrade applications yet."}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+      <Card className="overflow-x-auto">
+        <h2 className="font-bold">Reseller accounts</h2>
+        <table className="mt-3 w-full text-left text-sm">
           <thead><tr className="text-slate-500">{["Store","Owner","Status","Orders","Profit","Wallet","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {list.data?.map((r) => (
@@ -282,19 +326,20 @@ export function AdminPayments() {
       {editing && <PaymentMethodModal method={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       <Card className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Reference","User","Amount","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Reference","User","Type","Amount","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {payments.data?.items.map((p) => (
               <tr key={String(p.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2">{String(p.reference)}</td>
                 <td className="p-2">{String(p.email)}</td>
+                <td className="p-2">{String(p.purpose) === "reseller_upgrade" ? "Reseller upgrade" : "Wallet deposit"}</td>
                 <td className="p-2">{money(Number(p.amount))}</td>
                 <td className="p-2"><Badge className={statusTone[String(p.status)]}>{String(p.status)}</Badge></td>
                 <td className="p-2 space-x-2">
                   {p.status === "pending" && (
                     <>
-                      <button className="font-semibold text-brand-700" onClick={async () => { await api(`/admin/payments/${p.reference}/confirm`, { method: "POST" }); toast.success("Confirmed"); qc.invalidateQueries({ queryKey: ["admin-payments"] }); }}>Confirm</button>
-                      <button className="font-semibold text-rose-600" onClick={async () => { await api(`/admin/payments/${p.reference}/reject`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin-payments"] }); }}>Reject</button>
+                      <button className="font-semibold text-brand-700" onClick={async () => { await api(`/admin/payments/${p.reference}/confirm`, { method: "POST" }); toast.success(String(p.purpose) === "reseller_upgrade" ? "Promoted to reseller" : "Confirmed"); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); qc.invalidateQueries({ queryKey: ["resellers"] }); }}>Confirm</button>
+                      <button className="font-semibold text-rose-600" onClick={async () => { await api(`/admin/payments/${p.reference}/reject`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); }}>Reject</button>
                     </>
                   )}
                 </td>
@@ -524,6 +569,7 @@ export function AdminSettings() {
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
+      <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
     </div>
   );
@@ -570,6 +616,50 @@ function AffiliateSettingsCard({
         minimumPayout: Number(values.minimumPayout),
         lifetime: true,
       })}>Save affiliates</Button>
+    </Card>
+  );
+}
+
+function ResellerUpgradeSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    upgradeEnabled: String(source.upgradeEnabled !== false),
+    upgradeFee: String(source.upgradeFee ?? 200),
+    upgradeNote: String(source.upgradeNote ?? ""),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Reseller / child panel upgrade</h2>
+      <p className="mt-1 text-sm text-slate-500">Customers pay this fee by Mobile Money. After you confirm the payment on Resellers, their dashboard switches from customer to reseller.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="label">Enabled</span>
+          <Select value={values.upgradeEnabled} onChange={(e) => setForm({ ...values, upgradeEnabled: e.target.value })}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Upgrade fee (GHS)</span>
+          <Input type="number" min="0" value={values.upgradeFee} onChange={(e) => setForm({ ...values, upgradeFee: e.target.value })} />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="label">Note shown to customers</span>
+          <Textarea value={values.upgradeNote} onChange={(e) => setForm({ ...values, upgradeNote: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        upgradeEnabled: values.upgradeEnabled === "true",
+        upgradeFee: Number(values.upgradeFee),
+        upgradeNote: values.upgradeNote,
+      })}>Save upgrade fee</Button>
     </Card>
   );
 }

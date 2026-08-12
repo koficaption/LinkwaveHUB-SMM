@@ -44,6 +44,12 @@ const defaults: Record<string, unknown> = {
     minimumPayout: 10,
     lifetime: true,
   },
+  resellers: {
+    upgradeEnabled: true,
+    upgradeFee: 200,
+    upgradeNote:
+      "Pay the reseller / child panel fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller.",
+  },
 };
 
 function mergeSetting(key: string, stored: unknown) {
@@ -83,6 +89,23 @@ export async function getPublicSettings() {
     logoUrl: general.logoUrl,
     channels: (channels.items ?? []).filter((item) => item?.name && item?.url),
     affiliates: all.affiliates,
+    resellers: {
+      upgradeEnabled: (all.resellers as Record<string, unknown>).upgradeEnabled !== false,
+      upgradeFee: Number((all.resellers as Record<string, unknown>).upgradeFee ?? 0),
+      upgradeNote: String((all.resellers as Record<string, unknown>).upgradeNote ?? ""),
+    },
+  };
+}
+
+export async function getResellerUpgradeSettings() {
+  const all = await getSettings();
+  const general = all.general as Record<string, unknown>;
+  const resellers = all.resellers as Record<string, unknown>;
+  return {
+    upgradeEnabled: resellers.upgradeEnabled !== false,
+    upgradeFee: Number(resellers.upgradeFee ?? 0),
+    upgradeNote: String(resellers.upgradeNote ?? ""),
+    currency: String(general.currency ?? "GHS"),
   };
 }
 

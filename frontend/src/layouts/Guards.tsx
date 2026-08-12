@@ -33,6 +33,8 @@ export function CustomerLayout() {
       { to: "/app/reseller/storefront", label: "Storefront", icon: <Globe className="h-4 w-4" /> },
       { to: "/app/reseller/pricing", label: "Pricing", icon: <CreditCard className="h-4 w-4" /> },
     );
+  } else if (me?.user.role === "customer") {
+    items.splice(1, 0, { to: "/app/become-reseller", label: "Become reseller", icon: <Store className="h-4 w-4" /> });
   }
   return <AppShell title="LinkWaveHub" items={items} home="/app" />;
 }

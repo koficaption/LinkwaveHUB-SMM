@@ -1,9 +1,11 @@
-import { query, queryOne } from "../db.js";
+import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug, uniqueSlug } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
+import { getResellerUpgradeSettings } from "./settingsService.js";
+import { initiateDirectedPayment } from "./walletService.js";
 
 export async function listResellers(status?: string) {
   const params: unknown[] = [];
@@ -79,13 +81,20 @@ export async function setResellerStatus(id: string, status: string, actor: AuthU
   if (!row) throw new AppError("Reseller not found", 404);
   if (status === "active") {
     await query(`UPDATE users SET role = 'reseller', status = 'active' WHERE id = $1`, [row.user_id]);
+    await notify({
+      userId: row.user_id,
+      title: "You are now a reseller",
+      body: "Your account has been upgraded. Your dashboard now includes reseller / child panel tools: storefront, pricing and reseller orders.",
+      type: "reseller",
+    });
+  } else {
+    await notify({
+      userId: row.user_id,
+      title: "Reseller status updated",
+      body: `Your reseller account is now ${status}.`,
+      type: "reseller",
+    });
   }
-  await notify({
-    userId: row.user_id,
-    title: "Reseller status updated",
-    body: `Your reseller account is now ${status}.`,
-    type: "reseller",
-  });
   await writeAudit({ actor, action: `reseller.${status}`, targetType: "reseller", targetId: id, ip });
   return row;
 }
@@ -149,6 +158,286 @@ export async function resellerStats(userId: string) {
     [reseller.id]
   );
   return { reseller, stats };
+}
+
+const applicationSelect = `
+  a.id, a.user_id, a.store_name, a.store_slug, a.fee_amount, a.currency, a.status,
+  a.payment_id, a.method_code, a.sender_name, a.sender_number, a.note,
+  a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at,
+  u.full_name, u.email, u.role,
+  p.reference AS payment_reference, p.status AS payment_status, p.amount AS payment_amount,
+  p.metadata AS payment_metadata, m.name AS method_name
+`;
+
+export async function getUpgradeOffer(user: AuthUser) {
+  const settings = await getResellerUpgradeSettings();
+  const application = await getMyUpgradeApplication(user.id);
+  const reseller = await queryOne(`SELECT id, status, store_name, store_slug FROM resellers WHERE user_id = $1`, [user.id]);
+  return { ...settings, application, reseller, role: user.role };
+}
+
+export async function getMyUpgradeApplication(userId: string) {
+  return queryOne(
+    `SELECT ${applicationSelect}
+     FROM reseller_applications a
+     JOIN users u ON u.id = a.user_id
+     LEFT JOIN payments p ON p.id = a.payment_id
+     LEFT JOIN payment_methods m ON m.id = p.method_id
+     WHERE a.user_id = $1
+     ORDER BY a.created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+}
+
+export async function applyForResellerUpgrade(user: AuthUser, input: {
+  storeName: string;
+  methodCode?: string;
+  senderName?: string;
+  senderNumber?: string;
+}) {
+  if (user.role === "admin") throw new AppError("Admins cannot apply for a reseller upgrade");
+  const settings = await getResellerUpgradeSettings();
+  if (!settings.upgradeEnabled) throw new AppError("Reseller upgrades are not available right now");
+
+  const existingReseller = await queryOne<{ status: string }>(`SELECT status FROM resellers WHERE user_id = $1`, [user.id]);
+  if (existingReseller?.status === "active" || user.role === "reseller") {
+    throw new AppError("This account is already a reseller");
+  }
+
+  const open = await queryOne(
+    `SELECT id FROM reseller_applications WHERE user_id = $1 AND status IN ('pending_payment', 'pending_review')`,
+    [user.id]
+  );
+  if (open) throw new AppError("You already have a pending reseller application");
+
+  const fee = Number(settings.upgradeFee);
+  if (fee < 0) throw new AppError("Upgrade fee is not configured");
+  if (fee > 0 && !input.methodCode) throw new AppError("Choose a payment method");
+
+  const storeName = input.storeName.trim();
+  const storeSlug = uniqueSlug(storeName);
+  let paymentId: string | null = null;
+  let methodCode: string | null = input.methodCode ?? null;
+  let instructions: string | null = null;
+  let checkoutUrl: string | null = null;
+  let reference: string | null = null;
+
+  if (fee > 0) {
+    const started = await initiateDirectedPayment(user, fee, String(input.methodCode), {
+      purpose: "reseller_upgrade",
+      storeName,
+    });
+    paymentId = String(started.payment!.id);
+    methodCode = String(started.method.code);
+    instructions = started.instructions ?? null;
+    checkoutUrl = started.checkoutUrl ?? null;
+    reference = String(started.payment!.reference);
+  }
+
+  try {
+    const application = await queryOne(
+      `INSERT INTO reseller_applications (
+         user_id, store_name, store_slug, fee_amount, currency, status,
+         payment_id, method_code, sender_name, sender_number
+       ) VALUES ($1,$2,$3,$4,$5,'pending_review',$6,$7,$8,$9)
+       RETURNING *`,
+      [
+        user.id,
+        storeName,
+        storeSlug,
+        fee,
+        settings.currency,
+        paymentId,
+        methodCode,
+        input.senderName?.trim() || null,
+        input.senderNumber?.trim() || null,
+      ]
+    );
+    if (paymentId) {
+      await query(
+        `UPDATE payments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+        [paymentId, JSON.stringify({ applicationId: application?.id })]
+      );
+    }
+    await notify({
+      userId: user.id,
+      title: "Reseller application submitted",
+      body: fee > 0
+        ? `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using reference ${reference}. An admin will promote you after confirming the payment.`
+        : "Your reseller application is waiting for admin approval.",
+      type: "reseller",
+    });
+    return {
+      application,
+      payment: paymentId ? { id: paymentId, reference, amount: fee, instructions, checkoutUrl } : null,
+      instructions,
+    };
+  } catch (error) {
+    if (paymentId) {
+      await query(`UPDATE payments SET status = 'cancelled' WHERE id = $1 AND status = 'pending'`, [paymentId]);
+    }
+    throw error;
+  }
+}
+
+export async function listResellerApplications(status?: string) {
+  const params: unknown[] = [];
+  const where = status ? (params.push(status), "WHERE a.status = $1") : "";
+  return query(
+    `SELECT ${applicationSelect}
+     FROM reseller_applications a
+     JOIN users u ON u.id = a.user_id
+     LEFT JOIN payments p ON p.id = a.payment_id
+     LEFT JOIN payment_methods m ON m.id = p.method_id
+     ${where}
+     ORDER BY a.created_at DESC`,
+    params
+  );
+}
+
+async function loadApplicationByPaymentReference(reference: string) {
+  const row = await queryOne<{ id: string }>(
+    `SELECT a.id
+     FROM reseller_applications a
+     JOIN payments p ON p.id = a.payment_id
+     WHERE p.reference = $1`,
+    [reference]
+  );
+  if (!row) throw new AppError("Reseller application not found for this payment", 404);
+  return row.id;
+}
+
+export async function approveUpgradeByPaymentReference(reference: string, actor: AuthUser, ip?: string) {
+  const id = await loadApplicationByPaymentReference(reference);
+  return approveResellerApplication(id, actor, ip);
+}
+
+export async function rejectUpgradeByPaymentReference(reference: string, actor: AuthUser, ip?: string) {
+  const id = await loadApplicationByPaymentReference(reference);
+  return rejectResellerApplication(id, actor, ip);
+}
+
+export async function approveResellerApplication(id: string, actor: AuthUser, ip?: string) {
+  const result = await withTransaction(async (client) => {
+    const application = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM reseller_applications WHERE id = $1 FOR UPDATE`,
+      [id],
+      client
+    );
+    if (!application) throw new AppError("Application not found", 404);
+    if (application.status === "approved") return application;
+    if (application.status === "rejected" || application.status === "cancelled") {
+      throw new AppError("This application is closed", 400);
+    }
+
+    if (application.payment_id) {
+      await query(
+        `UPDATE payments SET status = 'completed' WHERE id = $1 AND status IN ('pending', 'completed')`,
+        [application.payment_id],
+        client
+      );
+    }
+
+    const existing = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM resellers WHERE user_id = $1 FOR UPDATE`,
+      [application.user_id],
+      client
+    );
+    if (existing) {
+      await query(
+        `UPDATE resellers SET status = 'active', store_name = $2, updated_at = NOW() WHERE id = $1`,
+        [existing.id, application.store_name],
+        client
+      );
+    } else {
+      try {
+        await query(
+          `INSERT INTO resellers (user_id, status, store_name, store_slug)
+           VALUES ($1, 'active', $2, $3)`,
+          [application.user_id, application.store_name, application.store_slug],
+          client
+        );
+      } catch {
+        await query(
+          `INSERT INTO resellers (user_id, status, store_name, store_slug)
+           VALUES ($1, 'active', $2, $3)`,
+          [application.user_id, application.store_name, uniqueSlug(String(application.store_name))],
+          client
+        );
+      }
+    }
+
+    await query(
+      `UPDATE users SET role = 'reseller', status = 'active', updated_at = NOW() WHERE id = $1`,
+      [application.user_id],
+      client
+    );
+    return queryOne(
+      `UPDATE reseller_applications
+       SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [id, actor.id],
+      client
+    );
+  });
+
+  await notify({
+    userId: String(result?.user_id),
+    title: "You are now a reseller",
+    body: "Payment confirmed. Your dashboard has switched to reseller / child panel. Open Reseller to set up your storefront.",
+    type: "reseller",
+  });
+  await writeAudit({
+    actor,
+    action: "reseller.upgrade.approve",
+    targetType: "reseller_application",
+    targetId: id,
+    details: { userId: result?.user_id, storeName: result?.store_name },
+    ip,
+  });
+  return result;
+}
+
+export async function rejectResellerApplication(id: string, actor: AuthUser, ip?: string, reason?: string) {
+  const result = await withTransaction(async (client) => {
+    const application = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM reseller_applications WHERE id = $1 FOR UPDATE`,
+      [id],
+      client
+    );
+    if (!application) throw new AppError("Application not found", 404);
+    if (application.status === "approved") throw new AppError("Approved applications cannot be rejected");
+    if (application.payment_id) {
+      await query(
+        `UPDATE payments SET status = 'cancelled' WHERE id = $1 AND status = 'pending'`,
+        [application.payment_id],
+        client
+      );
+    }
+    return queryOne(
+      `UPDATE reseller_applications
+       SET status = 'rejected', note = COALESCE($3, note), reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [id, actor.id, reason ?? null],
+      client
+    );
+  });
+  await notify({
+    userId: String(result?.user_id),
+    title: "Reseller application declined",
+    body: reason || "Your reseller / child panel application was not approved. Contact support if you already paid.",
+    type: "reseller",
+  });
+  await writeAudit({
+    actor,
+    action: "reseller.upgrade.reject",
+    targetType: "reseller_application",
+    targetId: id,
+    details: { reason },
+    ip,
+  });
+  return result;
 }
 
 export { makeSlug };

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import type { Order, Paginated, Wallet } from "@/types";
 import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ContactLinks } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
@@ -28,6 +28,13 @@ export function CustomerHome() {
           <p className="text-sm text-slate-500">Account</p>
           <p className="mt-2 text-2xl font-extrabold capitalize">{me?.user.role}</p>
         </Card>
+        {me?.user.role === "customer" && (
+          <Card>
+            <p className="text-sm text-slate-500">Reseller / child panel</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pay the admin-set fee by Mobile Money to upgrade. After confirmation your dashboard switches to reseller.</p>
+            <Link to="/app/become-reseller" className="mt-2 inline-block text-sm font-semibold text-brand-700">Become a reseller</Link>
+          </Card>
+        )}
         <Card>
           <p className="text-sm text-slate-500">Affiliates</p>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Earn 7% for life when people you invite add funds.</p>
@@ -237,6 +244,13 @@ export function ProfilePage() {
         <h2 className="font-bold">Change password</h2>
         <PasswordForm />
       </Card>
+      {me?.user.role === "customer" && (
+        <Card className="lg:col-span-2">
+          <h2 className="font-bold">Become a reseller / child panel</h2>
+          <p className="mt-1 text-sm text-slate-500">Pay the upgrade fee by Mobile Money. After an admin confirms payment, your dashboard switches to reseller.</p>
+          <Link to="/app/become-reseller"><Button className="mt-3">Start upgrade</Button></Link>
+        </Card>
+      )}
     </div>
   );
 }
@@ -341,5 +355,147 @@ export function NotificationsPage() {
         ))}
       </ul>
     </Card>
+  );
+}
+
+type UpgradeOffer = {
+  upgradeEnabled: boolean;
+  upgradeFee: number;
+  upgradeNote: string;
+  currency: string;
+  role: string;
+  reseller: { id: string; status: string; store_name: string; store_slug: string } | null;
+  application: {
+    id: string;
+    store_name: string;
+    fee_amount: number | string;
+    currency: string;
+    status: string;
+    sender_name?: string | null;
+    sender_number?: string | null;
+    payment_reference?: string | null;
+    payment_status?: string | null;
+    method_name?: string | null;
+    payment_metadata?: { instructions?: string };
+    created_at: string;
+  } | null;
+};
+
+export function BecomeResellerPage() {
+  const { me, refresh } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const offer = useQuery({
+    queryKey: ["reseller-upgrade"],
+    queryFn: () => api<UpgradeOffer>("/account/reseller-upgrade"),
+    refetchInterval: (query) => {
+      const status = query.state.data?.application?.status;
+      return status === "pending_review" || status === "pending_payment" ? 8000 : false;
+    },
+  });
+  const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
+  const [storeName, setStoreName] = useState(me?.user.full_name ? `${me.user.full_name}'s Store` : "");
+  const [method, setMethod] = useState("");
+  const [senderName, setSenderName] = useState(me?.user.full_name ?? "");
+  const [senderNumber, setSenderNumber] = useState(me?.user.phone ?? "");
+  const selected = methods.data?.find((m) => m.code === method) ?? methods.data?.find((m) => m.adapter === "manual") ?? methods.data?.[0];
+  const methodCode = method || selected?.code || "momo";
+  const cfg = selected?.config ?? {};
+
+  useEffect(() => {
+    if (me?.user.role === "reseller") navigate("/app/reseller", { replace: true });
+  }, [me?.user.role, navigate]);
+
+  useEffect(() => {
+    if (offer.data?.application?.status === "approved") {
+      void refresh().then(() => navigate("/app/reseller", { replace: true }));
+    }
+  }, [offer.data?.application?.status, refresh, navigate]);
+
+  const apply = useMutation({
+    mutationFn: () => api<{ instructions?: string }>("/account/reseller-upgrade", {
+      method: "POST",
+      body: JSON.stringify({
+        storeName,
+        methodCode,
+        senderName,
+        senderNumber,
+      }),
+    }),
+    onSuccess: async (data) => {
+      toast.success(data.instructions || "Application submitted. Pay by Mobile Money, then wait for admin confirmation.");
+      await qc.invalidateQueries({ queryKey: ["reseller-upgrade"] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not submit application"),
+  });
+
+  const data = offer.data;
+  const application = data?.application;
+  const pending = application?.status === "pending_review" || application?.status === "pending_payment";
+  const instructions = application?.payment_metadata?.instructions;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-extrabold">Become a reseller / child panel</h1>
+        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. After Mobile Money is confirmed, your customer dashboard switches to reseller.</p>
+      </div>
+      <Card>
+        <p className="text-sm text-slate-500">Upgrade fee</p>
+        <p className="mt-1 text-3xl font-extrabold">{money(data?.upgradeFee ?? 0, data?.currency ?? "GHS")}</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{data?.upgradeNote}</p>
+      </Card>
+      {pending && application && (
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-bold">Waiting for admin confirmation</h2>
+            <Badge className={statusTone[application.status] ?? statusTone.pending}>{prettyStatus(application.status)}</Badge>
+          </div>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Store: <strong>{application.store_name}</strong>
+            {application.payment_reference ? <> · Reference <span className="font-mono">{application.payment_reference}</span></> : null}
+          </p>
+          {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
+          <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using that reference. When an admin confirms it, this page will switch to your reseller dashboard.</p>
+        </Card>
+      )}
+      {application?.status === "rejected" && (
+        <Card>
+          <p className="font-semibold text-rose-700">Previous application was declined.</p>
+          <p className="mt-1 text-sm text-slate-500">You can submit again after paying the current fee.</p>
+        </Card>
+      )}
+      {data && !data.upgradeEnabled && <p className="text-sm text-slate-500">Reseller upgrades are turned off in admin settings.</p>}
+      {data?.upgradeEnabled && !pending && me?.user.role === "customer" && (
+        <Card>
+          <h2 className="font-bold">Apply and pay</h2>
+          <div className="mt-4 space-y-3">
+            <label className="block"><span className="label">Store / child panel name</span><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
+            <label className="block">
+              <span className="label">Pay with</span>
+              <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
+                {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
+              </Select>
+            </label>
+            {selected?.adapter === "manual" && (
+              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
+                {cfg.accountName && <p>Name: {cfg.accountName}</p>}
+                {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
+                {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
+                <p className="mt-1 text-xs">Pay {money(data.upgradeFee, data.currency)} and use the payment reference as the MoMo note.</p>
+              </div>
+            )}
+            <label className="block"><span className="label">MoMo name you will send from</span><Input value={senderName} onChange={(e) => setSenderName(e.target.value)} /></label>
+            <label className="block"><span className="label">MoMo number you will send from</span><Input value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} /></label>
+            <Button disabled={apply.isPending || storeName.trim().length < 2} onClick={() => apply.mutate()}>
+              {apply.isPending ? "Submitting…" : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
+            </Button>
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }

@@ -34,6 +34,7 @@ import {
   resellerPriceSchema,
   paymentMethodSchema,
   adminBroadcastSchema,
+  resellerUpgradeSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
@@ -181,6 +182,13 @@ router.get("/affiliates/me", requireAuth, asyncHandler(async (req, res) => {
 }));
 router.get("/affiliates/public", asyncHandler(async (_req, res) => {
   res.json(ok(await affiliates.affiliateConfig()));
+}));
+
+router.get("/account/reseller-upgrade", requireAuth, asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.getUpgradeOffer(req.user!)));
+}));
+router.post("/account/reseller-upgrade", requireAuth, validate(resellerUpgradeSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await resellers.applyForResellerUpgrade(req.user!, req.body), "Application submitted"));
 }));
 
 router.get("/orders", requireAuth, asyncHandler(async (req, res) => {
@@ -387,6 +395,16 @@ admin.post("/users/:id/wallet", asyncHandler(async (req, res) => {
 
 admin.get("/resellers", asyncHandler(async (req, res) => {
   res.json(ok(await resellers.listResellers(req.query.status as string | undefined)));
+}));
+admin.get("/reseller-applications", asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.listResellerApplications(req.query.status as string | undefined)));
+}));
+admin.post("/reseller-applications/:id/approve", asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.approveResellerApplication(req.params.id, req.user!, clientIp(req)), "Customer promoted to reseller"));
+}));
+admin.post("/reseller-applications/:id/reject", asyncHandler(async (req, res) => {
+  const body = z.object({ reason: z.string().max(500).optional() }).parse(req.body ?? {});
+  res.json(ok(await resellers.rejectResellerApplication(req.params.id, req.user!, clientIp(req), body.reason), "Application rejected"));
 }));
 admin.get("/resellers/:id", asyncHandler(async (req, res) => {
   res.json(ok(await resellers.getReseller(req.params.id)));
