@@ -1,0 +1,17 @@
+{
+  "name": "linkwavehub-smm",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LinkWaveHub SMM — social media boosting platform by OB CodeLab",
+  "scripts": {
+    "dev": "concurrently -n api,web -c teal,cyan \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:api": "npm run dev --prefix backend",
+    "dev:web": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "migrate": "npm run migrate --prefix backend",
+    "seed": "npm run seed --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
