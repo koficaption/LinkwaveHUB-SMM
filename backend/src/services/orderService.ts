@@ -316,18 +316,20 @@ export async function updateOrderStatus(input: {
   const allowed = ["pending", "processing", "in_progress", "completed", "partial", "cancelled", "refunded", "failed"];
   if (!allowed.includes(input.status)) throw new AppError("Invalid status");
 
-  return withTransaction(async (client) => {
-    const order = await queryOne<Record<string, unknown>>(
+  const result = await withTransaction(async (client) => {
+    const current = await queryOne<Record<string, unknown>>(
       `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
       [input.id],
       client
     );
-    if (!order) throw new AppError("Order not found", 404);
-    const from = String(order.status);
-    if (from === input.status && !input.note) return getOrder(input.id, input.actor);
+    if (!current) throw new AppError("Order not found", 404);
+    const from = String(current.status);
+    if (from === input.status && !input.note) {
+      return { current, from, changed: false };
+    }
 
     if (input.status === "refunded" && from !== "refunded") {
-      await refundOrderInternal(order, input.actor, client, input.note);
+      await refundOrderInternal(current, input.actor, client, input.note);
     } else {
       await query(`UPDATE orders SET status = $2, admin_note = COALESCE($3, admin_note) WHERE id = $1`, [
         input.id,
@@ -341,24 +343,27 @@ export async function updateOrderStatus(input: {
         client
       );
     }
+    return { current, from, changed: true };
+  });
 
+  if (result.changed) {
     await notify({
-      userId: String(order.user_id),
-      title: `Order ${order.public_id} updated`,
+      userId: String(result.current.user_id),
+      title: `Order ${result.current.public_id} updated`,
       body: `Status changed to ${input.status.replace("_", " ")}.`,
       type: "order",
-      metadata: { orderId: order.id, status: input.status },
+      metadata: { orderId: result.current.id, status: input.status },
     });
     await writeAudit({
       actor: input.actor,
       action: "order.status_change",
       targetType: "order",
       targetId: input.id,
-      details: { from, to: input.status, note: input.note },
+      details: { from: result.from, to: input.status, note: input.note },
       ip: input.ip,
     });
-    return getOrder(input.id, input.actor);
-  });
+  }
+  return getOrder(input.id, input.actor);
 }
 
 export async function refundOrder(id: string, actor: AuthUser, note?: string, ip?: string) {
