@@ -9,6 +9,7 @@ import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/
 import {
   CustomerHome, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
 } from "@/pages/customer/CustomerPages";
+import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "@/pages/reseller/ResellerPages";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
@@ -26,6 +27,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
+            <ReferralCapture />
             <Routes>
               <Route element={<PublicLayout />}>
                 <Route path="/" element={<HomePage />} />
@@ -42,6 +44,7 @@ export default function App() {
                   <Route path="/app/orders" element={<OrdersPage />} />
                   <Route path="/app/orders/:id" element={<OrderDetailPage />} />
                   <Route path="/app/wallet" element={<WalletPage />} />
+                  <Route path="/app/affiliates" element={<AffiliatePage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
                   <Route path="/app/support" element={<SupportPage />} />
                   <Route path="/app/notifications" element={<NotificationsPage />} />
@@ -61,6 +64,7 @@ export default function App() {
                   <Route path="/admin/users" element={<AdminUsers />} />
                   <Route path="/admin/users/:id" element={<AdminUserDetail />} />
                   <Route path="/admin/resellers" element={<AdminResellers />} />
+                  <Route path="/admin/affiliates" element={<AdminAffiliates />} />
                   <Route path="/admin/payments" element={<AdminPayments />} />
                   <Route path="/admin/wallets" element={<AdminWallets />} />
                   <Route path="/admin/support" element={<AdminSupport />} />

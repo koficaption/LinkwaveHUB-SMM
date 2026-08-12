@@ -242,6 +242,7 @@ export function AdminPayments() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Payments</h1>
+      <p className="text-sm text-slate-500">Use Instant Demo Top-up and Mobile Money for now. Korapay (instant and manual) will be added after the website is complete.</p>
       <Card>
         <h2 className="font-bold">Methods</h2>
         <ul className="mt-3 space-y-2">
@@ -382,7 +383,53 @@ export function AdminSettings() {
         </div>
         <Button className="mt-4" onClick={() => save("general", form)}>Save general</Button>
       </Card>
+      <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
     </div>
+  );
+}
+
+function AffiliateSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    enabled: String(source.enabled !== false),
+    commissionPercent: String(source.commissionPercent ?? 7),
+    minimumPayout: String(source.minimumPayout ?? 10),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Affiliates</h2>
+      <p className="mt-1 text-sm text-slate-500">Lifetime commission on referred users’ wallet deposits. Commission is credited to the referrer wallet and can be used to order services.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <label className="block">
+          <span className="label">Enabled</span>
+          <Select value={values.enabled} onChange={(e) => setForm({ ...values, enabled: e.target.value })}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Commission %</span>
+          <Input type="number" value={values.commissionPercent} onChange={(e) => setForm({ ...values, commissionPercent: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Minimum payout (GHS)</span>
+          <Input type="number" value={values.minimumPayout} onChange={(e) => setForm({ ...values, minimumPayout: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        enabled: values.enabled === "true",
+        commissionPercent: Number(values.commissionPercent),
+        minimumPayout: Number(values.minimumPayout),
+        lifetime: true,
+      })}>Save affiliates</Button>
+    </Card>
   );
 }
 

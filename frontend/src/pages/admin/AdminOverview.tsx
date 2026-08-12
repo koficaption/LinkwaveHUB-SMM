@@ -31,8 +31,14 @@ export function AdminOverview() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold">Overview</h1>
-        <p className="text-slate-500">Live statistics from PostgreSQL — not placeholder numbers.</p>
+        <p className="text-slate-500">Live statistics from your LinkWaveHub PostgreSQL database.</p>
       </div>
+      <Card className="border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40">
+        <p className="font-semibold text-amber-950 dark:text-amber-100">This is your database, not someone else’s live panel</p>
+        <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">
+          Demo Admin, Demo Customer, sample orders and the sample provider are fictional preview rows so the dashboard is not empty. Add your own products from Products. The resellersmm.com API and Korapay payments will be connected after the website is complete.
+        </p>
+      </Card>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {overview.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         {cards.map(([label, value]) => (

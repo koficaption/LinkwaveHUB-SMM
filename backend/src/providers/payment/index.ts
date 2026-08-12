@@ -111,3 +111,6 @@ export function getPaymentAdapter(code: string): PaymentAdapter {
 export function registerPaymentAdapter(code: string, adapter: PaymentAdapter) {
   adapters[code] = adapter;
 }
+
+// Korapay (instant card + bank / manual) will be added here when the website is complete.
+// Do not hard-code Korapay keys in the frontend.

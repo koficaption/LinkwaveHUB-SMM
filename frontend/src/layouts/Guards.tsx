@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import {
-  BarChart3, Bell, Boxes, CreditCard, FolderTree, Globe, LayoutDashboard,
+  BarChart3, Bell, Boxes, CreditCard, FolderTree, Gift, Globe, LayoutDashboard,
   Plug, Settings, ShoppingCart, Store, Ticket, Users, Wallet, Shield,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ export function CustomerLayout() {
     { to: "/services", label: "Services", icon: <Boxes className="h-4 w-4" /> },
     { to: "/app/orders", label: "Orders", icon: <ShoppingCart className="h-4 w-4" /> },
     { to: "/app/wallet", label: "Wallet", icon: <Wallet className="h-4 w-4" /> },
+    { to: "/app/affiliates", label: "Affiliates", icon: <Gift className="h-4 w-4" /> },
     { to: "/app/support", label: "Support", icon: <Ticket className="h-4 w-4" /> },
     { to: "/app/notifications", label: "Notifications", icon: <Bell className="h-4 w-4" /> },
     { to: "/app/profile", label: "Profile", icon: <Users className="h-4 w-4" /> },
@@ -46,6 +47,7 @@ export function AdminLayout() {
     { to: "/admin/providers", label: "Providers", icon: <Plug className="h-4 w-4" /> },
     { to: "/admin/users", label: "Users", icon: <Users className="h-4 w-4" /> },
     { to: "/admin/resellers", label: "Resellers", icon: <Store className="h-4 w-4" /> },
+    { to: "/admin/affiliates", label: "Affiliates", icon: <Gift className="h-4 w-4" /> },
     { to: "/admin/payments", label: "Payments", icon: <CreditCard className="h-4 w-4" /> },
     { to: "/admin/wallets", label: "Wallets", icon: <Wallet className="h-4 w-4" /> },
     { to: "/admin/support", label: "Support", icon: <Ticket className="h-4 w-4" /> },

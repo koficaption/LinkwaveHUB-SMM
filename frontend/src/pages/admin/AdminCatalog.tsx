@@ -266,5 +266,10 @@ export function AdminCategories() {
 }
 
 export function AdminProviders() {
-  return <AdminSimpleCrud title="Providers" path="/admin/providers" fields={[{ key: "name", label: "Name" }, { key: "apiUrl", label: "API URL" }, { key: "apiKey", label: "API key (stored encrypted, never shown again)" }, { key: "adapter", label: "Adapter (mock / generic_http)" }, { key: "currency", label: "Currency" }, { key: "notes", label: "Notes", type: "textarea" }]} />;
+  return (
+    <div>
+      <p className="mb-4 text-sm text-slate-500">Keep the adapter on <strong>mock</strong> for now. When the website is ready, switch to <strong>generic_http</strong> and paste the resellersmm.com /api/v2 key. Do not put live keys in the frontend.</p>
+      <AdminSimpleCrud title="Providers" path="/admin/providers" fields={[{ key: "name", label: "Name" }, { key: "apiUrl", label: "API URL" }, { key: "apiKey", label: "API key (stored encrypted, never shown again)" }, { key: "adapter", label: "Adapter (mock / generic_http)" }, { key: "currency", label: "Currency" }, { key: "notes", label: "Notes", type: "textarea" }]} />
+    </div>
+  );
 }

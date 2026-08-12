@@ -34,6 +34,7 @@ import {
   resellerPriceSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
+import * as affiliates from "../services/affiliateService.js";
 import { config } from "../config.js";
 import { clientIp } from "../utils.js";
 
@@ -143,6 +144,7 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
     credential: z.string().optional(),
     code: z.string().optional(),
     accessToken: z.string().optional(),
+    referralCode: z.string().max(40).optional(),
   }).parse(req.body);
   const result = body.accessToken
     ? await googleAuth.loginWithGoogleAccessToken(body.accessToken)
@@ -151,6 +153,9 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
       : body.code
         ? await googleAuth.loginWithGoogleCode(body.code, "postmessage")
         : (() => { throw new AppError("Google credential is required", 400); })();
+  if (body.referralCode) {
+    await affiliates.attachReferrer(result.user.id, body.referralCode);
+  }
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in with Google"));
 }));
@@ -167,6 +172,12 @@ router.patch("/auth/profile", requireAuth, validate(profileSchema), asyncHandler
 router.post("/auth/password", requireAuth, validate(changePasswordSchema), asyncHandler(async (req, res) => {
   await auth.changePassword(req.user!.id, req.body.currentPassword, req.body.newPassword);
   res.json(ok(null, "Password changed"));
+}));
+router.get("/affiliates/me", requireAuth, asyncHandler(async (req, res) => {
+  res.json(ok(await affiliates.getMyAffiliate(req.user!.id)));
+}));
+router.get("/affiliates/public", asyncHandler(async (_req, res) => {
+  res.json(ok(await affiliates.affiliateConfig()));
 }));
 
 router.get("/orders", requireAuth, asyncHandler(async (req, res) => {
@@ -424,6 +435,10 @@ admin.get("/support", asyncHandler(async (req, res) => {
 }));
 admin.patch("/support/:id", asyncHandler(async (req, res) => {
   res.json(ok(await support.updateTicket(req.params.id, req.body, req.user!)));
+}));
+
+admin.get("/affiliates", asyncHandler(async (_req, res) => {
+  res.json(ok(await affiliates.listAffiliatesAdmin()));
 }));
 
 admin.get("/settings", asyncHandler(async (_req, res) => res.json(ok(await settings.getSettings()))));

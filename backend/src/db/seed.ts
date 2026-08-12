@@ -17,37 +17,39 @@ export async function seed() {
   const customerHash = await hashPassword("Customer@12345");
 
   const admin = await queryOne<{ id: string }>(
-    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified)
-     VALUES ('admin@linkwavehub.com', $1, 'Ama Mensah', '+233201111111', 'admin', 'active', TRUE) RETURNING id`,
+    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified, referral_code)
+     VALUES ('admin@linkwavehub.com', $1, 'Demo Admin', '+233201111111', 'admin', 'active', TRUE, 'LWHADMIN01') RETURNING id`,
     [adminHash]
   );
   const resellerUser = await queryOne<{ id: string }>(
-    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified)
-     VALUES ('reseller@linkwavehub.com', $1, 'Kwame Boateng', '+233202222222', 'reseller', 'active', TRUE) RETURNING id`,
+    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified, referral_code)
+     VALUES ('reseller@linkwavehub.com', $1, 'Demo Reseller', '+233202222222', 'reseller', 'active', TRUE, 'LWHRESEL01') RETURNING id`,
     [resellerHash]
   );
   const customer = await queryOne<{ id: string }>(
-    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified)
-     VALUES ('customer@linkwavehub.com', $1, 'Akosua Darko', '+233203333333', 'customer', 'active', TRUE) RETURNING id`,
+    `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified, referral_code)
+     VALUES ('customer@linkwavehub.com', $1, 'Demo Customer', '+233203333333', 'customer', 'active', TRUE, 'LWHCUST01') RETURNING id`,
     [customerHash]
   );
 
   const extraUsers = [
-    ["yaw.owusu@linkwavehub.com", "Yaw Owusu", "customer"],
-    ["efua.asante@linkwavehub.com", "Efua Asante", "customer"],
-    ["kofi.mensah@linkwavehub.com", "Kofi Mensah", "customer"],
-    ["abena.serwaa@linkwavehub.com", "Abena Serwaa", "reseller"],
+    ["demo1@linkwavehub.com", "Demo User 1", "customer"],
+    ["demo2@linkwavehub.com", "Demo User 2", "customer"],
+    ["demo3@linkwavehub.com", "Demo User 3", "customer"],
+    ["demo4@linkwavehub.com", "Demo User 4", "reseller"],
   ] as const;
 
   const extraIds: string[] = [];
   for (const [email, name, role] of extraUsers) {
     const row = await queryOne<{ id: string }>(
-      `INSERT INTO users (email, password_hash, full_name, role, status)
-       VALUES ($1, $2, $3, $4, 'active') RETURNING id`,
-      [email, customerHash, name, role]
+      `INSERT INTO users (email, password_hash, full_name, role, status, referral_code)
+       VALUES ($1, $2, $3, $4, 'active', $5) RETURNING id`,
+      [email, customerHash, name, role, `LWHDEMO${String(extraIds.length + 1).padStart(2, "0")}`]
     );
     extraIds.push(row!.id);
   }
+
+  await query(`UPDATE users SET referred_by_id = $2 WHERE id = $1`, [extraIds[0], customer!.id]);
 
   const allUserIds = [admin!.id, resellerUser!.id, customer!.id, ...extraIds];
   for (const id of allUserIds) {
@@ -57,19 +59,19 @@ export async function seed() {
 
   const reseller = await queryOne<{ id: string }>(
     `INSERT INTO resellers (user_id, status, store_name, store_slug, tagline, brand_color, markup_percent)
-     VALUES ($1, 'active', 'BoostLab GH', 'boostlab-gh', 'Affordable social growth for Ghanaian brands', '#0D9488', 18)
+     VALUES ($1, 'active', 'Demo Storefront', 'demo-store', 'Sample reseller storefront for preview only', '#0D9488', 18)
      RETURNING id`,
     [resellerUser!.id]
   );
   await query(
     `INSERT INTO resellers (user_id, status, store_name, store_slug, tagline, markup_percent)
-     VALUES ($1, 'pending', 'Serwaa Social', 'serwaa-social', 'Premium Instagram growth', 25)`,
+     VALUES ($1, 'pending', 'Demo Storefront 2', 'demo-store-2', 'Sample pending reseller', 25)`,
     [extraIds[3]]
   );
 
   const provider = await queryOne<{ id: string }>(
     `INSERT INTO providers (name, slug, api_url, api_key_encrypted, adapter, status, balance, currency, notes)
-     VALUES ('LinkWave Panel', 'linkwave-panel', 'https://provider.example.com/api/v2', $1, 'mock', 'active', 5420.50, 'USD', 'Primary demo supplier')
+     VALUES ('Sample provider (not live)', 'linkwave-panel', 'https://resellersmm.com/api/v2', $1, 'mock', 'active', 0, 'USD', 'Placeholder. Connect the live resellersmm.com v2 API later from Admin → Providers.')
      RETURNING id`,
     [encryptSecret("demo-provider-key-not-for-frontend")]
   );
@@ -221,7 +223,9 @@ export async function seed() {
      ('payments', '{"autoApproveMock":true}'),
      ('orders', '{"autoProcessing":false,"maxPendingPerUser":20,"refundWindowHours":48}'),
      ('pricing', '{"customerMarkupPercent":0,"resellerMarkupPercent":15,"minimumProfitPer1000":0.5}'),
-     ('notifications', '{"emailEnabled":false,"orderNotifications":true,"depositNotifications":true}')`
+     ('notifications', '{"emailEnabled":false,"orderNotifications":true,"depositNotifications":true}'),
+     ('affiliates', '{"enabled":true,"commissionPercent":7,"minimumPayout":10,"lifetime":true}')
+     ON CONFLICT (key) DO NOTHING`
   );
 
   const statuses = ["pending", "processing", "in_progress", "completed", "completed", "completed", "partial", "cancelled", "failed", "refunded"] as const;
@@ -298,7 +302,7 @@ export async function seed() {
   await query(
     `INSERT INTO notifications (user_id, title, body, type) VALUES
      ($1, 'Welcome to LinkWaveHub', 'Your customer account is ready. Add funds and place your first order.', 'account'),
-     ($2, 'Reseller approved', 'BoostLab GH is live. Share your storefront link with clients.', 'reseller'),
+     ($2, 'Reseller approved', 'Demo Storefront is live. Share your storefront link with clients.', 'reseller'),
      (NULL, 'New order', 'A customer placed LWH-SEED-1000.', 'order')`,
     [customer!.id, resellerUser!.id]
   );

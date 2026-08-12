@@ -10,6 +10,7 @@ const publicLinks = [
   { to: "/services", label: "Services" },
   { to: "/#how-it-works", label: "How It Works" },
   { to: "/#pricing", label: "Pricing" },
+  { to: "/#affiliates", label: "Affiliates" },
   { to: "/#faq", label: "FAQ" },
 ];
 

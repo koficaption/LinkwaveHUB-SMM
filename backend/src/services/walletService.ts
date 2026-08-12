@@ -96,6 +96,13 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
       body: `GHS ${amount.toFixed(2)} was added to your wallet.`,
       type: "deposit",
     });
+    const { payReferralCommission } = await import("./affiliateService.js");
+    await payReferralCommission({
+      depositorId: user.id,
+      depositAmount: amount,
+      paymentId: payment?.id,
+      reference: init.reference,
+    });
   }
 
   return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions };
@@ -130,6 +137,13 @@ export async function confirmPayment(reference: string, actor: AuthUser, ip?: st
     type: "deposit",
   });
   await writeAudit({ actor, action: "payment.confirm", targetType: "payment", targetId: String(payment.id), ip });
+  const { payReferralCommission } = await import("./affiliateService.js");
+  await payReferralCommission({
+    depositorId: String(payment.user_id),
+    depositAmount: Number(payment.amount),
+    paymentId: String(payment.id),
+    reference: String(payment.reference),
+  });
   return updated;
 }
 
@@ -146,7 +160,7 @@ export async function rejectPayment(reference: string, actor: AuthUser, ip?: str
 export async function creditWallet(input: {
   userId: string;
   amount: number;
-  type: "deposit" | "admin_adjustment" | "refund" | "reseller_commission";
+  type: "deposit" | "admin_adjustment" | "refund" | "reseller_commission" | "affiliate_commission";
   reference?: string;
   description: string;
   createdBy?: string;

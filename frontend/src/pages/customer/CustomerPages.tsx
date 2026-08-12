@@ -19,10 +19,18 @@ export function CustomerHome() {
         <h1 className="text-2xl font-extrabold">Hello, {me?.user.full_name.split(" ")[0]}</h1>
         <p className="text-slate-500">Manage orders, wallet and support from one place.</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card><p className="text-sm text-slate-500">Wallet balance</p><p className="mt-2 text-2xl font-extrabold">{money(me?.wallet?.balance)}</p></Card>
         <Card><p className="text-sm text-slate-500">Recent orders</p><p className="mt-2 text-2xl font-extrabold">{orders.data?.total ?? 0}</p></Card>
-        <Card><p className="text-sm text-slate-500">Account</p><p className="mt-2 text-2xl font-extrabold capitalize">{me?.user.role}</p></Card>
+        <Card>
+          <p className="text-sm text-slate-500">Account</p>
+          <p className="mt-2 text-2xl font-extrabold capitalize">{me?.user.role}</p>
+        </Card>
+        <Card>
+          <p className="text-sm text-slate-500">Affiliates</p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Earn 7% for life when people you invite add funds.</p>
+          <Link to="/app/affiliates" className="mt-2 inline-block text-sm font-semibold text-brand-700">Open affiliates</Link>
+        </Card>
       </div>
       <Card>
         <div className="mb-4 flex items-center justify-between">
@@ -175,7 +183,7 @@ export function WalletPage() {
             <tbody>
               {(tx.data?.items ?? []).map((t) => (
                 <tr key={String(t.id)} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="py-2 capitalize">{String(t.type).replace("_", " ")}</td>
+                  <td className="py-2">{prettyStatus(String(t.type))}</td>
                   <td className={Number(t.amount) < 0 ? "text-rose-600" : "text-emerald-600"}>{money(Number(t.amount))}</td>
                   <td>{money(Number(t.balance_after))}</td>
                   <td>{formatDate(String(t.created_at))}</td>

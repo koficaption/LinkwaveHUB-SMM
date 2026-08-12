@@ -5,6 +5,7 @@ import { api, money } from "@/api/client";
 import type { Platform, Product } from "@/types";
 import { Button, Card, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
+import { AffiliatesLanding } from "@/pages/customer/AffiliatePages";
 
 export function HomePage() {
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
@@ -120,6 +121,8 @@ export function HomePage() {
         </div>
       </section>
 
+      <AffiliatesLanding />
+
       <section id="faq" className="container-page py-16">
         <h2 className="text-2xl font-extrabold">FAQ</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -127,6 +130,7 @@ export function HomePage() {
             ["Do I need to share my password?", "Never. We only need a public profile, post, or video URL."],
             ["How fast is delivery?", "Each product shows its average delivery time. Instant services start within minutes."],
             ["Can I become a reseller?", "Yes. Register as a reseller, get approved, then share your storefront link."],
+            ["How do affiliates work?", "Share your personal link. You earn 7% for life on funds your referrals add to their wallet. Commission goes to your wallet and can be used to order services."],
             ["How do I add a new platform?", "Admins add platforms, categories and products from the dashboard. They appear on the site immediately."],
           ].map(([q, a]) => (
             <Card key={q}><h3 className="font-bold">{q}</h3><p className="mt-2 text-sm text-slate-500">{a}</p></Card>

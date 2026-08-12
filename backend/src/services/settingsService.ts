@@ -32,6 +32,12 @@ const defaults: Record<string, unknown> = {
     orderNotifications: true,
     depositNotifications: true,
   },
+  affiliates: {
+    enabled: true,
+    commissionPercent: 7,
+    minimumPayout: 10,
+    lifetime: true,
+  },
 };
 
 export async function getSettings() {
@@ -52,6 +58,7 @@ export async function getPublicSettings() {
     developer: general.developer,
     currency: general.currency,
     logoUrl: general.logoUrl,
+    affiliates: all.affiliates,
   };
 }
 

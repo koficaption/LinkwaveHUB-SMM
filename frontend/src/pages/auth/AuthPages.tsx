@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Card, Input, PasswordInput } from "@/components/ui";
 import { ApiError, api } from "@/api/client";
+import { storedReferralCode } from "@/pages/customer/AffiliatePages";
 
 const loginSchema = z.object({ email: z.string().email("Enter a valid email"), password: z.string().min(1, "Password is required") });
 const registerSchema = z.object({
@@ -68,9 +69,15 @@ export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [asReseller, setAsReseller] = useState(false);
+  const invitedBy = storedReferralCode();
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", storeName: "" } });
   return (
     <AuthCard title="Create your account" subtitle="Start growing in minutes">
+      {invitedBy && (
+        <p className="mb-4 rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:bg-brand-500/10 dark:text-brand-200">
+          You were invited with code <span className="font-mono font-semibold">{invitedBy}</span>. You will be linked to that affiliate when you register.
+        </p>
+      )}
       <GoogleButton />
       <Divider />
       <form

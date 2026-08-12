@@ -23,11 +23,31 @@ frontend  →  REST /api  →  Express services  →  PostgreSQL
 
 ## Demo accounts
 
+These logins are **sample rows in your own database**, created on first boot so the dashboards are not empty. They are not another company’s live panel.
+
 | Role     | Email                         | Password       |
 |----------|-------------------------------|----------------|
 | Admin    | admin@linkwavehub.com         | Admin@12345    |
 | Reseller | reseller@linkwavehub.com      | Reseller@12345 |
 | Customer | customer@linkwavehub.com      | Customer@12345 |
+
+Add your own products from **Admin → Products**. Sample catalog rows can stay for preview or you can disable them.
+
+## Affiliates
+
+Signed-in users get a personal link (`/register?ref=CODE`). When a referred user adds funds (auto or confirmed deposits), the referrer earns **7% for life**. Commission is credited to the referrer wallet and can be used to order services. Rate and minimum payout are in **Admin → Settings**.
+
+## Payments and SMM API (later)
+
+Do not connect live keys yet. The site uses:
+
+- **Instant Demo Top-up** and **Mobile Money** (manual confirm) for deposits
+- **mock** SMM adapter so orders can be placed without a supplier
+
+When the website is complete:
+
+- **Korapay** for instant and manual payments
+- **resellersmm.com `/api/v2`** (PerfectPanel: `key` + `action=services|add|status|refill|cancel|balance`) via Admin → Providers, adapter `generic_http`, API URL `https://resellersmm.com/api/v2`
 
 ## Local development
 
@@ -69,7 +89,7 @@ The login and register pages show **Continue with Google**. A client ID is enoug
 ## Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run `supabase/migrations/20260812100000_init_linkwavehub.sql`.
+2. Open **SQL Editor** and run the files in `supabase/migrations/` in filename order.
 3. In **Project Settings → Database**, copy the **URI** (use the pooled connection on port `6543` for the API).
 4. Set in `.env`:
 
@@ -92,10 +112,10 @@ Admin dashboard → **Platforms** → add e.g. Spotify
 
 The product appears on `/services` immediately.
 
-## Adding a payment or SMM provider (code, once)
+## Adding a payment or SMM provider (later)
 
-- Payments: implement `PaymentAdapter` in `backend/src/providers/payment/` and `registerPaymentAdapter`.
-- SMM panels: implement `SmmProviderAdapter` in `backend/src/providers/smm/` and `registerSmmAdapter`, then create a **Providers** row in admin (API key is encrypted).
+- Payments: implement `PaymentAdapter` in `backend/src/providers/payment/` and `registerPaymentAdapter` (Korapay will go here).
+- SMM panels: the `generic_http` adapter already speaks PerfectPanel / resellersmm.com v2. Create a **Providers** row in admin, set adapter to `generic_http`, paste the API key (encrypted at rest).
 
 ## Scripts
 

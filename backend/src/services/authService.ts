@@ -3,6 +3,7 @@ import { AppError } from "../errors.js";
 import { hashPassword, makeSlug, signToken, uniqueSlug, verifyPassword } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
+import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `
@@ -16,6 +17,7 @@ export async function registerUser(input: {
   phone?: string;
   asReseller?: boolean;
   storeName?: string;
+  referralCode?: string;
   ip?: string;
 }) {
   const existing = await queryOne(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [input.email]);
@@ -25,15 +27,19 @@ export async function registerUser(input: {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
     const user = await queryOne(
-      `INSERT INTO users (email, password_hash, full_name, phone, role, status)
-       VALUES ($1, $2, $3, $4, $5, 'active')
+      `INSERT INTO users (email, password_hash, full_name, phone, role, status, referral_code)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6)
        RETURNING ${publicUser}`,
-      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, role],
+      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, role, newReferralCode()],
       client
     );
     if (!user) throw new AppError("Unable to create account", 500);
 
     await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user.id], client);
+
+    if (input.referralCode) {
+      await attachReferrer(user.id, input.referralCode, client);
+    }
 
     if (input.asReseller) {
       const storeName = input.storeName || `${input.fullName}'s Store`;

@@ -7,6 +7,7 @@ export const registerSchema = z.object({
   phone: z.string().max(30).optional(),
   asReseller: z.boolean().optional(),
   storeName: z.string().min(2).max(80).optional(),
+  referralCode: z.string().max(40).optional(),
 });
 
 export const loginSchema = z.object({

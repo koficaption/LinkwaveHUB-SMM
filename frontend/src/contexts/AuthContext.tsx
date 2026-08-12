@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
+import { storedReferralCode } from "@/pages/customer/AffiliatePages";
 import { setStoredToken } from "@/api/token";
 import type { User, Wallet } from "@/types";
 
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async loginWithGoogle(payload) {
         const result = await api<{ user: User; token: string }>("/auth/google", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
         });
         return finishLogin(result.token, qc);
       },
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async register(payload) {
         const result = await api<{ user: User; token: string }>("/auth/register", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, referralCode: payload.referralCode || storedReferralCode() }),
         });
         return finishLogin(result.token, qc);
       },

@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
+import { newReferralCode } from "./affiliateService.js";
 
 const publicUser = `id, email, full_name, phone, role, status, avatar_url, last_login_at, created_at`;
 
@@ -112,10 +113,10 @@ async function upsertGoogleUser(profile: GoogleProfile) {
 
     if (!user) {
       user = await queryOne(
-        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url)
-         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4)
+        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code)
+         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5)
          RETURNING ${publicUser}`,
-        [email, profile.name || email.split("@")[0], profile.sub, profile.picture ?? null],
+        [email, profile.name || email.split("@")[0], profile.sub, profile.picture ?? null, newReferralCode()],
         client
       );
       await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id], client);

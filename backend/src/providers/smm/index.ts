@@ -42,8 +42,8 @@ export const mockSmmAdapter: SmmProviderAdapter = {
 };
 
 /**
- * Generic HTTP SMM panel adapter (PerfectPanel / similar).
- * New providers can be added by inserting a row in `providers` with adapter = 'generic_http'.
+ * Generic HTTP SMM panel adapter (PerfectPanel / resellersmm.com /api/v2).
+ * Live provider keys will be added later from Admin → Providers. Do not hard-code keys here.
  */
 export const genericHttpAdapter: SmmProviderAdapter = {
   name: "generic_http",
