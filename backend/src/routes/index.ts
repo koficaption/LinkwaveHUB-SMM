@@ -1,7 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { ok } from "../errors.js";
+import { AppError, ok } from "../errors.js";
 import { asyncHandler, validate } from "../middleware/errorHandler.js";
 import { optionalAuth, requireAuth, requireRole } from "../middleware/auth.js";
 import * as auth from "../services/authService.js";
@@ -33,16 +33,19 @@ import {
   storefrontSchema,
   resellerPriceSchema,
 } from "../validators.js";
+import * as googleAuth from "../services/googleAuth.js";
 import { config } from "../config.js";
 import { clientIp } from "../utils.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 
-function setAuthCookie(res: import("express").Response, token: string) {
+function setAuthCookie(res: import("express").Response, token: string, req?: import("express").Request) {
+  const forwardedProto = typeof req?.headers["x-forwarded-proto"] === "string" ? req.headers["x-forwarded-proto"] : "";
+  const secure = config.isProd || req?.secure || forwardedProto.includes("https");
   res.cookie(config.cookieName, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: config.isProd,
+    sameSite: secure ? "none" : "lax",
+    secure,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
   });
@@ -94,13 +97,62 @@ router.get("/store/:slug", asyncHandler(async (req, res) => {
 
 router.post("/auth/register", authLimit, validate(registerSchema), asyncHandler(async (req, res) => {
   const result = await auth.registerUser({ ...req.body, ip: clientIp(req) });
-  setAuthCookie(res, result.token);
+  setAuthCookie(res, result.token, req);
   res.status(201).json(ok(result, "Account created successfully"));
 }));
 router.post("/auth/login", authLimit, validate(loginSchema), asyncHandler(async (req, res) => {
   const result = await auth.loginUser(req.body.email, req.body.password, clientIp(req), req.get("user-agent") || undefined);
-  setAuthCookie(res, result.token);
+  setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in successfully"));
+}));
+router.get("/auth/google/config", (_req, res) => {
+  res.json(ok({
+    enabled: googleAuth.googleEnabled(),
+    clientId: config.googleClientId || null,
+    redirectEnabled: Boolean(config.googleClientId && config.googleClientSecret),
+  }));
+});
+router.get("/auth/google/start", authLimit, (req, res) => {
+  if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
+    return res.redirect(`${config.frontendUrl}/login?google=unconfigured`);
+  }
+  const state = googleAuth.createGoogleState();
+  res.redirect(googleAuth.googleRedirectUrl(state));
+});
+router.get("/auth/google/callback", asyncHandler(async (req, res) => {
+  const error = typeof req.query.error === "string" ? req.query.error : "";
+  if (error) {
+    return res.redirect(`${config.frontendUrl}/login?google=denied`);
+  }
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  if (!code || !state) {
+    return res.redirect(`${config.frontendUrl}/login?google=failed`);
+  }
+  try {
+    googleAuth.verifyGoogleState(state);
+    const result = await googleAuth.loginWithGoogleCode(code);
+    setAuthCookie(res, result.token, req);
+    return res.redirect(`${config.frontendUrl}/auth/callback?token=${encodeURIComponent(result.token)}`);
+  } catch {
+    return res.redirect(`${config.frontendUrl}/login?google=failed`);
+  }
+}));
+router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
+  const body = z.object({
+    credential: z.string().optional(),
+    code: z.string().optional(),
+    accessToken: z.string().optional(),
+  }).parse(req.body);
+  const result = body.accessToken
+    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken)
+    : body.credential
+      ? await googleAuth.loginWithGoogleIdToken(body.credential)
+      : body.code
+        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage")
+        : (() => { throw new AppError("Google credential is required", 400); })();
+  setAuthCookie(res, result.token, req);
+  res.json(ok(result, "Logged in with Google"));
 }));
 router.post("/auth/logout", (req, res) => {
   res.clearCookie(config.cookieName, { path: "/" });

@@ -1,4 +1,5 @@
 import type { ApiSuccess } from "@/types";
+import { getStoredToken } from "@/api/token";
 
 export class ApiError extends Error {
   status: number;
@@ -12,6 +13,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  const token = getStoredToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
   const res = await fetch(`/api${path}`, {
     ...init,

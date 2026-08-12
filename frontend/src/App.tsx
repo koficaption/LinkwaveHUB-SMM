@@ -4,7 +4,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, ThemeProvider } from "@/contexts/AuthContext";
 import { AdminLayout, CustomerLayout, Guard, PublicLayout } from "@/layouts/Guards";
 import { HomePage } from "@/pages/public/HomePage";
-import { LoginPage, RegisterPage } from "@/pages/auth/AuthPages";
+import { LoginPage, RegisterPage, AuthCallbackPage } from "@/pages/auth/AuthPages";
 import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/ServicesPages";
 import {
   CustomerHome, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
@@ -34,6 +34,7 @@ export default function App() {
                 <Route path="/store/:slug" element={<StorefrontPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/auth/callback" element={<AuthCallbackPage />} />
               </Route>
               <Route element={<Guard />}>
                 <Route element={<CustomerLayout />}>

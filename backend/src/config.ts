@@ -34,4 +34,9 @@ export const config = {
   supabaseUrl: process.env.SUPABASE_URL ?? "",
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   uploadDir: path.resolve(__dirname, "../../uploads"),
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  googleRedirectUri:
+    process.env.GOOGLE_REDIRECT_URI ??
+    `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/api/auth/google/callback`,
 };

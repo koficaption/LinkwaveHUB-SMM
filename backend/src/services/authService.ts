@@ -68,12 +68,15 @@ export async function loginUser(email: string, password: string, ip?: string, us
     avatar_url: string | null;
     last_login_at: string | null;
     created_at: string;
-    password_hash: string;
+    password_hash: string | null;
   }>(
     `SELECT ${publicUser}, password_hash FROM users WHERE LOWER(email) = LOWER($1)`,
     [email]
   );
   if (!user) throw new AppError("Invalid email or password", 401);
+  if (!user.password_hash) {
+    throw new AppError("This account uses Google sign-in. Continue with Google instead.", 401);
+  }
   const valid = await verifyPassword(password, user.password_hash);
   if (!valid) throw new AppError("Invalid email or password", 401);
   if (user.status === "suspended") throw new AppError("Account is suspended", 403);
@@ -115,10 +118,12 @@ export async function updateProfile(userId: string, input: { fullName: string; p
 }
 
 export async function changePassword(userId: string, current: string, next: string) {
-  const row = await queryOne<{ password_hash: string }>(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
+  const row = await queryOne<{ password_hash: string | null }>(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
   if (!row) throw new AppError("User not found", 404);
-  const valid = await verifyPassword(current, row.password_hash);
-  if (!valid) throw new AppError("Current password is incorrect", 400);
+  if (row.password_hash) {
+    const valid = await verifyPassword(current, row.password_hash);
+    if (!valid) throw new AppError("Current password is incorrect", 400);
+  }
   const hash = await hashPassword(next);
   await query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, hash]);
 }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
+import { setStoredToken } from "@/api/token";
 import type { User, Wallet } from "@/types";
 
 type Me = {
@@ -22,12 +23,21 @@ type AuthContextValue = {
   me: Me | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<Me>;
+  loginWithGoogle: (payload: { credential?: string; code?: string; accessToken?: string }) => Promise<Me>;
+  completeTokenLogin: (token: string) => Promise<Me>;
   register: (payload: Record<string, unknown>) => Promise<Me>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function finishLogin(token: string, qc: QueryClient): Promise<Me> {
+  setStoredToken(token);
+  const me = await api<Me>("/auth/me");
+  qc.setQueryData(["me"], me);
+  return me;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
@@ -53,18 +63,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
-        const me = await api<Me>("/auth/me");
-        qc.setQueryData(["me"], me);
-        return me;
+        return finishLogin(result.token, qc);
+      },
+      async loginWithGoogle(payload) {
+        const result = await api<{ user: User; token: string }>("/auth/google", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        return finishLogin(result.token, qc);
+      },
+      async completeTokenLogin(token: string) {
+        return finishLogin(token, qc);
       },
       async register(payload) {
-        await api("/auth/register", { method: "POST", body: JSON.stringify(payload) });
-        const me = await api<Me>("/auth/me");
-        qc.setQueryData(["me"], me);
-        return me;
+        const result = await api<{ user: User; token: string }>("/auth/register", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        return finishLogin(result.token, qc);
       },
       async logout() {
-        await api("/auth/logout", { method: "POST" });
+        setStoredToken(null);
+        await api("/auth/logout", { method: "POST" }).catch(() => undefined);
         qc.setQueryData(["me"], null);
       },
       async refresh() {

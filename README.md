@@ -52,6 +52,20 @@ npm run dev
 
 The API applies migrations and seeds demo data on first boot.
 
+## Google sign-in
+
+1. Create an OAuth client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (Web application).
+2. Add your site origin (for example `http://localhost:5173`) under **Authorized JavaScript origins**.
+3. Add `{FRONTEND_URL}/api/auth/google/callback` under **Authorized redirect URIs**.
+4. Put the client ID (and secret, for the redirect fallback) in `.env`:
+
+```
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+The login and register pages show **Continue with Google**. A client ID is enough for the popup flow.
+
 ## Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
