@@ -14,6 +14,7 @@ export function NewOrderPanel() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [platformId, setPlatformId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -26,15 +27,38 @@ export function NewOrderPanel() {
 
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
   const categories = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/categories") });
+  const canLoadServices = Boolean(platformId && categoryId) || Boolean(debounced);
   const products = useQuery({
-    queryKey: ["order-products", categoryId, debounced],
+    queryKey: ["order-products", platformId, categoryId, debounced],
     queryFn: () =>
       api<Paginated<Product>>(
-        `/products?limit=50&page=1${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
+        `/products?limit=100&page=1${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
       ),
+    enabled: canLoadServices,
   });
 
-  const selected = products.data?.items.find((p) => p.id === productId);
+  const categoryOptions = useMemo(() => {
+    const plats = [...(platforms.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+    const options: { key: string; category: Category; platform: Platform }[] = [];
+    for (const category of categories.data ?? []) {
+      const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
+      const linked = plats.filter((p) => linkedIds.includes(p.id));
+      for (const platform of linked) {
+        options.push({ key: `${platform.id}:${category.id}`, category, platform });
+      }
+    }
+    return options;
+  }, [categories.data, platforms.data]);
+
+  const selectedKey = platformId && categoryId ? `${platformId}:${categoryId}` : "";
+  const selectedCategory = categoryOptions.find((c) => c.key === selectedKey);
+  const visibleProducts = (products.data?.items ?? []).filter((p) => {
+    if (platformId && p.platform_id !== platformId) return false;
+    if (categoryId && p.category_id !== categoryId) return false;
+    return true;
+  });
+
+  const selected = visibleProducts.find((p) => p.id === productId);
   const unit = Number(selected?.display_price_per_1000 ?? selected?.price_per_1000 ?? 0);
   const qty = Number(quantity || selected?.min_quantity || 0);
   const total = selected ? (unit * qty) / 1000 : 0;
@@ -58,17 +82,6 @@ export function NewOrderPanel() {
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place order"),
   });
-
-  const categoryOptions = useMemo(() => {
-    const plats = platforms.data ?? [];
-    return (categories.data ?? []).map((c) => {
-      const ids = Array.isArray(c.platform_ids) ? c.platform_ids : [];
-      const platform = plats.find((p) => ids.includes(p.id)) ?? plats.find((p) => p.id === ids[0]);
-      return { category: c, platform };
-    });
-  }, [categories.data, platforms.data]);
-
-  const selectedCategory = categoryOptions.find((c) => c.category.id === categoryId);
 
   function serviceLabel(p: Product) {
     const sid = p.provider_service_id || p.id.slice(0, 8);
@@ -98,16 +111,18 @@ export function NewOrderPanel() {
           )}
           <select
             className={`input h-12 ${selectedCategory?.platform ? "pl-11" : ""}`}
-            value={categoryId}
+            value={selectedKey}
             onChange={(e) => {
-              setCategoryId(e.target.value);
+              const [nextPlatform, nextCategory] = e.target.value.split(":");
+              setPlatformId(nextPlatform || "");
+              setCategoryId(nextCategory || "");
               setProductId("");
             }}
           >
             <option value="">Select a category</option>
-            {categoryOptions.map(({ category, platform }) => (
-              <option key={category.id} value={category.id}>
-                {platform ? `${platform.name} · ${category.name}` : category.name}
+            {categoryOptions.map(({ key, category, platform }) => (
+              <option key={key} value={key}>
+                {platform.name} · {category.name}
               </option>
             ))}
           </select>
@@ -123,16 +138,17 @@ export function NewOrderPanel() {
             className="input h-12"
             value={productId}
             onChange={(e) => setProductId(e.target.value)}
+            disabled={!canLoadServices}
           >
-            <option value="">Select a service</option>
-            {products.data?.items.map((p) => (
+            <option value="">{canLoadServices ? "Select a service" : "Select a category first"}</option>
+            {visibleProducts.map((p) => (
               <option key={p.id} value={p.id}>
                 {serviceLabel(p)}
               </option>
             ))}
           </select>
         )}
-        {!products.isLoading && products.data?.items.length === 0 && (
+        {!products.isLoading && canLoadServices && visibleProducts.length === 0 && (
           <p className="mt-2 text-sm text-muted">No services match that search or category.</p>
         )}
       </label>
@@ -181,7 +197,7 @@ export function NewOrderPanel() {
         </form>
       )}
 
-      {!selected && !products.isLoading && (debounced || categoryId) && products.data?.items.length === 0 && (
+      {!selected && !products.isLoading && canLoadServices && visibleProducts.length === 0 && (
         <div className="mt-6">
           <EmptyState title="No services found" body="Try another category or search term." />
         </div>
