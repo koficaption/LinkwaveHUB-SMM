@@ -43,7 +43,7 @@ SMM fulfilment uses the **resellersmm.com `/api/v2`** PerfectPanel adapter from 
 
 From **Admin → Settings** you can set the customer service number, WhatsApp number, and channel/community links (Telegram, WhatsApp community, etc.). They appear in the public footer, the bottom help bar, and on the support page.
 
-Login includes **Forgot password**. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM` in `.env` so reset emails actually send. Without SMTP, the API still creates a one-hour reset link and logs it in development.
+Login includes **Forgot password**. Until SMTP is connected, the site shows an on-screen reset link. To send real emails, add Gmail SMTP in **Admin → Settings** (host `smtp.gmail.com`, port `587`, your Gmail, and a Google App Password).
 
 From **Admin → Payments** you can add or edit **manual** payment details (MoMo network and number, account name, bank name and account number, extra instructions). Customers see those details when they fund their wallet. An admin then confirms the deposit.
 

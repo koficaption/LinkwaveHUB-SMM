@@ -78,15 +78,24 @@ const resetSchema = z
 
 export function ForgotPasswordPage() {
   const form = useForm({ resolver: zodResolver(forgotSchema), defaultValues: { email: "" } });
-  const [sent, setSent] = useState(false);
+  const [result, setResult] = useState<{ emailSent: boolean; resetUrl?: string; message: string } | null>(null);
 
   return (
-    <AuthCard title="Forgot password" subtitle="Enter your email and we will send a reset link">
-      {sent ? (
+    <AuthCard title="Forgot password" subtitle="Enter your email to reset your password">
+      {result ? (
         <div className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            If an account exists for that email, we sent a reset link. Check your inbox and spam folder.
+            {result.emailSent
+              ? "If an account exists for that email, we sent a reset link. Check your inbox and spam folder."
+              : result.resetUrl
+                ? "Email sending is not connected yet, so nothing was delivered to your inbox. Use this link to set a new password now."
+                : result.message}
           </p>
+          {result.resetUrl ? (
+            <Link to={result.resetUrl.replace(/^https?:\/\/[^/]+/, "")}>
+              <Button className="w-full">Set a new password</Button>
+            </Link>
+          ) : null}
           <p className="text-center text-sm">
             <Link to="/login" className="font-semibold text-brand-700">Back to login</Link>
           </p>
@@ -96,11 +105,14 @@ export function ForgotPasswordPage() {
           className="space-y-4"
           onSubmit={form.handleSubmit(async (values) => {
             try {
-              await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: values.email }) });
-              setSent(true);
-              toast.success("Check your email for a reset link");
+              const data = await api<{ emailSent: boolean; resetUrl?: string; message: string }>("/auth/forgot-password", {
+                method: "POST",
+                body: JSON.stringify({ email: values.email }),
+              });
+              setResult(data);
+              toast.success(data.emailSent ? "Check your email for a reset link" : data.resetUrl ? "Use the reset link on this page" : "Request received");
             } catch (e) {
-              toast.error(e instanceof ApiError ? e.message : "Could not send reset email");
+              toast.error(e instanceof ApiError ? e.message : "Could not start password reset");
             }
           })}
         >

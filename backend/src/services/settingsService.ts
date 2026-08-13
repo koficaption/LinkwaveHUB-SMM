@@ -1,6 +1,7 @@
 import { query, queryOne } from "../db.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
+import { encryptSecret, looksEncrypted } from "../utils.js";
 
 const defaults: Record<string, unknown> = {
   general: {
@@ -49,6 +50,14 @@ const defaults: Record<string, unknown> = {
     upgradeFee: 200,
     upgradeNote:
       "Pay the reseller / child panel fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller.",
+  },
+  mail: {
+    enabled: true,
+    host: "",
+    port: 587,
+    user: "",
+    pass: "",
+    from: "Linkwave SMM <support@linkwavehub.com>",
   },
 };
 
@@ -109,12 +118,33 @@ export async function getResellerUpgradeSettings() {
   };
 }
 
+export async function getAdminSettings() {
+  const all = await getSettings();
+  const mail = { ...((all.mail as Record<string, unknown> | undefined) ?? {}) };
+  const passSet = Boolean(mail.pass);
+  mail.pass = "";
+  mail.passSet = passSet;
+  return { ...all, mail };
+}
+
 export async function updateSettings(key: string, value: unknown, actor: AuthUser, ip?: string) {
+  let stored = value;
+  if (key === "mail" && value && typeof value === "object" && !Array.isArray(value)) {
+    const incoming = { ...(value as Record<string, unknown>) };
+    const current = ((await getSettings()).mail as Record<string, unknown> | undefined) ?? {};
+    const nextPass = String(incoming.pass ?? "").trim();
+    if (!nextPass) incoming.pass = current.pass ?? "";
+    else if (!looksEncrypted(nextPass)) incoming.pass = encryptSecret(nextPass);
+    stored = incoming;
+  }
   await query(
     `INSERT INTO settings (key, value, updated_by) VALUES ($1, $2::jsonb, $3)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-    [key, JSON.stringify(value), actor.id]
+    [key, JSON.stringify(stored), actor.id]
   );
-  await writeAudit({ actor, action: "settings.update", targetType: "settings", targetId: key, details: value, ip });
-  return getSettings();
+  const auditDetails = key === "mail" && stored && typeof stored === "object"
+    ? { ...(stored as Record<string, unknown>), pass: (stored as Record<string, unknown>).pass ? "[set]" : "" }
+    : stored;
+  await writeAudit({ actor, action: "settings.update", targetType: "settings", targetId: key, details: auditDetails, ip });
+  return getAdminSettings();
 }

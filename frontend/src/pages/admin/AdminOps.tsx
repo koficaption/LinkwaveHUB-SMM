@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, money, ApiError } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, User } from "@/types";
-import { Badge, Button, Card, Input, Modal, Pagination, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 
 export function AdminOrders() {
@@ -573,9 +573,94 @@ export function AdminSettings() {
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
+      <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
     </div>
+  );
+}
+
+function MailSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const [testing, setTesting] = useState(false);
+  const values = form ?? {
+    enabled: String(source.enabled !== false),
+    host: String(source.host ?? ""),
+    port: String(source.port ?? 587),
+    user: String(source.user ?? ""),
+    pass: "",
+    from: String(source.from ?? "Linkwave SMM <support@linkwavehub.com>"),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Password reset email (SMTP)</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Forgot password needs a mail server. For Gmail use host <span className="font-mono">smtp.gmail.com</span>, port <span className="font-mono">587</span>, your Gmail address, and a Google <strong>App Password</strong> (not your normal Gmail password).
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="label">Enabled</span>
+          <Select value={values.enabled} onChange={(e) => setForm({ ...values, enabled: e.target.value })}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">SMTP host</span>
+          <Input placeholder="smtp.gmail.com" value={values.host} onChange={(e) => setForm({ ...values, host: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Port</span>
+          <Input placeholder="587" value={values.port} onChange={(e) => setForm({ ...values, port: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">From address</span>
+          <Input placeholder="Linkwave SMM <you@gmail.com>" value={values.from} onChange={(e) => setForm({ ...values, from: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">SMTP username</span>
+          <Input placeholder="you@gmail.com" value={values.user} onChange={(e) => setForm({ ...values, user: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">SMTP password / App Password</span>
+          <PasswordInput placeholder={source.passSet ? "Saved — leave blank to keep" : "Google App Password"} value={values.pass} onChange={(e) => setForm({ ...values, pass: e.target.value })} />
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button onClick={() => onSave({
+          enabled: values.enabled === "true",
+          host: values.host.trim(),
+          port: Number(values.port || 587),
+          user: values.user.trim(),
+          pass: values.pass,
+          from: values.from.trim(),
+        })}>Save mail settings</Button>
+        <Button
+          variant="outline"
+          disabled={testing}
+          onClick={async () => {
+            setTesting(true);
+            try {
+              await api("/admin/settings/mail/test", { method: "POST", body: JSON.stringify({}) });
+              toast.success("Test email sent to your admin email");
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.message : "Could not send test email");
+            } finally {
+              setTesting(false);
+            }
+          }}
+        >
+          {testing ? "Sending..." : "Send test email"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

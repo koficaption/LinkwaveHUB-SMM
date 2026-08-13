@@ -44,6 +44,7 @@ import * as affiliates from "../services/affiliateService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
 import { clientIp, publicAppOrigin } from "../utils.js";
+import { sendMail } from "../mailer.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
@@ -520,9 +521,21 @@ admin.post("/notifications", validate(adminBroadcastSchema), asyncHandler(async 
   }), "Notification sent"));
 }));
 
-admin.get("/settings", asyncHandler(async (_req, res) => res.json(ok(await settings.getSettings()))));
+admin.get("/settings", asyncHandler(async (_req, res) => res.json(ok(await settings.getAdminSettings()))));
 admin.put("/settings/:key", asyncHandler(async (req, res) => {
   res.json(ok(await settings.updateSettings(req.params.key, req.body.value ?? req.body, req.user!, clientIp(req)), "Settings saved"));
+}));
+admin.post("/settings/mail/test", asyncHandler(async (req, res) => {
+  const to = typeof req.body?.to === "string" && req.body.to.includes("@") ? req.body.to : req.user!.email;
+  const siteName = String(((await settings.getSettings()).general as Record<string, unknown>).siteName || "Linkwave SMM");
+  const result = await sendMail({
+    to,
+    subject: `${siteName} test email`,
+    text: `This is a test email from ${siteName}. If you received it, password-reset mail is working.`,
+    html: `<p>This is a test email from ${siteName}. If you received it, password-reset mail is working.</p>`,
+  });
+  if (!result.sent) throw new AppError("Email is not connected yet. Save SMTP details first (Gmail: smtp.gmail.com, port 587, your Gmail and an App Password).", 400);
+  res.json(ok({ to }, "Test email sent"));
 }));
 
 router.use("/admin", admin);

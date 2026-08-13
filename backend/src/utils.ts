@@ -54,6 +54,11 @@ export function encryptSecret(plain: string): string {
   return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
+export function looksEncrypted(value: string) {
+  const parts = value.split(":");
+  return parts.length === 3 && parts.every((part) => /^[0-9a-f]+$/i.test(part));
+}
+
 export function decryptSecret(payload: string): string {
   const [ivHex, tagHex, dataHex] = payload.split(":");
   const decipher = crypto.createDecipheriv(

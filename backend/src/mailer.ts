@@ -1,28 +1,55 @@
 import nodemailer from "nodemailer";
 import { config } from "./config.js";
+import { decryptSecret, looksEncrypted } from "./utils.js";
+import { getSettings } from "./services/settingsService.js";
 
-const smtpReady = Boolean(config.smtpHost && config.smtpFrom);
+export type MailAccount = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  from: string;
+};
 
-const transporter = smtpReady
-  ? nodemailer.createTransport({
-      host: config.smtpHost,
-      port: config.smtpPort,
-      secure: config.smtpPort === 465,
-      auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPass } : undefined,
-    })
-  : null;
+export async function resolveMailAccount(): Promise<MailAccount> {
+  const all = await getSettings();
+  const mail = (all.mail as Record<string, unknown> | undefined) ?? {};
+  const host = String(mail.host || config.smtpHost || "").trim();
+  const port = Number(mail.port || config.smtpPort || 587) || 587;
+  const user = String(mail.user || config.smtpUser || "").trim();
+  let pass = String(mail.pass || config.smtpPass || "");
+  if (looksEncrypted(pass)) {
+    try {
+      pass = decryptSecret(pass);
+    } catch {
+      /* keep stored value */
+    }
+  }
+  const from = String(mail.from || config.smtpFrom || user || "").trim();
+  const enabled = mail.enabled !== false;
+  return { enabled, host, port, user, pass, from };
+}
 
-export function mailConfigured() {
-  return Boolean(transporter);
+export async function mailConfigured() {
+  const account = await resolveMailAccount();
+  return Boolean(account.enabled && account.host && account.from);
 }
 
 export async function sendMail(input: { to: string; subject: string; text: string; html: string }) {
-  if (!transporter || !config.smtpFrom) {
+  const account = await resolveMailAccount();
+  if (!account.enabled || !account.host || !account.from) {
     console.warn(`[mail] SMTP is not configured. Skip send to ${input.to}: ${input.subject}`);
     return { sent: false as const };
   }
+  const transporter = nodemailer.createTransport({
+    host: account.host,
+    port: account.port,
+    secure: account.port === 465,
+    auth: account.user ? { user: account.user, pass: account.pass } : undefined,
+  });
   await transporter.sendMail({
-    from: config.smtpFrom,
+    from: account.from,
     to: input.to,
     subject: input.subject,
     text: input.text,

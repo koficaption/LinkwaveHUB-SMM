@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { config } from "../config.js";
-import { passwordResetEmail, sendMail } from "../mailer.js";
+import { passwordResetEmail, sendMail, mailConfigured } from "../mailer.js";
 import { hashPassword, makeSlug, signToken, uniqueSlug, verifyPassword } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
@@ -160,7 +160,7 @@ export async function requestPasswordReset(input: { email: string; origin?: stri
   );
 
   if (!user || user.status === "suspended") {
-    return { message: GENERIC_RESET_MESSAGE };
+    return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
   }
 
   await query(
@@ -183,18 +183,24 @@ export async function requestPasswordReset(input: { email: string; origin?: stri
   const siteName = String(settings.siteName || "Linkwave SMM");
   const mail = passwordResetEmail({ name: user.full_name, resetUrl, siteName });
 
+  let emailSent = false;
   try {
     const result = await sendMail({ to: user.email, ...mail });
+    emailSent = result.sent;
     if (!result.sent) {
-      console.info(`[password-reset] Link for ${user.email}: ${resetUrl}`);
+      console.info(`[password-reset] Email not sent. Reset link created for ${user.email}`);
     }
   } catch (error) {
     console.error("[password-reset] Failed to send email", error);
   }
 
-  const payload: { message: string; resetUrl?: string } = { message: GENERIC_RESET_MESSAGE };
-  if (!config.isProd) payload.resetUrl = resetUrl;
-  return payload;
+  return {
+    message: emailSent
+      ? GENERIC_RESET_MESSAGE
+      : "Email sending is not connected yet. Use the reset link below.",
+    emailSent,
+    resetUrl: emailSent ? undefined : resetUrl,
+  };
 }
 
 export async function resetPasswordWithToken(token: string, password: string) {
