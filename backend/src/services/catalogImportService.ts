@@ -79,7 +79,7 @@ export async function importProviderPackages(
   const minProfit = Number(pricing.minimumProfitPer1000 ?? 0.5);
 
   const result = await withTransaction(async (client) => {
-    await client.query("SET LOCAL statement_timeout = '120s'");
+    await client.query("SET LOCAL statement_timeout = '300s'");
     const platforms = await query<{ id: string; slug: string }>(`SELECT id, slug FROM platforms`, [], client);
     const categories = await query<{ id: string; slug: string }>(`SELECT id, slug FROM categories`, [], client);
     const platformBySlug = new Map(platforms.map((row) => [row.slug, row.id]));

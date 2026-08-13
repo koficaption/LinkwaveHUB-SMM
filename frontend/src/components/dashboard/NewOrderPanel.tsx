@@ -34,7 +34,7 @@ export function NewOrderPanel() {
     queryKey: ["order-products", platformId, categoryId, debounced],
     queryFn: () =>
       api<Paginated<Product>>(
-        `/products?limit=100&page=1${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
+        `/products?limit=2000&page=1${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
       ),
     enabled: canLoadServices,
   });
@@ -150,6 +150,18 @@ export function NewOrderPanel() {
               </option>
             ))}
           </select>
+        )}
+        {!products.isLoading && canLoadServices && visibleProducts.length > 0 && (
+          <p className="mt-2 text-sm text-muted">
+            {visibleProducts.length.toLocaleString()}
+            {products.data && products.data.total > visibleProducts.length
+              ? ` of ${products.data.total.toLocaleString()}`
+              : ""}{" "}
+            services
+            {products.data && products.data.total > visibleProducts.length
+              ? ". Search to find the rest."
+              : "."}
+          </p>
         )}
         {!products.isLoading && canLoadServices && visibleProducts.length === 0 && (
           <p className="mt-2 text-sm text-muted">No services match that search or category.</p>

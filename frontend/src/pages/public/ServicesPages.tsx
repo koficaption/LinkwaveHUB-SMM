@@ -28,7 +28,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   });
   const products = useQuery({
     queryKey: ["products", platform, category, search, page, refill],
-    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=24&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${refill ? `&refill=${refill}` : ""}`),
+    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=50&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${refill ? `&refill=${refill}` : ""}`),
   });
   const set = (key: string, value: string) => setParams((p) => {
     if (value) p.set(key, value); else p.delete(key);

@@ -54,7 +54,7 @@ export function ResellerStorefrontPage() {
 
 export function ResellerPricingPage() {
   const qc = useQueryClient();
-  const products = useQuery({ queryKey: ["products-all"], queryFn: () => api<{ items: Product[] }>("/products?limit=100") });
+  const products = useQuery({ queryKey: ["products-all"], queryFn: () => api<{ items: Product[]; total: number }>("/products?limit=2000") });
   return (
     <div>
       <h1 className="page-title">Selling prices</h1>

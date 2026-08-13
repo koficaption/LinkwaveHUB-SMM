@@ -169,16 +169,18 @@ export function Pagination({
   limit: number;
   onPage: (page: number) => void;
 }) {
-  const pages = Math.max(1, Math.ceil(total / limit));
-  if (pages <= 1) return null;
+  const pages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+  if (!total) return null;
   return (
     <div className="flex items-center justify-between gap-3 pt-4 text-sm">
-      <span className="text-muted">{total} records</span>
-      <div className="flex gap-2">
-        <Button variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</Button>
-        <span className="px-2 py-2">{page} / {pages}</span>
-        <Button variant="outline" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next</Button>
-      </div>
+      <span className="text-muted">{total.toLocaleString()} results</span>
+      {pages > 1 && (
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</Button>
+          <span className="px-2 py-2">{page} / {pages}</span>
+          <Button variant="outline" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next</Button>
+        </div>
+      )}
     </div>
   );
 }

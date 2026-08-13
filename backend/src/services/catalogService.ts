@@ -248,7 +248,8 @@ export async function listProducts(opts: {
     name: "p.name ASC",
   };
   const orderBy = sortMap[opts.sort ?? "newest"] ?? "p.created_at DESC";
-  const limit = Math.min(100, opts.limit ?? 50);
+  const requested = Math.max(1, Number(opts.limit ?? 50) || 50);
+  const limit = Math.min(2000, requested);
   const page = Math.max(1, opts.page ?? 1);
   const offset = (page - 1) * limit;
 

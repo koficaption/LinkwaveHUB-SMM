@@ -30,6 +30,7 @@ export function AdminProducts() {
   const [search, setSearch] = useState("");
   const [platformId, setPlatformId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [providerId, setProviderId] = useState("");
   const [status, setStatus] = useState("");
   const [refill, setRefill] = useState("");
   const [sort, setSort] = useState("newest");
@@ -40,9 +41,10 @@ export function AdminProducts() {
 
   const platforms = useQuery({ queryKey: ["platforms-all"], queryFn: () => api<Platform[]>("/platforms?all=1") });
   const categories = useQuery({ queryKey: ["categories-all"], queryFn: () => api<Category[]>("/categories?all=1") });
+  const providers = useQuery({ queryKey: ["/admin/providers"], queryFn: () => api<{ id: string; name: string }[]>("/admin/providers") });
   const products = useQuery({
-    queryKey: ["admin-products", search, platformId, categoryId, status, refill, sort, page],
-    queryFn: () => api<Paginated<Product>>(`/admin/products?page=${page}&search=${encodeURIComponent(search)}&platformId=${platformId}&categoryId=${categoryId}&status=${status}&refill=${refill}&sort=${sort}`),
+    queryKey: ["admin-products", search, platformId, categoryId, providerId, status, refill, sort, page],
+    queryFn: () => api<Paginated<Product>>(`/admin/products?page=${page}&limit=100&search=${encodeURIComponent(search)}&platformId=${platformId}&categoryId=${categoryId}&providerId=${providerId}&status=${status}&refill=${refill}&sort=${sort}`),
   });
 
   const bulk = useMutation({
@@ -55,16 +57,19 @@ export function AdminProducts() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Products</h1>
-          <p className="text-sm text-slate-500">What customers buy. Set provider cost and your percent to see profit.</p>
+          <p className="text-sm text-slate-500">
+            {products.data ? `${products.data.total.toLocaleString()} services in the catalog.` : "What customers buy. Set provider cost and your percent to see profit."}
+          </p>
         </div>
         <Button onClick={() => setEditing("new")}>Add product</Button>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Select value={platformId} onChange={(e) => setPlatformId(e.target.value)}><option value="">All platforms</option>{platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
-        <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}><option value="">All categories</option>{categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
-        <Select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></Select>
-        <Select value={refill} onChange={(e) => setRefill(e.target.value)}>
+      <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-7">
+        <Input placeholder="Search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <Select value={platformId} onChange={(e) => { setPlatformId(e.target.value); setPage(1); }}><option value="">All platforms</option>{platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
+        <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}><option value="">All categories</option>{categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
+        <Select value={providerId} onChange={(e) => { setProviderId(e.target.value); setPage(1); }}><option value="">All providers</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
+        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></Select>
+        <Select value={refill} onChange={(e) => { setRefill(e.target.value); setPage(1); }}>
           <option value="">Refill: All</option>
           <option value="yes">Supported</option>
           <option value="no">Not supported</option>
@@ -89,7 +94,7 @@ export function AdminProducts() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Provider cost","Your %","Sell / 1k","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Provider","Provider cost","Your %","Sell / 1k","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -98,6 +103,7 @@ export function AdminProducts() {
                 <td className="p-2"><input type="checkbox" checked={selected.includes(p.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, p.id] : s.filter((id) => id !== p.id))} /></td>
                 <td className="p-2 font-medium">{p.name}</td>
                 <td className="p-2">{p.platform_name}</td>
+                <td className="p-2">{p.provider_name || "—"}</td>
                 <td className="p-2">{money(p.cost_per_1000)}</td>
                 <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
                 <td className="p-2">{money(p.price_per_1000)}</td>
@@ -378,6 +384,7 @@ export function AdminProviders() {
   const [servicesFor, setServicesFor] = useState<string | null>(null);
   const [percent, setPercent] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [svcPage, setSvcPage] = useState(1);
   const services = useQuery({
     queryKey: ["provider-services", servicesFor],
     queryFn: () => api<{ services: { service: string; name: string; category?: string; rate?: string; min?: string; max?: string }[] }>(`/admin/providers/${servicesFor}/services`),
@@ -390,6 +397,10 @@ export function AdminProviders() {
     const q = search.toLowerCase();
     return `${s.name} ${s.category} ${s.service}`.toLowerCase().includes(q);
   });
+  const svcPageSize = 100;
+  const svcTotal = filtered.length;
+  const visibleServices = filtered.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize);
+  const providerPackageCount = services.data?.services.length ?? 0;
 
   const importWithPercent = async (providerId: string, markupPercent: number) => {
     const toastId = toast.loading("Importing packages from the provider…");
@@ -437,7 +448,7 @@ export function AdminProviders() {
                       qc.invalidateQueries({ queryKey: ["/admin/providers"] });
                     } catch (e) { toast.error(e instanceof ApiError ? e.message : "Balance check failed"); }
                   }}>Test</button>
-                  <button className="font-semibold text-brand-700" onClick={() => { setPercent(null); setSearch(""); setServicesFor(String(row.id)); }}>See prices</button>
+                  <button className="font-semibold text-brand-700" onClick={() => { setPercent(null); setSearch(""); setSvcPage(1); setServicesFor(String(row.id)); }}>See prices</button>
                 </td>
               </tr>
             ))}
@@ -447,8 +458,12 @@ export function AdminProviders() {
       {editing && <ProviderForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       {servicesFor && (
         <Modal open title="Provider prices and your profit" onClose={() => setServicesFor(null)}>
-          {services.isLoading && <p className="text-sm text-slate-500">Loading panel prices…</p>}
           {services.error && <p className="text-sm text-rose-600">{services.error instanceof ApiError ? services.error.message : "Could not load services"}</p>}
+          <p className="mb-2 text-xs text-slate-500">
+            {services.isLoading
+              ? "Loading every package from this provider…"
+              : `${providerPackageCount.toLocaleString()} packages from the provider. USD ${usdToGhs} → GHS. Provider cost is converted, then your percent is added.`}
+          </p>
           <div className="mb-3 grid gap-3 sm:grid-cols-3">
             <label className="block sm:col-span-1">
               <span className="label">Your percent %</span>
@@ -456,15 +471,14 @@ export function AdminProviders() {
             </label>
             <label className="block sm:col-span-2">
               <span className="label">Search</span>
-              <Input placeholder="TikTok followers…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input placeholder="TikTok followers…" value={search} onChange={(e) => { setSearch(e.target.value); setSvcPage(1); }} />
             </label>
           </div>
-          <p className="mb-2 text-xs text-slate-500">USD {usdToGhs} → GHS. Provider cost is converted, then your percent is added. Profit is what you keep per 1,000.</p>
           <div className="max-h-80 overflow-auto">
             <table className="w-full text-left text-sm">
               <thead><tr className="text-slate-500">{["Name","Provider","Your cost","Customer pays","Your profit"].map((h) => <th key={h} className="p-1">{h}</th>)}</tr></thead>
               <tbody>
-                {filtered.slice(0, 80).map((s) => {
+                {visibleServices.map((s) => {
                   const rateUsd = Number(s.rate ?? 0);
                   const cost = round4(rateUsd * usdToGhs);
                   const sell = sellFromCost(cost, markup);
@@ -485,13 +499,13 @@ export function AdminProviders() {
               </tbody>
             </table>
           </div>
-          {filtered.length > 80 && <p className="mt-2 text-xs text-slate-500">Showing 80 of {filtered.length}. Search to narrow the list.</p>}
+          <Pagination page={svcPage} total={svcTotal} limit={svcPageSize} onPage={setSvcPage} />
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setServicesFor(null)}>Close</Button>
             <Button onClick={async () => {
               await importWithPercent(servicesFor, markup);
               setServicesFor(null);
-            }}>Import with {markup}% profit</Button>
+            }}>Import all {providerPackageCount.toLocaleString()} packages at {markup}%</Button>
           </div>
         </Modal>
       )}
