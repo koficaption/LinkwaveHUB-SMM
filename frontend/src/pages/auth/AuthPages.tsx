@@ -60,7 +60,6 @@ export function LoginPage() {
           {form.formState.isSubmitting ? "Signing in..." : "Login"}
         </Button>
       </form>
-      <DemoAccounts onFill={(email, password) => form.reset({ email, password })} />
       <p className="mt-4 text-center text-sm">No account? <Link to="/register" className="font-semibold text-brand-700">Register</Link></p>
     </AuthCard>
   );
@@ -257,27 +256,6 @@ function Field({ label, error, children }: { label: string; error?: string; chil
       {children}
       {error && <span className="mt-1 block text-xs text-rose-600">{error}</span>}
     </label>
-  );
-}
-
-function DemoAccounts({ onFill }: { onFill: (email: string, password: string) => void }) {
-  const accounts = [
-    ["Admin", "owussamuel18@gmail.com", "Admin@12345"],
-    ["Reseller", "reseller@linkwavehub.com", "Reseller@12345"],
-    ["Customer", "customer@linkwavehub.com", "Customer@12345"],
-  ] as const;
-  return (
-    <div className="mt-5 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-      <p className="font-semibold">Demo accounts</p>
-      <ul className="mt-2 space-y-1">
-        {accounts.map(([role, email, password]) => (
-          <li key={email} className="flex items-center justify-between gap-2">
-            <span>{role}: {email}</span>
-            <button type="button" className="font-semibold text-brand-700" onClick={() => onFill(email, password)}>Use</button>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

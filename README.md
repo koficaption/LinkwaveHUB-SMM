@@ -21,18 +21,6 @@ frontend  →  REST /api  →  Express services  →  PostgreSQL
 - Orders debit the wallet in a SQL transaction (row lock + audit + notification).
 - New SMM or payment suppliers are registered adapters — not scattered `if` statements.
 
-## Demo accounts
-
-These logins are **sample rows in your own database**, created on first boot so the dashboards are not empty. They are not another company’s live panel.
-
-| Role     | Email                         | Password       |
-|----------|-------------------------------|----------------|
-| Admin    | owussamuel18@gmail.com        | Admin@12345    |
-| Reseller | reseller@linkwavehub.com      | Reseller@12345 |
-| Customer | customer@linkwavehub.com      | Customer@12345 |
-
-Add your own products from **Admin → Products**. Sample catalog rows can stay for preview or you can disable them.
-
 ## Affiliates
 
 Signed-in users get a personal link (`/register?ref=CODE`). When a referred user adds funds (auto or confirmed deposits), the referrer earns **7% for life**. Commission is credited to the referrer wallet and can be used to order services. Rate and minimum payout are in **Admin → Settings**.
@@ -109,7 +97,7 @@ LIVE_DATABASE_URL='postgresql://postgres.xxxx:PASSWORD@aws-0-REGION.pooler.supab
 ```
 
 4. Put that same URI in `.env` as `DATABASE_URL`. **Do not change `ENCRYPTION_KEY`** if you copied provider API keys.
-5. Restart the API. Admin login is `owussamuel18@gmail.com` / `Admin@12345` if demo users were copied.
+5. Restart the API. Sign in as admin with the owner email and that account’s own password.
 
 The Express API is the only client that talks to Postgres. The React app never uses the anon key, so provider secrets and wallet ledgers stay server-side. Public tables have RLS enabled so the Supabase Data API cannot read them.
 
