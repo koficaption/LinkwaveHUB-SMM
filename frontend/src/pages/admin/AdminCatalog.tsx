@@ -5,6 +5,7 @@ import { api, money, ApiError } from "@/api/client";
 import type { Category, Paginated, Platform, Product } from "@/types";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
+import { productRefill } from "@/utils/refill";
 
 function round4(value: number) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(4));
@@ -101,7 +102,7 @@ export function AdminProducts() {
                 <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
                 <td className="p-2">{money(p.price_per_1000)}</td>
                 <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
-                <td className="p-2">{p.refill_supported ? <Badge className={statusTone.available}>{p.refill_days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
+                <td className="p-2">{productRefill(p).supported ? <Badge className={statusTone.available}>{productRefill(p).days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
                 <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-2">
@@ -152,8 +153,8 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     avgDeliveryTime: product?.avg_delivery_time ?? "0-6 hours",
     providerServiceId: product?.provider_service_id ?? "",
     features: (product?.features ?? []).join("\n"),
-    refillSupported: Boolean(product?.refill_supported),
-    refillDays: product?.refill_days ?? 30,
+    refillSupported: productRefill(product ?? {}).supported,
+    refillDays: productRefill(product ?? {}).days,
     refillType: product?.refill_type ?? "",
     refillServiceId: product?.refill_service_id ?? "",
     refillLimit: product?.refill_limit ?? 1,

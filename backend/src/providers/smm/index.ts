@@ -1,3 +1,5 @@
+import { parsePanelFlag } from "../../services/refillParse.js";
+
 export type SmmOrderInput = {
   serviceId: string;
   link: string;
@@ -140,7 +142,7 @@ export const genericHttpAdapter: SmmProviderAdapter = {
       rate: row.rate != null ? String(row.rate) : undefined,
       min: row.min != null ? String(row.min) : undefined,
       max: row.max != null ? String(row.max) : undefined,
-      refill: Boolean(row.refill),
+      refill: parsePanelFlag(row.refill),
       cancel: Boolean(row.cancel),
     }));
   },

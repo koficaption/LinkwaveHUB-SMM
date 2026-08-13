@@ -11,6 +11,7 @@ import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { productRefill } from "@/utils/refill";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -65,7 +66,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
             <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1k</span></p>
             <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} />
+              <RefillBadge {...productRefill(p)} />
               <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase text-emerald-800">{p.status}</span>
             </div>
             <Link to={`/services/${p.slug}`}><Button className="mt-4 w-full">View</Button></Link>
@@ -99,7 +100,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
                   <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}</span></td>
                   <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
                   <td className="px-3 py-3 text-xs">{p.avg_delivery_time || "—"}</td>
-                  <td className="px-3 py-3"><RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} /></td>
+                  <td className="px-3 py-3"><RefillBadge {...productRefill(p)} /></td>
                   <td className="px-3 py-3 capitalize">{p.status}</td>
                   <td className="px-3 py-3"><Link to={`/services/${p.slug}`}><Button className="h-9 px-3">View</Button></Link></td>
                 </tr>
@@ -158,7 +159,7 @@ export function ServiceDetailPage() {
         <p className="text-sm font-semibold text-brand-700">{p.platform_name} → {p.category_name}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-extrabold">{p.name}</h1>
-          <RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} />
+          <RefillBadge {...productRefill(p)} />
         </div>
         <p className="mt-4 text-slate-600 dark:text-slate-300">{p.description}</p>
         <ul className="mt-6 space-y-2 text-sm">

@@ -4,6 +4,7 @@ import { decryptSecret, like, parsePagination, publicRefillId } from "../utils.j
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { getSmmAdapter } from "../providers/smm/index.js";
+import { parseRefillHint } from "./refillParse.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const refillSelect = `
@@ -43,8 +44,9 @@ export async function eligibilityForOrder(orderId: string) {
 }
 
 function computeEligibility(row: Record<string, unknown>) {
-  const refillSupported = Boolean(row.refill_supported);
-  const days = Math.max(1, Number(row.refill_days ?? 30));
+  const hint = parseRefillHint(String(row.product_name || row.name || ""), "", Boolean(row.refill_supported));
+  const refillSupported = Boolean(row.refill_supported) || hint.supported;
+  const days = Math.max(1, hint.fromName ? hint.days : Number(row.refill_days ?? hint.days ?? 30));
   const max = Math.max(1, Number(row.refill_limit ?? 1));
   const used = Number(row.refill_count ?? 0);
   const latest = String(row.latest_refill_status || "");

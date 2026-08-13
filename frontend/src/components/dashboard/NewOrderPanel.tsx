@@ -8,6 +8,7 @@ import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { productRefill } from "@/utils/refill";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -174,7 +175,7 @@ export function NewOrderPanel() {
               Min {selected.min_quantity.toLocaleString()} · Max {selected.max_quantity.toLocaleString()}
               {selected.avg_delivery_time ? ` · ${selected.avg_delivery_time}` : ""}
             </p>
-            <RefillBadge supported={Boolean(selected.refill_supported)} days={selected.refill_days} />
+            <RefillBadge {...productRefill(selected)} />
           </div>
           {selected.description && <p className="text-sm text-slate-600 dark:text-slate-300">{selected.description}</p>}
           <label className="block">

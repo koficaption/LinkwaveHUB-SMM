@@ -1,6 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
+import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
@@ -461,6 +462,11 @@ export async function bulkProductStatus(ids: string[], status: "active" | "inact
 
 function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin: boolean) {
   const product = { ...row };
+  const hint = parseRefillHint(String(product.name || ""), "", Boolean(product.refill_supported));
+  if (hint.supported) {
+    product.refill_supported = true;
+    product.refill_days = hint.fromName ? hint.days : Number(product.refill_days || hint.days);
+  }
   if (!admin) {
     delete product.cost_per_1000;
     delete product.profit_per_1000;
