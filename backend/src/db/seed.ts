@@ -211,16 +211,16 @@ export async function seed() {
     productIds.push(row!.id);
   }
 
-  const paystackReady = Boolean(config.paystackSecretKey);
-  const paystackConfig = JSON.stringify({
-    publicKey: config.paystackPublicKey || undefined,
+  const korapayReady = Boolean(config.korapaySecretKey);
+  const korapayConfig = JSON.stringify({
+    publicKey: config.korapayPublicKey || undefined,
   });
   await query(
     `INSERT INTO payment_methods (code, name, description, adapter, is_enabled, sort_order, config) VALUES
      ('mock', 'Instant Demo Top-up', 'Credits the wallet immediately for demos and testing.', 'mock', $1, 4, '{}'),
      ('momo', 'Mobile Money', 'MTN, Vodafone and AirtelTigo manual confirmation.', 'manual', TRUE, 2, '{"network":"MTN Mobile Money","momoNumber":"024 000 0000"}'),
-     ('paystack', 'Card / Paystack', 'Pay with Visa, Mastercard or mobile money via Paystack checkout.', 'paystack', $2, 1, $3::jsonb)`,
-    [!paystackReady, paystackReady, paystackConfig]
+     ('korapay', 'Card / Korapay', 'Pay with Visa, Mastercard or mobile money via Korapay checkout.', 'korapay', $2, 1, $3::jsonb)`,
+    [!korapayReady, korapayReady, korapayConfig]
   );
 
   await query(

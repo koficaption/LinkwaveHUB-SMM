@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui";
 import { money } from "@/api/client";
-import { ContactLinks, usePublicSettings } from "@/components/ContactLinks";
+import { ContactLinks, HelpBar, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const publicLinks = [
@@ -24,7 +24,7 @@ export function PublicLayout() {
   const settings = usePublicSettings();
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-brand-950">
+    <div className="min-h-screen bg-slate-50 pb-24 dark:bg-brand-950">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur-xl">
         <div className="container-page flex h-[4.25rem] items-center justify-between">
           <BrandLogo className="h-10 sm:h-11" />
@@ -73,6 +73,7 @@ export function PublicLayout() {
           <ContactLinks />
         </div>
       </footer>
+      <HelpBar />
     </div>
   );
 }
@@ -92,7 +93,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-brand-950">
+    <div className="min-h-screen bg-slate-100 pb-24 dark:bg-brand-950">
       <aside aria-label={title} className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/10 bg-black text-white transition lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-[4.25rem] items-center px-3">
           <BrandLogo to={home} className="h-10" />
@@ -127,10 +128,11 @@ export function AppShell({
             <Button variant="outline" onClick={async () => { await logout(); navigate("/"); }}>Logout</Button>
           </div>
         </header>
-        <main className="p-4 sm:p-6 lg:p-8">
+        <main className="p-4 pb-8 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>
+      <HelpBar />
     </div>
   );
 }

@@ -10,17 +10,44 @@ import { router } from "./routes/index.js";
 import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
-import { handlePaystackWebhook } from "./routes/paystackWebhook.js";
+import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
 
 const app = express();
 
+function corsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+  if (!origin) return callback(null, true);
+  if (origin === config.frontendUrl) return callback(null, true);
+  try {
+    const host = new URL(origin).hostname;
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".cursor.sh") ||
+      host.endsWith(".cursorusercontent.com")
+    ) {
+      return callback(null, true);
+    }
+  } catch {
+    /* ignore */
+  }
+  callback(null, false);
+}
+
 app.set("trust proxy", 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({ origin: config.frontendUrl, credentials: true }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));
+app.use(cors({ origin: corsOrigin, credentials: true }));
+app.post(
+  "/api/payments/webhooks/korapay",
+  express.raw({ type: "application/json" }),
+  asyncHandler(handleKorapayWebhook)
+);
 app.post(
   "/api/payments/webhooks/paystack",
   express.raw({ type: "application/json" }),
-  asyncHandler(handlePaystackWebhook)
+  asyncHandler(handleKorapayWebhook)
 );
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());

@@ -3,6 +3,7 @@ export type PaymentInitInput = {
   currency: string;
   email: string;
   reference: string;
+  customerName?: string;
   metadata?: Record<string, unknown>;
   config?: Record<string, unknown>;
   callbackUrl?: string | null;

@@ -375,7 +375,8 @@ function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null;
         <label className="block"><span className="label">Type</span>
           <Select value={form.adapter} onChange={(e) => set("adapter", e.target.value)} disabled={Boolean(method)}>
             <option value="manual">Manual (MoMo / bank)</option>
-            <option value="paystack">Card / Paystack</option>
+            <option value="korapay">Card / Korapay</option>
+            <option value="paystack">Card / Paystack (legacy)</option>
             <option value="mock">Instant demo top-up</option>
           </Select>
         </label>
@@ -528,7 +529,7 @@ export function AdminSettings() {
       <h1 className="text-2xl font-extrabold">Settings</h1>
       <Card>
         <h2 className="font-bold">Business & customer service</h2>
-        <p className="mt-1 text-sm text-slate-500">These details appear on the website footer and the support page.</p>
+        <p className="mt-1 text-sm text-slate-500">These details appear on the website footer, the bottom help bar, and the support page.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <label className="block"><span className="label">Site name</span><Input value={form.siteName} onChange={(e) => setGeneral({ ...form, siteName: e.target.value })} /></label>
           <label className="block"><span className="label">Currency</span><Input value={form.currency} onChange={(e) => setGeneral({ ...form, currency: e.target.value })} /></label>
@@ -552,7 +553,9 @@ export function AdminSettings() {
           {items.map((item, index) => (
             <div key={index} className="grid gap-2 md:grid-cols-7">
               <Select className="md:col-span-2" value={item.kind} onChange={(e) => setChannels(items.map((row, i) => i === index ? { ...row, kind: e.target.value } : row))}>
-                <option value="telegram">Telegram</option>
+                <option value="channel">Channel</option>
+            <option value="group">Group</option>
+            <option value="telegram">Telegram</option>
                 <option value="whatsapp">WhatsApp</option>
                 <option value="community">Community</option>
                 <option value="discord">Discord</option>

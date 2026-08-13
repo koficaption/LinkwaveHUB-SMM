@@ -396,7 +396,7 @@ export async function approveResellerApplication(id: string, actor: AuthUser | n
     action: "reseller.upgrade.approve",
     targetType: "reseller_application",
     targetId: id,
-    details: { userId: result?.user_id, storeName: result?.store_name, source: actor ? "admin" : "paystack" },
+    details: { userId: result?.user_id, storeName: result?.store_name, source: actor ? "admin" : "korapay" },
     ip,
   });
   return result;

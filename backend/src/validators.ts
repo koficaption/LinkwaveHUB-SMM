@@ -119,7 +119,7 @@ export const paymentMethodSchema = z.object({
   name: z.string().min(2).max(80),
   code: z.string().max(40).optional(),
   description: z.string().max(500).optional().nullable(),
-  adapter: z.enum(["manual", "mock", "paystack"]).optional(),
+  adapter: z.enum(["manual", "mock", "paystack", "korapay"]).optional(),
   isEnabled: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   config: z.object({

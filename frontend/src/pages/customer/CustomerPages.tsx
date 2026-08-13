@@ -13,6 +13,10 @@ import { ContactLinks } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
 import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
 
+function isCardMethod(adapter?: string) {
+  return adapter === "korapay" || adapter === "paystack" || adapter === "card";
+}
+
 export function CustomerHome() {
   const { me } = useAuth();
   const orders = useQuery({ queryKey: ["my-orders"], queryFn: () => api<Paginated<Order>>("/orders?limit=5") });
@@ -162,9 +166,9 @@ export function WalletPage() {
   const [method, setMethod] = useState("");
   const [lastInstructions, setLastInstructions] = useState("");
   const selected = methods.data?.find((m) => m.code === method)
-    ?? methods.data?.find((m) => m.adapter === "paystack")
+    ?? methods.data?.find((m) => isCardMethod(m.adapter))
     ?? methods.data?.[0];
-  const methodCode = method || selected?.code || "paystack";
+  const methodCode = method || selected?.code || "korapay";
   const deposit = useMutation({
     mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null }>("/payments/deposit", {
       method: "POST",
@@ -176,7 +180,7 @@ export function WalletPage() {
     }),
     onSuccess: async (data) => {
       if (data.checkoutUrl) {
-        toast.success("Redirecting to Paystack…");
+        toast.success("Redirecting to Korapay…");
         window.location.assign(data.checkoutUrl);
         return;
       }
@@ -202,9 +206,9 @@ export function WalletPage() {
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
           </Select>
-          {selected?.adapter === "paystack" && (
+          {isCardMethod(selected?.adapter) && (
             <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              You will be redirected to Paystack to pay by card (or mobile money). Your wallet updates as soon as Paystack confirms.
+              You will be redirected to Korapay to pay by card (or mobile money). Your wallet updates as soon as Korapay confirms.
             </p>
           )}
           {selected?.adapter === "manual" && (
@@ -217,7 +221,7 @@ export function WalletPage() {
             </div>
           )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
-            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : selected?.adapter === "paystack" ? "Pay with card" : "Deposit"}
+            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : isCardMethod(selected?.adapter) ? "Pay with card" : "Deposit"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
         </div>
@@ -423,12 +427,12 @@ export function BecomeResellerPage() {
   const [senderName, setSenderName] = useState(me?.user.full_name ?? "");
   const [senderNumber, setSenderNumber] = useState(me?.user.phone ?? "");
   const selected = methods.data?.find((m) => m.code === method)
-    ?? methods.data?.find((m) => m.adapter === "paystack")
+    ?? methods.data?.find((m) => isCardMethod(m.adapter))
     ?? methods.data?.find((m) => m.adapter === "manual")
     ?? methods.data?.[0];
-  const methodCode = method || selected?.code || "paystack";
+  const methodCode = method || selected?.code || "korapay";
   const cfg = selected?.config ?? {};
-  const cardCheckout = selected?.adapter === "paystack";
+  const cardCheckout = isCardMethod(selected?.adapter);
 
   useEffect(() => {
     if (me?.user.role === "reseller") navigate("/app/reseller", { replace: true });
@@ -454,7 +458,7 @@ export function BecomeResellerPage() {
     onSuccess: async (data) => {
       const url = data.checkoutUrl || data.payment?.checkoutUrl;
       if (url) {
-        toast.success("Redirecting to Paystack…");
+        toast.success("Redirecting to Korapay…");
         window.location.assign(url);
         return;
       }
@@ -476,14 +480,14 @@ export function BecomeResellerPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Become a reseller / child panel</h1>
-        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Paystack are confirmed automatically. Mobile Money still waits for admin confirmation.</p>
+        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Mobile Money still waits for admin confirmation.</p>
       </div>
       <Card>
         <p className="text-sm text-slate-500">Upgrade fee</p>
         <p className="mt-1 text-3xl font-extrabold">{money(data?.upgradeFee ?? 0, data?.currency ?? "GHS")}</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{data?.upgradeNote}</p>
       </Card>
-      {verifying && <Card><p className="text-sm">Confirming your Paystack payment…</p></Card>}
+      {verifying && <Card><p className="text-sm">Confirming your Korapay payment…</p></Card>}
       {pending && application && (
         <Card>
           <div className="flex items-center justify-between gap-3">
@@ -496,7 +500,7 @@ export function BecomeResellerPage() {
           </p>
           {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
           {pendingCheckout ? (
-            <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Paystack</Button>
+            <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Korapay</Button>
           ) : (
             <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using that reference. When an admin confirms it, this page will switch to your reseller dashboard.</p>
           )}
@@ -522,7 +526,7 @@ export function BecomeResellerPage() {
             </label>
             {cardCheckout && (
               <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                You will be redirected to Paystack. After a successful card payment, your dashboard switches to reseller automatically.
+                You will be redirected to Korapay. After a successful card payment, your dashboard switches to reseller automatically.
               </p>
             )}
             {selected?.adapter === "manual" && (

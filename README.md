@@ -12,7 +12,7 @@ A production-style social media boosting platform by **OB CodeLab**. Customers b
 
 ```
 frontend  →  REST /api  →  Express services  →  PostgreSQL
-                              ├─ PaymentAdapter (mock / manual / Paystack)
+                              ├─ PaymentAdapter (mock / manual / Korapay)
                               └─ SmmProviderAdapter (mock / generic HTTP panel)
 ```
 
@@ -41,19 +41,19 @@ Signed-in users get a personal link (`/register?ref=CODE`). When a referred user
 
 Wallet deposits and reseller upgrade fees can use:
 
-- **Card / Paystack** — hosted checkout. Set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, and `PAYSTACK_ENCRYPTION_KEY` in `.env` (never commit them). After a successful charge, the API verifies with Paystack and credits the wallet. Reseller upgrade card payments do **not** credit the wallet; they promote the account instead.
+- **Card / Korapay** — hosted checkout (test or live keys). Set `KORAPAY_PUBLIC_KEY`, `KORAPAY_SECRET_KEY`, and `KORAPAY_ENCRYPTION_KEY` in `.env` (never commit them). After a successful charge, the API verifies with Korapay and credits the wallet. Reseller upgrade card payments do **not** credit the wallet; they promote the account instead.
 - **Mobile Money** — manual confirmation by an admin
 - **Instant Demo Top-up** — local/demo only; disable it when real payments are on
 
-Webhook URL (Paystack Dashboard → Settings → API Keys & Webhooks):
+Webhook URL (Korapay Dashboard → Settings → Webhooks):
 
-`{API_ORIGIN}/api/payments/webhooks/paystack`
+`{API_ORIGIN}/api/payments/webhooks/korapay`
 
-Korapay can be added later. SMM fulfilment uses the **resellersmm.com `/api/v2`** PerfectPanel adapter from Admin → Providers.
+SMM fulfilment uses the **resellersmm.com `/api/v2`** PerfectPanel adapter from Admin → Providers.
 
 ## Admin configuration
 
-From **Admin → Settings** you can set the customer service number, WhatsApp number, and channel/community links (Telegram, WhatsApp community, etc.). They appear in the public footer and on the support page.
+From **Admin → Settings** you can set the customer service number, WhatsApp number, and channel/community links (Telegram, WhatsApp community, etc.). They appear in the public footer, the bottom help bar, and on the support page.
 
 From **Admin → Payments** you can add or edit **manual** payment details (MoMo network and number, account name, bank name and account number, extra instructions). Customers see those details when they fund their wallet. An admin then confirms the deposit.
 

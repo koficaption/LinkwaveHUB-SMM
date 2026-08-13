@@ -41,7 +41,7 @@ export function usePaystackReturn() {
         ]);
       } catch (error) {
         if (!cancelled) {
-          toast.error(error instanceof ApiError ? error.message : "Could not confirm Paystack payment");
+            toast.error(error instanceof ApiError ? error.message : "Could not confirm card payment");
         }
       } finally {
         if (!cancelled) {

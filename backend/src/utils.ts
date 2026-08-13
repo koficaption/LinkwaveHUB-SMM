@@ -91,7 +91,7 @@ export function clientIp(req: { headers: Record<string, unknown>; ip?: string; s
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
-/** Paystack redirects the payer's browser here after checkout. Only /app/* paths are allowed. */
+/** Checkout providers redirect the payer's browser here after payment. Only /app/* paths are allowed. */
 export function safeCheckoutReturnUrl(candidate: string | undefined, fallbackPath: string): string {
   const path = fallbackPath.startsWith("/") ? fallbackPath : `/${fallbackPath}`;
   const fallback = `${config.frontendUrl.replace(/\/$/, "")}${path}`;

@@ -39,7 +39,7 @@ export const config = {
   googleRedirectUri:
     process.env.GOOGLE_REDIRECT_URI ??
     `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/api/auth/google/callback`,
-  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY ?? "",
-  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
-  paystackEncryptionKey: process.env.PAYSTACK_ENCRYPTION_KEY ?? "",
+  korapayPublicKey: process.env.KORAPAY_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || "",
+  korapaySecretKey: process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "",
+  korapayEncryptionKey: process.env.KORAPAY_ENCRYPTION_KEY || process.env.PAYSTACK_ENCRYPTION_KEY || "",
 };

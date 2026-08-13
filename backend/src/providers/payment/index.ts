@@ -49,75 +49,96 @@ export const manualAdapter: PaymentAdapter = {
   },
 };
 
-export const paystackAdapter: PaymentAdapter = {
-  code: "paystack",
+export const korapayAdapter: PaymentAdapter = {
+  code: "korapay",
   async initialize(input: PaymentInitInput): Promise<PaymentInitResult> {
-    const secret = (input.config?.secretKey as string) || process.env.PAYSTACK_SECRET_KEY;
+    const secret = (input.config?.secretKey as string) || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY;
     if (!secret) {
       return {
         reference: input.reference,
         instructions:
-          "Paystack is enabled but not configured. Add PAYSTACK_SECRET_KEY to the server environment.",
+          "Korapay is enabled but not configured. Add KORAPAY_SECRET_KEY to the server environment.",
         autoComplete: false,
       };
     }
-    const amountKobo = Math.round(input.amount * 100);
-    const response = await fetch("https://api.paystack.co/transaction/initialize", {
+    const metadata = korapayMetadata(input.metadata);
+    const response = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
+        "User-Agent": "LinkwaveSMM/1.0",
       },
       body: JSON.stringify({
-        email: input.email,
-        amount: amountKobo,
-        reference: input.reference,
+        amount: Number(input.amount.toFixed(2)),
         currency: input.currency || "GHS",
-        callback_url: input.callbackUrl || undefined,
-        metadata: input.metadata ?? {},
-        channels: ["card", "mobile_money", "bank"],
+        reference: input.reference,
+        redirect_url: input.callbackUrl || undefined,
+        narration: `Linkwave SMM ${input.amount.toFixed(2)} ${input.currency || "GHS"}`,
+        channels: ["card", "bank_transfer", "mobile_money"],
+        default_channel: "card",
+        customer: {
+          email: input.email,
+          name: input.customerName || input.email.split("@")[0],
+        },
+        metadata,
       }),
     });
     const json = (await response.json()) as {
       status: boolean;
       message: string;
-      data?: { authorization_url: string; reference: string };
+      data?: { checkout_url?: string; reference?: string };
     };
-    if (!json.status || !json.data) {
-      throw new AppError(json.message || "Paystack initialization failed", 400);
+    if (!json.status || !json.data?.checkout_url) {
+      throw new AppError(json.message || "Korapay initialization failed", 400);
     }
     return {
-      reference: json.data.reference,
-      checkoutUrl: json.data.authorization_url,
-      providerRef: json.data.reference,
-      instructions: "Complete payment on the Paystack checkout page. Your wallet updates after Paystack confirms.",
+      reference: json.data.reference || input.reference,
+      checkoutUrl: json.data.checkout_url,
+      providerRef: json.data.reference || input.reference,
+      instructions: "Complete payment on the Korapay checkout page. Your wallet updates after Korapay confirms.",
     };
   },
   async verify(reference: string, cfg?: Record<string, unknown>): Promise<PaymentVerifyResult> {
-    const secret = (cfg?.secretKey as string) || process.env.PAYSTACK_SECRET_KEY;
+    const secret = (cfg?.secretKey as string) || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY;
     if (!secret) return { success: false, reference };
-    const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-      headers: { Authorization: `Bearer ${secret}` },
-    });
+    const response = await fetch(
+      `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
+      { headers: { Authorization: `Bearer ${secret}`, "User-Agent": "LinkwaveSMM/1.0" } }
+    );
     const json = (await response.json()) as {
       status: boolean;
-      data?: { status: string; amount: number; reference: string; id: number };
+      data?: { status?: string; amount?: number | string; reference?: string };
     };
+    const amount = json.data?.amount == null ? undefined : Number(json.data.amount);
     return {
       success: Boolean(json.status && json.data?.status === "success"),
       reference,
-      providerRef: json.data ? String(json.data.id) : null,
-      amount: json.data ? json.data.amount / 100 : undefined,
+      providerRef: json.data?.reference ?? reference,
+      amount,
       raw: json.data,
     };
   },
 };
 
+function korapayMetadata(meta?: Record<string, unknown>) {
+  if (!meta) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    const safeKey = key.replace(/[^A-Za-z0-9-]/g, "").slice(0, 20);
+    if (!safeKey || value == null || value === "") continue;
+    out[safeKey] = String(value).slice(0, 120);
+    if (Object.keys(out).length >= 5) break;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const adapters: Record<string, PaymentAdapter> = {
   mock: mockAdapter,
   manual: manualAdapter,
-  paystack: paystackAdapter,
-  card: paystackAdapter,
+  korapay: korapayAdapter,
+  paystack: korapayAdapter,
+  card: korapayAdapter,
   momo: manualAdapter,
 };
 
@@ -132,6 +153,3 @@ export function getPaymentAdapter(code: string): PaymentAdapter {
 export function registerPaymentAdapter(code: string, adapter: PaymentAdapter) {
   adapters[code] = adapter;
 }
-
-// Korapay (instant card + bank / manual) will be added here when the website is complete.
-// Do not hard-code Korapay keys in the frontend.

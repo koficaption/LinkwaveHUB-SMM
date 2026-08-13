@@ -47,8 +47,8 @@ export async function listPaymentMethods(includeDisabled = false) {
     const methodConfig = { ...(row.config as Record<string, unknown> | null) };
     delete methodConfig.secretKey;
     delete methodConfig.apiKey;
-    if (String(row.adapter) === "paystack" && !methodConfig.publicKey && config.paystackPublicKey) {
-      methodConfig.publicKey = config.paystackPublicKey;
+    if (["korapay", "paystack", "card"].includes(String(row.adapter)) && !methodConfig.publicKey && config.korapayPublicKey) {
+      methodConfig.publicKey = config.korapayPublicKey;
     }
     return { ...row, config: methodConfig };
   });
@@ -87,6 +87,7 @@ export async function initiateDirectedPayment(
     amount,
     currency: "GHS",
     email: user.email,
+    customerName: user.full_name,
     reference,
     metadata: { userId: user.id, ...meta },
     config: (method.config as Record<string, unknown>) || {},
@@ -131,6 +132,7 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     amount,
     currency: "GHS",
     email: user.email,
+    customerName: user.full_name,
     reference,
     metadata: { userId: user.id },
     config: (method.config as Record<string, unknown>) || {},
@@ -177,9 +179,9 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
   return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions };
 }
 
-function isPaystackAdapter(adapter: unknown) {
+function isCardAdapter(adapter: unknown) {
   const code = String(adapter || "");
-  return code === "paystack" || code === "card";
+  return code === "korapay" || code === "paystack" || code === "card";
 }
 
 export async function completeVerifiedPayment(
@@ -209,8 +211,13 @@ export async function completeVerifiedPayment(
   if (!verified.success) {
     throw new AppError("This payment has not been confirmed yet", 400);
   }
-  if (verified.amount != null && Math.abs(verified.amount - Number(payment.amount)) > 0.5) {
-    throw new AppError("Paid amount does not match this invoice", 400);
+  if (verified.amount != null) {
+    let paid = Number(verified.amount);
+    const expected = Number(payment.amount);
+    if (paid > expected * 50) paid = paid / 100;
+    if (Math.abs(paid - expected) > 0.5) {
+      throw new AppError("Paid amount does not match this invoice", 400);
+    }
   }
 
   if (purpose === "reseller_upgrade") {
@@ -237,7 +244,7 @@ export async function completeVerifiedPayment(
         amount: Number(payment.amount),
         type: "deposit",
         reference: String(payment.reference),
-        description: `Deposit via ${payment.method_name || "Paystack"}`,
+        description: `Deposit via ${payment.method_name || "Korapay"}`,
         createdBy: opts.actor?.id,
       },
       client
@@ -287,7 +294,7 @@ export async function confirmPayment(reference: string, actor: AuthUser, ip?: st
     [reference]
   );
   if (!payment) throw new AppError("Payment not found", 404);
-  if (isPaystackAdapter(payment.adapter)) {
+  if (isCardAdapter(payment.adapter)) {
     const result = await completeVerifiedPayment(reference, { actor, ip });
     return result.application ?? result.payment;
   }
