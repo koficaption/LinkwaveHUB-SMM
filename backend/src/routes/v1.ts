@@ -134,6 +134,8 @@ function toPublicApiOrder(order: Record<string, unknown>) {
     target: order.target,
     charge: Number(order.charge),
     status: order.status,
+    start_count: order.start_count ?? null,
+    remains: order.remains ?? null,
     created_at: order.created_at,
     updated_at: order.updated_at,
   };

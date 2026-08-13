@@ -37,3 +37,10 @@ export const statusTone: Record<string, string> = {
 export function prettyStatus(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+export function formatCount(value: number | string | null | undefined) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString();
+}

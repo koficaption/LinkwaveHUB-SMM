@@ -4,6 +4,7 @@ import { calcCharge, decryptSecret, like, parsePagination, publicOrderId } from 
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
+import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
 import { publicProductName } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
@@ -375,6 +376,21 @@ export async function getOrder(idOrPublic: string, user: AuthUser) {
     const reseller = await queryOne(`SELECT id FROM resellers WHERE user_id = $1 AND id = $2`, [user.id, order.reseller_id]);
     if (!reseller) throw new AppError("Order not found", 404);
   }
+  if (order.provider_order_id && !isMockProviderOrderId(order.provider_order_id)) {
+    await syncOrderFromProvider(String(order.id)).catch(() => undefined);
+    const fresh = await queryOne(
+      `SELECT ${orderSelect}
+       FROM orders o
+       JOIN products p ON p.id = o.product_id
+       JOIN platforms pl ON pl.id = p.platform_id
+       JOIN categories c ON c.id = p.category_id
+       JOIN users u ON u.id = o.user_id
+       LEFT JOIN providers pr ON pr.id = o.provider_id
+       WHERE o.id = $1`,
+      [order.id]
+    );
+    if (fresh) Object.assign(order, fresh);
+  }
   const history = await query(
     `SELECT h.*, u.full_name AS actor_name
      FROM order_status_history h
@@ -590,6 +606,76 @@ export async function refreshOrderFromProvider(id: string, actor: AuthUser) {
   return getOrder(id, actor);
 }
 
+let orderSyncRunning = false;
+
+export async function syncOpenOrdersFromProvider() {
+  if (orderSyncRunning) return { checked: 0, updated: 0, skipped: true };
+  orderSyncRunning = true;
+  try {
+    const open = await query<Record<string, unknown>>(
+      `SELECT o.id, o.provider_order_id, o.status, o.user_id, o.public_id, o.product_id, o.charge,
+              pr.adapter, pr.api_url, pr.api_key_encrypted
+       FROM orders o
+       JOIN products p ON p.id = o.product_id
+       LEFT JOIN providers pr ON pr.id = COALESCE(o.provider_id, p.provider_id)
+       WHERE o.provider_order_id IS NOT NULL
+         AND o.provider_order_id NOT LIKE 'MOCK-%'
+         AND (
+           o.status IN ('pending', 'processing', 'in_progress', 'partial')
+           OR (o.status IN ('completed', 'failed') AND (o.start_count IS NULL OR o.remains IS NULL))
+         )
+       ORDER BY o.updated_at ASC
+       LIMIT 100`
+    );
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const row of open) {
+      const key = `${row.api_url || ""}::${row.adapter || ""}`;
+      const list = groups.get(key) ?? [];
+      list.push(row);
+      groups.set(key, list);
+    }
+    let updated = 0;
+    for (const rows of groups.values()) {
+      const first = rows[0];
+      let apiKey: string | undefined;
+      try {
+        apiKey = decryptProviderKey(first.api_key_encrypted);
+      } catch (err) {
+        console.error("Order status sync skipped a provider", err instanceof Error ? err.message : err);
+        continue;
+      }
+      if (!first.api_url || !apiKey) continue;
+      const adapter = adapterForLiveProvider(first.adapter, true);
+      const ids = rows.map((row) => String(row.provider_order_id));
+      let statuses: Record<string, SmmStatusResult> = {};
+      try {
+        statuses = adapter.getStatuses
+          ? await adapter.getStatuses(ids, { apiUrl: first.api_url as string, apiKey })
+          : Object.fromEntries(
+            await Promise.all(
+              ids.map(async (id) => [id, await adapter.getStatus(id, { apiUrl: first.api_url as string, apiKey })] as const)
+            )
+          );
+      } catch (err) {
+        console.error("Order status sync failed", err instanceof Error ? err.message : err);
+        continue;
+      }
+      for (const row of rows) {
+        const snapshot = statuses[String(row.provider_order_id)];
+        if (!snapshot) continue;
+        try {
+          if (await applyProviderSnapshot(row, snapshot)) updated += 1;
+        } catch (err) {
+          console.error("Order status apply failed", row.id, err instanceof Error ? err.message : err);
+        }
+      }
+    }
+    return { checked: open.length, updated };
+  } finally {
+    orderSyncRunning = false;
+  }
+}
+
 async function shouldAutoSendOrders() {
   const settings = await getSettings();
   const orders = (settings.orders ?? {}) as { autoProcessing?: boolean };
@@ -699,8 +785,6 @@ async function syncOrderFromProvider(id: string) {
   if (!order) return false;
   const providerOrderId = order.provider_order_id ? String(order.provider_order_id) : "";
   if (!providerOrderId || isMockProviderOrderId(providerOrderId)) return false;
-  const localStatus = String(order.status);
-  if (["refunded", "cancelled"].includes(localStatus)) return false;
 
   const apiKey = decryptProviderKey(order.api_key_encrypted);
   const adapter = livePanelAdapter(order, apiKey);
@@ -708,9 +792,15 @@ async function syncOrderFromProvider(id: string) {
     apiUrl: order.api_url as string | undefined,
     apiKey,
   });
+  return applyProviderSnapshot(order, result);
+}
+
+async function applyProviderSnapshot(order: Record<string, unknown>, result: SmmStatusResult) {
+  const id = String(order.id);
+  const localStatus = String(order.status);
   const nextStatus = mapPanelOrderStatus(result.status);
-  const startCount = Number.isFinite(result.startCount) ? result.startCount : null;
-  const remains = Number.isFinite(result.remains) ? result.remains : null;
+  const startCount = Number.isFinite(result.startCount) ? result.startCount ?? null : null;
+  const remains = Number.isFinite(result.remains) ? result.remains ?? null : null;
 
   await query(
     `UPDATE orders SET start_count = COALESCE($2, start_count), remains = COALESCE($3, remains), updated_at = NOW() WHERE id = $1`,
@@ -718,7 +808,22 @@ async function syncOrderFromProvider(id: string) {
   );
 
   if (!nextStatus || nextStatus === localStatus) return true;
-  if (localStatus === "completed" && nextStatus !== "partial") return true;
+  if (localStatus === "refunded") return true;
+
+  if (nextStatus === "refunded") {
+    const actor = await actorFromUserId(String(order.user_id));
+    await withTransaction(async (client) => {
+      const locked = await queryOne<Record<string, unknown>>(
+        `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+        [id],
+        client
+      );
+      if (!locked || locked.status === "refunded") return;
+      await refundOrderInternal(locked, actor, client, `Refunded by provider (${result.status})`);
+    });
+    enqueueOrderWebhook(id, "order.refunded").catch((err) => console.error("API webhook enqueue failed", err));
+    return true;
+  }
 
   await query(`UPDATE orders SET status = $2, updated_at = NOW() WHERE id = $1`, [id, nextStatus]);
   await query(
@@ -726,11 +831,53 @@ async function syncOrderFromProvider(id: string) {
      VALUES ($1,$2,$3,$4)`,
     [id, localStatus, nextStatus, `Provider status: ${result.status}`]
   );
+  await announceProviderStatusChange(order, localStatus, nextStatus);
+  return true;
+}
+
+async function actorFromUserId(userId: string): Promise<AuthUser> {
+  const user = await queryOne<AuthUser>(
+    `SELECT id, email, full_name, role, status FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (!user) throw new AppError("User not found", 404);
+  return user;
+}
+
+async function announceProviderStatusChange(
+  order: Record<string, unknown>,
+  fromStatus: string,
+  nextStatus: string
+) {
+  await notify({
+    userId: String(order.user_id),
+    title: `Order ${order.public_id} updated`,
+    body: `Status changed to ${nextStatus.replace(/_/g, " ")}.`,
+    type: "order",
+    metadata: { orderId: order.id, status: nextStatus, from: fromStatus },
+  });
   const event = webhookEventForStatus(nextStatus);
   if (event) {
-    enqueueOrderWebhook(id, event).catch((err) => console.error("API webhook enqueue failed", err));
+    enqueueOrderWebhook(String(order.id), event).catch((err) => console.error("API webhook enqueue failed", err));
   }
-  return true;
+  if (nextStatus === "completed" || nextStatus === "partial") {
+    const product = await queryOne<{ name: string; refill_supported: boolean; refill_days: number }>(
+      `SELECT name, refill_supported, refill_days FROM products WHERE id = $1`,
+      [order.product_id]
+    );
+    if (product?.refill_supported) {
+      const notes = ((await getSettings()).notifications ?? {}) as { refillNotifications?: boolean };
+      if (notes.refillNotifications !== false) {
+        await notify({
+          userId: String(order.user_id),
+          title: `Your order ${order.public_id} is eligible for refill.`,
+          body: `${product.name} can be refilled within ${product.refill_days} days. Open the order to request a refill.`,
+          type: "order",
+          metadata: { orderId: order.id, publicId: order.public_id },
+        });
+      }
+    }
+  }
 }
 
 function withRefill(order: Record<string, unknown>) {

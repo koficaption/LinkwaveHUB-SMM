@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api, formatDate, money, ApiError } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
 import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
-import { prettyStatus, statusTone } from "@/utils/cn";
+import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
 
@@ -28,6 +28,7 @@ export function AdminOrders() {
   const orders = useQuery({
     queryKey: ["admin-orders", page, status, search, platformId, providerId, refill, from, to],
     queryFn: () => api<Paginated<Order>>(`/admin/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}&platformId=${platformId}&providerId=${providerId}&refill=${refill}&from=${from}&to=${to}`),
+    refetchInterval: 20_000,
   });
   const items = orders.data?.items ?? [];
   const selectedOrders = items.filter((o) => selected.includes(o.id));
@@ -49,10 +50,10 @@ export function AdminOrders() {
 
   function exportSelected() {
     const rows = selectedOrders.length ? selectedOrders : items;
-    const header = ["Order ID","Customer","Service","Target","Quantity","Charge","Status","Refill","Created"];
+    const header = ["Order ID","Customer","Service","Target","Quantity","Start","Remains","Charge","Status","Refill","Created"];
     const csv = [header.join(","), ...rows.map((o) => [
       o.public_id, o.customer_email, JSON.stringify(o.product_name), JSON.stringify(o.target),
-      o.quantity, o.charge, o.status, o.refill?.display ?? "", o.created_at,
+      o.quantity, o.start_count ?? "", o.remains ?? "", o.charge, o.status, o.refill?.display ?? "", o.created_at,
     ].join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -106,6 +107,7 @@ export function AdminOrders() {
             <h3 className="mt-1 font-bold">{o.product_name}</h3>
             <p className="mt-2 text-sm text-muted">Customer: {o.customer_name}</p>
             <p className="text-sm text-muted">Quantity: {o.quantity.toLocaleString()} · {money(o.charge)}</p>
+            <p className="text-sm text-muted">Start count: {formatCount(o.start_count)} · Remaining: {formatCount(o.remains)}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
               <RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} />
@@ -119,7 +121,7 @@ export function AdminOrders() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? items.map((o) => o.id) : [])} /></th>
-              {["Order ID","Customer","Service","Target","Qty","Charge","Provider","Status","Refill","Created","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Order ID","Customer","Service","Target","Qty","Start","Remains","Charge","Provider","Status","Refill","Created","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -131,6 +133,8 @@ export function AdminOrders() {
                 <td className="p-2">{o.product_name}</td>
                 <td className="p-2 max-w-[140px] truncate" title={o.target}>{o.target}</td>
                 <td className="p-2">{o.quantity.toLocaleString()}</td>
+                <td className="p-2">{formatCount(o.start_count)}</td>
+                <td className="p-2">{formatCount(o.remains)}</td>
                 <td className="p-2">{money(o.charge)}</td>
                 <td className="p-2">{o.provider_name || "—"}</td>
                 <td className="p-2"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
@@ -166,7 +170,14 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
   const [status, setStatus] = useState(order.status);
   const [note, setNote] = useState(order.admin_note ?? "");
   const [confirm, setConfirm] = useState(false);
-  const detail = useQuery({ queryKey: ["order", order.id], queryFn: () => api<Order>(`/orders/${order.id}`) });
+  const detail = useQuery({
+    queryKey: ["order", order.id],
+    queryFn: () => api<Order>(`/orders/${order.id}`),
+    refetchInterval: (query) => {
+      const s = query.state.data?.status ?? order.status;
+      return ["pending", "processing", "in_progress", "partial"].includes(s) ? 15_000 : false;
+    },
+  });
   const refills = useQuery({
     queryKey: ["order-refills", order.id],
     queryFn: () => api<{ items: RefillRecord[] }>(`/orders/${order.id}/refills`),
@@ -187,6 +198,8 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
         <div><dt className="text-slate-500">Customer</dt><dd className="font-medium">{o.customer_name}</dd></div>
         <div><dt className="text-slate-500">Platform</dt><dd className="font-medium">{o.platform_name}</dd></div>
         <div><dt className="text-slate-500">Quantity</dt><dd className="font-medium">{o.quantity.toLocaleString()}</dd></div>
+        <div><dt className="text-slate-500">Start count</dt><dd className="font-medium">{formatCount(o.start_count)}</dd></div>
+        <div><dt className="text-slate-500">Remaining</dt><dd className="font-medium">{formatCount(o.remains)}</dd></div>
         <div><dt className="text-slate-500">Charge</dt><dd className="font-medium">{money(o.charge)}</dd></div>
         {o.profit != null && <div><dt className="text-slate-500">Profit</dt><dd className="font-medium">{money(o.profit)}</dd></div>}
         <div className="sm:col-span-2"><dt className="text-slate-500">Target</dt><dd className="break-all font-medium">{o.target}</dd></div>

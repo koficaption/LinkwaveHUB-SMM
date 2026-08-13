@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api, money, formatDate, ApiError } from "@/api/client";
 import type { Order, Paginated, RefillRecord, Wallet } from "@/types";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
-import { prettyStatus, statusTone } from "@/utils/cn";
+import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { publicProductName } from "@/utils/catalog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
@@ -61,6 +61,7 @@ export function OrdersPage() {
   const orders = useQuery({
     queryKey: ["my-orders", page, status, search, refill],
     queryFn: () => api<Paginated<Order>>(`/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}&refill=${refill}`),
+    refetchInterval: 20_000,
   });
   return (
     <div>
@@ -91,7 +92,8 @@ export function OrdersPage() {
           <Card key={o.id}>
             <p className="font-mono text-xs text-muted">{o.public_id}</p>
             <h3 className="mt-1 font-bold">{publicProductName(o.product_name)}</h3>
-            <p className="mt-2 text-sm text-muted">Quantity: {o.quantity.toLocaleString()}</p>
+            <p className="text-sm text-muted">Quantity: {o.quantity.toLocaleString()}</p>
+            <p className="text-sm text-muted">Start count: {formatCount(o.start_count)} · Remaining: {formatCount(o.remains)}</p>
             <p className="text-sm text-muted">Charge: {money(o.charge)}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
@@ -116,7 +118,14 @@ export function OrderDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState(false);
-  const order = useQuery({ queryKey: ["order", id], queryFn: () => api<Order>(`/orders/${id}`) });
+  const order = useQuery({
+    queryKey: ["order", id],
+    queryFn: () => api<Order>(`/orders/${id}`),
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s && ["pending", "processing", "in_progress", "partial"].includes(s) ? 15_000 : false;
+    },
+  });
   const history = useQuery({
     queryKey: ["order-refills", id],
     queryFn: () => api<{ items: RefillRecord[] }>(`/orders/${id}/refills`),
@@ -151,6 +160,8 @@ export function OrderDetailPage() {
           <Item label="Service" value={publicProductName(o.product_name)} />
           <Item label="Platform" value={o.platform_name} />
           <Item label="Quantity" value={o.quantity.toLocaleString()} />
+          <Item label="Start count" value={formatCount(o.start_count)} />
+          <Item label="Remaining" value={formatCount(o.remains)} />
           <Item label="Amount" value={money(o.charge)} />
           <Item label="Target" value={o.target} />
           <Item label="Created" value={formatDate(o.created_at)} />
@@ -237,7 +248,7 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead className="text-slate-500">
-          <tr>{["Order ID","Service","Qty","Amount","Status","Refill","Created",""].map((h) => <th key={h} className="pb-3 pr-4">{h}</th>)}</tr>
+          <tr>{["Order ID","Service","Qty","Start","Remains","Amount","Status","Refill","Created",""].map((h) => <th key={h} className="pb-3 pr-4">{h}</th>)}</tr>
         </thead>
         <tbody>
           {data.map((o) => (
@@ -245,6 +256,8 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
               <td className="py-3 pr-4 font-semibold">{o.public_id}</td>
               <td className="pr-4">{publicProductName(o.product_name)}</td>
               <td className="pr-4">{o.quantity.toLocaleString()}</td>
+              <td className="pr-4">{formatCount(o.start_count)}</td>
+              <td className="pr-4">{formatCount(o.remains)}</td>
               <td className="pr-4">{money(o.charge)}</td>
               <td className="pr-4"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
               <td className="pr-4"><RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} /></td>

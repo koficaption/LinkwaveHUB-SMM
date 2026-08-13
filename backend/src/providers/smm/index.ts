@@ -43,6 +43,7 @@ export interface SmmProviderAdapter {
   name: string;
   createOrder(input: SmmOrderInput, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmOrderResult>;
   getStatus(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmStatusResult>;
+  getStatuses?(providerOrderIds: string[], credentials: { apiUrl?: string; apiKey?: string }): Promise<Record<string, SmmStatusResult>>;
   getBalance(credentials: { apiUrl?: string; apiKey?: string }): Promise<number>;
   listServices(credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmService[]>;
   requestRefill?(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmRefillResult>;
@@ -104,22 +105,35 @@ export const genericHttpAdapter: SmmProviderAdapter = {
   },
   async getStatus(providerOrderId, credentials) {
     requireLiveCredentials(credentials);
-    const json = await panelRequest<{
-      status?: string;
-      start_count?: string;
-      remains?: string;
-      error?: string;
-    }>(credentials, {
+    const json = await panelRequest<Record<string, unknown>>(credentials, {
       action: "status",
       order: providerOrderId,
-    });
+    }, 12_000);
     if (json.error) throw new Error(String(json.error));
-    return {
-      status: (json.status || "pending").toLowerCase().replace(/\s+/g, "_"),
-      startCount: json.start_count ? Number(json.start_count) : undefined,
-      remains: json.remains ? Number(json.remains) : undefined,
-      raw: json,
-    };
+    return toStatusResult(json);
+  },
+  async getStatuses(providerOrderIds, credentials) {
+    requireLiveCredentials(credentials);
+    const ids = [...new Set(providerOrderIds.map(String).filter(Boolean))];
+    if (!ids.length) return {};
+    if (ids.length === 1) {
+      return { [ids[0]]: await this.getStatus(ids[0], credentials) };
+    }
+    try {
+      const json = await panelRequest<Record<string, unknown>>(credentials, {
+        action: "status",
+        orders: ids.join(","),
+      }, 20_000);
+      const parsed = parseStatusMap(json, ids);
+      if (Object.keys(parsed).length) return parsed;
+    } catch {
+      /* some panels only support a single order id */
+    }
+    const out: Record<string, SmmStatusResult> = {};
+    for (const id of ids) {
+      out[id] = await this.getStatus(id, credentials);
+    }
+    return out;
   },
   async getBalance(credentials) {
     requireLiveCredentials(credentials);
@@ -187,7 +201,11 @@ function requireLiveCredentials(credentials: { apiUrl?: string; apiKey?: string 
   }
 }
 
-async function panelRequest<T>(credentials: { apiUrl?: string; apiKey?: string }, extra: Record<string, string>): Promise<T> {
+async function panelRequest<T>(
+  credentials: { apiUrl?: string; apiKey?: string },
+  extra: Record<string, string>,
+  timeoutMs = 30_000
+): Promise<T> {
   requireLiveCredentials(credentials);
   const body = new URLSearchParams({ key: credentials.apiKey as string, ...extra });
   let response: Response;
@@ -195,7 +213,7 @@ async function panelRequest<T>(credentials: { apiUrl?: string; apiKey?: string }
     response = await fetch(String(credentials.apiUrl), {
       method: "POST",
       body,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "network error";
@@ -209,6 +227,40 @@ async function panelRequest<T>(credentials: { apiUrl?: string; apiKey?: string }
     throw new Error(`Provider returned a non-JSON response (HTTP ${response.status}). Check the panel API URL.`);
   }
   return json as T;
+}
+
+function parseCount(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function toStatusResult(json: Record<string, unknown>): SmmStatusResult {
+  if (json.error) throw new Error(String(json.error));
+  return {
+    status: String(json.status || "pending").toLowerCase().replace(/\s+/g, "_"),
+    startCount: parseCount(json.start_count),
+    remains: parseCount(json.remains),
+    raw: json,
+  };
+}
+
+function parseStatusMap(json: unknown, ids: string[]): Record<string, SmmStatusResult> {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return {};
+  const obj = json as Record<string, unknown>;
+  if (typeof obj.status === "string" && ids.length === 1) {
+    return { [ids[0]]: toStatusResult(obj) };
+  }
+  const out: Record<string, SmmStatusResult> = {};
+  for (const id of ids) {
+    const row = obj[id];
+    if (row && typeof row === "object" && !Array.isArray(row)) {
+      const parsed = row as Record<string, unknown>;
+      if (parsed.error) continue;
+      out[id] = toStatusResult(parsed);
+    }
+  }
+  return out;
 }
 
 const smmAdapters: Record<string, SmmProviderAdapter> = {
@@ -241,7 +293,8 @@ export function mapPanelOrderStatus(status: string): string | null {
   if (["processing", "process"].includes(s)) return "processing";
   if (["pending", "awaiting"].includes(s)) return "processing";
   if (["canceled", "cancelled"].includes(s)) return "cancelled";
-  if (["failed", "error", "rejected"].includes(s)) return "failed";
+  if (["refunded", "refund", "reversed"].includes(s)) return "refunded";
+  if (["failed", "error", "rejected", "fail"].includes(s)) return "failed";
   return null;
 }
 

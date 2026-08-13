@@ -16,6 +16,7 @@ import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
 import { isAllowedWebHost } from "./utils.js";
 import { syncRefillStatuses } from "./services/refillService.js";
 import { syncWebhookDeliveries } from "./services/apiWebhookService.js";
+import { syncOpenOrdersFromProvider } from "./services/orderService.js";
 
 const app = express();
 
@@ -91,6 +92,12 @@ async function start() {
   setInterval(() => {
     syncRefillStatuses().catch((err) => console.error("Refill status sync failed", err));
   }, 60_000);
+  setInterval(() => {
+    syncOpenOrdersFromProvider().catch((err) => console.error("Order status sync failed", err));
+  }, 45_000);
+  setTimeout(() => {
+    syncOpenOrdersFromProvider().catch((err) => console.error("Order status sync failed", err));
+  }, 8_000);
   setInterval(() => {
     syncWebhookDeliveries().catch((err) => console.error("Webhook delivery sync failed", err));
   }, 60_000);
