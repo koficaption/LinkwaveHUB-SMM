@@ -36,8 +36,7 @@ export function LoginPage() {
 
   return (
     <AuthCard title="Welcome back" subtitle="Sign in to Linkwave SMM">
-      <GoogleButton />
-      <Divider />
+      <GoogleSignIn />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
@@ -81,8 +80,7 @@ export function RegisterPage() {
           You were invited with code <span className="font-mono font-semibold">{invitedBy}</span>. You will be linked to that affiliate when you register.
         </p>
       )}
-      <GoogleButton />
-      <Divider />
+      <GoogleSignIn />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
@@ -154,7 +152,7 @@ export function AuthCallbackPage() {
   );
 }
 
-function GoogleButton() {
+function GoogleSignIn() {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const config = useQuery({
@@ -162,15 +160,18 @@ function GoogleButton() {
     queryFn: () => api<{ enabled: boolean; clientId: string | null; redirectEnabled: boolean }>("/auth/google/config"),
   });
   const [busy, setBusy] = useState(false);
+  const enabled = Boolean(config.data?.enabled && config.data.clientId);
 
   useEffect(() => {
-    if (document.getElementById("google-gsi")) return;
+    if (!enabled || document.getElementById("google-gsi")) return;
     const script = document.createElement("script");
     script.id = "google-gsi";
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     document.head.appendChild(script);
-  }, []);
+  }, [enabled]);
+
+  if (!enabled) return null;
 
   const finish = async (payload: { accessToken?: string; credential?: string }) => {
     const me = await loginWithGoogle(payload);
@@ -179,12 +180,8 @@ function GoogleButton() {
   };
 
   const onClick = async () => {
-    if (!config.data?.enabled || !config.data.clientId) {
-      toast.error("Google sign-in is not configured. Add GOOGLE_CLIENT_ID in the server environment.");
-      return;
-    }
     const oauth2 = window.google?.accounts?.oauth2;
-    if (oauth2) {
+    if (oauth2 && config.data?.clientId) {
       setBusy(true);
       oauth2.initTokenClient({
         client_id: config.data.clientId,
@@ -204,7 +201,7 @@ function GoogleButton() {
       }).requestAccessToken();
       return;
     }
-    if (config.data.redirectEnabled) {
+    if (config.data?.redirectEnabled) {
       window.location.href = "/api/auth/google/start";
       return;
     }
@@ -212,15 +209,18 @@ function GoogleButton() {
   };
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className="btn w-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
-    >
-      <GoogleMark />
-      {busy ? "Connecting..." : "Continue with Google"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={busy}
+        className="btn w-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+      >
+        <GoogleMark />
+        {busy ? "Connecting..." : "Continue with Google"}
+      </button>
+      <Divider />
+    </>
   );
 }
 
