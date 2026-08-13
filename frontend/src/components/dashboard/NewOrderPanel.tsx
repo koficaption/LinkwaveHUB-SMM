@@ -7,6 +7,7 @@ import type { Category, Paginated, Platform, Product } from "@/types";
 import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
+import { RefillBadge } from "@/components/dashboard/RefillBadge";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -152,10 +153,13 @@ export function NewOrderPanel() {
             mutation.mutate();
           }}
         >
-          <p className="text-sm text-muted">
-            Min {selected.min_quantity.toLocaleString()} · Max {selected.max_quantity.toLocaleString()}
-            {selected.avg_delivery_time ? ` · ${selected.avg_delivery_time}` : ""}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted">
+              Min {selected.min_quantity.toLocaleString()} · Max {selected.max_quantity.toLocaleString()}
+              {selected.avg_delivery_time ? ` · ${selected.avg_delivery_time}` : ""}
+            </p>
+            <RefillBadge supported={Boolean(selected.refill_supported)} days={selected.refill_days} />
+          </div>
           {selected.description && <p className="text-sm text-slate-600 dark:text-slate-300">{selected.description}</p>}
           <label className="block">
             <span className="label">Target / Link</span>

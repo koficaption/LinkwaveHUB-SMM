@@ -15,6 +15,7 @@ import * as settings from "../services/settingsService.js";
 import * as analytics from "../services/analyticsService.js";
 import * as providers from "../services/providerService.js";
 import * as notifications from "../services/notificationService.js";
+import * as refills from "../services/refillService.js";
 import {
   registerSchema,
   loginSchema,
@@ -93,6 +94,7 @@ router.get("/products", optionalAuth, asyncHandler(async (req, res) => {
     limit: Number(req.query.limit || 50),
     includeInactive: admin && req.query.all === "1",
     resellerPrice: req.user?.role === "reseller",
+    refill: req.query.refill as string | undefined,
   })));
 }));
 router.get("/products/:id", optionalAuth, asyncHandler(async (req, res) => {
@@ -213,6 +215,7 @@ router.get("/orders", requireAuth, asyncHandler(async (req, res) => {
     user: req.user,
     status: req.query.status as string | undefined,
     search: req.query.search as string | undefined,
+    refill: req.query.refill as string | undefined,
     page: Number(req.query.page || 1),
     limit: Number(req.query.limit || 20),
   })));
@@ -232,6 +235,22 @@ router.post("/orders", requireAuth, validate(orderSchema), asyncHandler(async (r
     storeSlug: req.body.storeSlug,
   });
   res.status(201).json(ok(order, "Order placed successfully"));
+}));
+router.post("/orders/:id/refill", requireAuth, asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await refills.requestRefill(req.params.id, req.user!, clientIp(req)), "Refill requested"));
+}));
+router.post("/v1/orders/:id/refill", requireAuth, asyncHandler(async (req, res) => {
+  const refill = await refills.requestRefill(req.params.id, req.user!, clientIp(req), undefined, { requireApi: true });
+  res.status(201).json(ok({
+    id: refill.public_id,
+    order_id: refill.order_public_id,
+    status: refill.status,
+    created_at: refill.requested_at ?? refill.created_at,
+  }, "Refill requested"));
+}));
+router.get("/orders/:id/refills", requireAuth, asyncHandler(async (req, res) => {
+  const order = await orders.getOrder(req.params.id, req.user!);
+  res.json(ok({ order, items: await refills.listOrderRefills(req.params.id) }));
 }));
 
 router.get("/wallet", requireAuth, asyncHandler(async (req, res) => {
@@ -340,6 +359,10 @@ admin.get("/products", asyncHandler(async (req, res) => {
     page: Number(req.query.page || 1),
     limit: Number(req.query.limit || 50),
     includeInactive: true,
+    refill: req.query.refill as string | undefined,
+    providerId: req.query.providerId as string | undefined,
+    apiAvailable: req.query.apiAvailable as string | undefined,
+    resellerAvailable: req.query.resellerAvailable as string | undefined,
   })));
 }));
 admin.post("/products", validate(productSchema), asyncHandler(async (req, res) => {
@@ -368,6 +391,8 @@ admin.get("/orders", asyncHandler(async (req, res) => {
     search: req.query.search as string | undefined,
     from: req.query.from as string | undefined,
     to: req.query.to as string | undefined,
+    providerId: req.query.providerId as string | undefined,
+    refill: req.query.refill as string | undefined,
     page: Number(req.query.page || 1),
     limit: Number(req.query.limit || 20),
   })));
@@ -381,6 +406,49 @@ admin.post("/orders/:id/refund", asyncHandler(async (req, res) => {
 }));
 admin.post("/orders/:id/retry", asyncHandler(async (req, res) => {
   res.json(ok(await orders.retryOrder(req.params.id, req.user!, clientIp(req)), "Order submitted to provider"));
+}));
+admin.post("/orders/:id/refill", asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await refills.requestRefill(req.params.id, req.user!, clientIp(req), req.body?.note), "Refill requested"));
+}));
+admin.post("/orders/bulk-refill", asyncHandler(async (req, res) => {
+  const body = z.object({ ids: z.array(z.string()).min(1).max(100) }).parse(req.body);
+  const results: { id: string; ok: boolean; message?: string }[] = [];
+  for (const id of body.ids) {
+    try {
+      await refills.requestRefill(id, req.user!, clientIp(req));
+      results.push({ id, ok: true });
+    } catch (error) {
+      results.push({ id, ok: false, message: error instanceof Error ? error.message : "Not eligible" });
+    }
+  }
+  res.json(ok({
+    eligible: results.filter((r) => r.ok).length,
+    skipped: results.filter((r) => !r.ok).length,
+    results,
+  }));
+}));
+admin.get("/refills/overview", asyncHandler(async (_req, res) => {
+  res.json(ok(await refills.refillOverview()));
+}));
+admin.get("/refills", asyncHandler(async (req, res) => {
+  res.json(ok(await refills.listRefills({
+    user: req.user,
+    status: req.query.status as string | undefined,
+    search: req.query.search as string | undefined,
+    providerId: req.query.providerId as string | undefined,
+    platformId: req.query.platformId as string | undefined,
+    from: req.query.from as string | undefined,
+    to: req.query.to as string | undefined,
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 20),
+  })));
+}));
+admin.post("/refills/:id/retry", asyncHandler(async (req, res) => {
+  res.json(ok(await refills.retryRefill(req.params.id, req.user!, clientIp(req)), "Refill retried"));
+}));
+admin.post("/refills/:id/note", asyncHandler(async (req, res) => {
+  const body = z.object({ note: z.string().min(1).max(2000) }).parse(req.body);
+  res.json(ok(await refills.addRefillNote(req.params.id, body.note, req.user!, clientIp(req))));
 }));
 
 admin.get("/users", asyncHandler(async (req, res) => {

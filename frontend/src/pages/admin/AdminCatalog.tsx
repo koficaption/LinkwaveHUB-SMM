@@ -30,6 +30,7 @@ export function AdminProducts() {
   const [platformId, setPlatformId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState("");
+  const [refill, setRefill] = useState("");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
@@ -39,8 +40,8 @@ export function AdminProducts() {
   const platforms = useQuery({ queryKey: ["platforms-all"], queryFn: () => api<Platform[]>("/platforms?all=1") });
   const categories = useQuery({ queryKey: ["categories-all"], queryFn: () => api<Category[]>("/categories?all=1") });
   const products = useQuery({
-    queryKey: ["admin-products", search, platformId, categoryId, status, sort, page],
-    queryFn: () => api<Paginated<Product>>(`/admin/products?page=${page}&search=${encodeURIComponent(search)}&platformId=${platformId}&categoryId=${categoryId}&status=${status}&sort=${sort}`),
+    queryKey: ["admin-products", search, platformId, categoryId, status, refill, sort, page],
+    queryFn: () => api<Paginated<Product>>(`/admin/products?page=${page}&search=${encodeURIComponent(search)}&platformId=${platformId}&categoryId=${categoryId}&status=${status}&refill=${refill}&sort=${sort}`),
   });
 
   const bulk = useMutation({
@@ -57,11 +58,16 @@ export function AdminProducts() {
         </div>
         <Button onClick={() => setEditing("new")}>Add product</Button>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
         <Select value={platformId} onChange={(e) => setPlatformId(e.target.value)}><option value="">All platforms</option>{platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
         <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}><option value="">All categories</option>{categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
         <Select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></Select>
+        <Select value={refill} onChange={(e) => setRefill(e.target.value)}>
+          <option value="">Refill: All</option>
+          <option value="yes">Supported</option>
+          <option value="no">Not supported</option>
+        </Select>
         <Select value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="newest">Newest</option>
           <option value="name">Name</option>
@@ -82,7 +88,7 @@ export function AdminProducts() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Provider cost","Your %","Sell / 1k","Profit","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Provider cost","Your %","Sell / 1k","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -95,6 +101,7 @@ export function AdminProducts() {
                 <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
                 <td className="p-2">{money(p.price_per_1000)}</td>
                 <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
+                <td className="p-2">{p.refill_supported ? <Badge className={statusTone.available}>{p.refill_days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
                 <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-2">
@@ -145,6 +152,15 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     avgDeliveryTime: product?.avg_delivery_time ?? "0-6 hours",
     providerServiceId: product?.provider_service_id ?? "",
     features: (product?.features ?? []).join("\n"),
+    refillSupported: Boolean(product?.refill_supported),
+    refillDays: product?.refill_days ?? 30,
+    refillType: product?.refill_type ?? "",
+    refillServiceId: product?.refill_service_id ?? "",
+    refillLimit: product?.refill_limit ?? 1,
+    refillInstructions: product?.refill_instructions ?? "",
+    providerRefillSupported: Boolean(product?.provider_refill_supported),
+    resellerAvailable: product?.reseller_available !== false,
+    apiAvailable: Boolean(product?.api_available),
   });
   const profit = round4(form.pricePer1000 - form.costPer1000);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
@@ -186,6 +202,35 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
         <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
         <label className="block"><span className="label">Provider</span><Select value={form.providerId} onChange={(e) => set("providerId", e.target.value)}><option value="">None</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
         <label className="block"><span className="label">Provider service ID</span><Input value={form.providerServiceId} onChange={(e) => set("providerServiceId", e.target.value)} /></label>
+        <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+          <p className="text-sm font-semibold">Refill settings</p>
+          <p className="mt-1 text-xs text-slate-500">Only enable refill when this service actually offers it. Do not turn this on just because an order completed.</p>
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.refillSupported} onChange={(e) => set("refillSupported", e.target.checked)} />
+            Refill supported
+          </label>
+          {form.refillSupported && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block"><span className="label">Refill period (days)</span><Input type="number" value={form.refillDays} onChange={(e) => set("refillDays", Number(e.target.value))} /></label>
+              <label className="block"><span className="label">Maximum refills</span><Input type="number" value={form.refillLimit} onChange={(e) => set("refillLimit", Number(e.target.value))} /></label>
+              <label className="block"><span className="label">Refill service ID</span><Input value={form.refillServiceId} onChange={(e) => set("refillServiceId", e.target.value)} /></label>
+              <label className="block"><span className="label">Refill type</span><Input value={form.refillType} onChange={(e) => set("refillType", e.target.value)} placeholder="auto / manual" /></label>
+              <label className="block sm:col-span-2"><span className="label">Refill instructions</span><Textarea value={form.refillInstructions} onChange={(e) => set("refillInstructions", e.target.value)} /></label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={form.providerRefillSupported} onChange={(e) => set("providerRefillSupported", e.target.checked)} />
+                Provider supports automatic refill API
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+          <p className="text-sm font-semibold">Availability</p>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.resellerAvailable} onChange={(e) => set("resellerAvailable", e.target.checked)} /> Reseller</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.apiAvailable} onChange={(e) => set("apiAvailable", e.target.checked)} /> API refill</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.status === "active"} onChange={(e) => set("status", e.target.checked ? "active" : "inactive")} /> Active</label>
+          </div>
+        </div>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>

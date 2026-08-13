@@ -38,6 +38,7 @@ const defaults: Record<string, unknown> = {
     emailEnabled: false,
     orderNotifications: true,
     depositNotifications: true,
+    refillNotifications: true,
   },
   affiliates: {
     enabled: true,

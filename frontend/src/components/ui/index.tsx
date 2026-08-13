@@ -141,7 +141,7 @@ export function ConfirmDialog({
 }: {
   open: boolean;
   title: string;
-  body: string;
+  body: React.ReactNode;
   confirmLabel?: string;
   danger?: boolean;
   onConfirm: () => void;
@@ -149,7 +149,7 @@ export function ConfirmDialog({
 }) {
   return (
     <Modal open={open} title={title} onClose={onClose}>
-      <p className="text-sm text-slate-600 dark:text-slate-300">{body}</p>
+      <div className="text-sm text-slate-600 dark:text-slate-300">{body}</div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel}</Button>

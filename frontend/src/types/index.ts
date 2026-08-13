@@ -78,6 +78,65 @@ export type Product = {
   provider_name?: string | null;
   created_at: string;
   updated_at: string;
+  refill_supported?: boolean;
+  refill_days?: number;
+  refill_type?: string | null;
+  refill_service_id?: string | null;
+  refill_instructions?: string | null;
+  refill_limit?: number;
+  provider_refill_supported?: boolean;
+  reseller_available?: boolean;
+  api_available?: boolean;
+};
+
+export type RefillSummary = {
+  eligible: boolean;
+  reasons: string[];
+  display: string;
+  refillSupported: boolean;
+  refillDays: number;
+  maxRefills: number;
+  used: number;
+  expiresAt: string;
+  providerRefillSupported: boolean;
+  productName?: string;
+};
+
+export type RefillRecord = {
+  id: string;
+  public_id: string;
+  order_id: string;
+  order_public_id?: string;
+  user_id?: string;
+  product_id?: string;
+  status: string;
+  provider_refill_id?: string | null;
+  provider_name?: string | null;
+  product_name?: string;
+  platform_name?: string;
+  customer_name?: string;
+  customer_email?: string;
+  target?: string;
+  quantity?: number;
+  requested_at?: string;
+  processing_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+  expires_at?: string | null;
+  error_message?: string | null;
+  admin_note?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type RefillOverview = {
+  total: number;
+  requested: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  expired: number;
+  today: number;
 };
 
 export type Order = {
@@ -102,6 +161,10 @@ export type Order = {
   admin_note?: string | null;
   created_at: string;
   updated_at: string;
+  start_count?: number | null;
+  remains?: number | null;
+  provider_order_id?: string | null;
+  refill?: RefillSummary;
   history?: { id: string; from_status: string | null; to_status: string; note?: string | null; created_at: string; actor_name?: string }[];
 };
 

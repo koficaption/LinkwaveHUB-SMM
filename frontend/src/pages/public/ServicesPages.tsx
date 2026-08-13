@@ -10,12 +10,14 @@ import type { Category, Platform, Product } from "@/types";
 import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
+import { RefillBadge } from "@/components/dashboard/RefillBadge";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
   const platform = params.get("platform") || "";
   const category = params.get("category") || "";
   const search = params.get("q") || "";
+  const refill = params.get("refill") || "";
   const page = Number(params.get("page") || 1);
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
   const categories = useQuery({
@@ -23,47 +25,90 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => api<Category[]>(`/categories${platform ? `?platformId=${platforms.data?.find((p) => p.slug === platform)?.id || platform}` : ""}`),
   });
   const products = useQuery({
-    queryKey: ["products", platform, category, search, page],
-    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=24&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+    queryKey: ["products", platform, category, search, page, refill],
+    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=24&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${refill ? `&refill=${refill}` : ""}`),
+  });
+  const set = (key: string, value: string) => setParams((p) => {
+    if (value) p.set(key, value); else p.delete(key);
+    p.set("page", "1");
+    return p;
   });
 
   return (
     <div className={embedded ? "" : "container-page py-12"}>
-      <h1 className="text-3xl font-extrabold">Buy a service</h1>
-      <p className="mt-2 text-slate-500">Pick a platform, then choose what you want to buy.</p>
-      <div className="mt-6 grid gap-3 md:grid-cols-4">
-        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => setParams((p) => { p.set("q", e.target.value); p.set("page", "1"); return p; })} />
+      <h1 className="page-title">Services</h1>
+      <p className="page-subtitle">Search the catalog. Refill is shown only when that service supports it.</p>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => set("q", e.target.value)} />
         <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
           <option value="">All platforms</option>
           {platforms.data?.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
         </Select>
-        <Select value={category} onChange={(e) => setParams((p) => { p.set("category", e.target.value); p.set("page", "1"); return p; })}>
+        <Select value={category} onChange={(e) => set("category", e.target.value)}>
           <option value="">All categories</option>
           {categories.data?.map((c) => <option key={c.id} value={c.slug}>{c.name}</option>)}
         </Select>
+        <Select value={refill} onChange={(e) => set("refill", e.target.value)}>
+          <option value="">Refill: All</option>
+          <option value="yes">Refill supported</option>
+          <option value="no">No refill</option>
+        </Select>
       </div>
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {products.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-48" />)}
-        {products.data?.items.length === 0 && <div className="col-span-full"><EmptyState title="No services found" body="Try another platform or search term. Admins can add new products from the dashboard." /></div>}
+
+      <div className="mt-6 space-y-3 lg:hidden">
+        {products.isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
         {products.data?.items.map((p) => (
-          <Link key={p.id} to={`/services/${p.slug}`}>
-            <Card className="h-full hover:border-brand-400">
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <PlatformIcon name={p.platform_icon} color={p.platform_color} className="h-4 w-4" />
-                {p.platform_name} · {p.category_name}
-              </div>
-              <h3 className="mt-3 font-bold">{p.name}</h3>
-              <p className="mt-1 line-clamp-2 text-sm text-slate-500">{p.description}</p>
-              <div className="mt-4 flex items-end justify-between">
-                <p className="font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-slate-500">/ 1000</span></p>
-                <span className="text-xs text-slate-500">{p.avg_delivery_time}</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
-              <Button className="mt-4 w-full">Order</Button>
-            </Card>
-          </Link>
+          <Card key={p.id}>
+            <p className="text-xs font-mono text-muted">#{p.provider_service_id || p.id.slice(0, 8)}</p>
+            <h3 className="mt-1 font-bold">{p.name}</h3>
+            <p className="mt-1 text-sm text-muted">{p.platform_name} · {p.category_name}</p>
+            <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1k</span></p>
+            <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} />
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase text-emerald-800">{p.status}</span>
+            </div>
+            <Link to={`/services/${p.slug}`}><Button className="mt-4 w-full">View</Button></Link>
+          </Card>
         ))}
       </div>
+
+      <Card className="mt-6 hidden overflow-hidden p-0 lg:block">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] text-left text-sm">
+            <thead className="bg-brand-600 text-white">
+              <tr>
+                {["ID","Platform","Category","Service","Price / 1k","Min / Max","Speed","Refill","Status",""].map((h) => (
+                  <th key={h} className="px-3 py-3 font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {products.isLoading && <tr><td colSpan={10} className="p-4"><Skeleton className="h-24" /></td></tr>}
+              {products.data?.items.map((p) => (
+                <tr key={p.id} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="px-3 py-3 font-mono text-xs">{p.provider_service_id || p.id.slice(0, 8)}</td>
+                  <td className="px-3 py-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      <PlatformIcon name={p.platform_icon} color={p.platform_color} className="h-4 w-4" />
+                      {p.platform_name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">{p.category_name}</td>
+                  <td className="px-3 py-3 font-medium">{p.name}</td>
+                  <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}</span></td>
+                  <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-xs">{p.avg_delivery_time || "—"}</td>
+                  <td className="px-3 py-3"><RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} /></td>
+                  <td className="px-3 py-3 capitalize">{p.status}</td>
+                  <td className="px-3 py-3"><Link to={`/services/${p.slug}`}><Button className="h-9 px-3">View</Button></Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      {products.data?.items.length === 0 && <div className="mt-6"><EmptyState title="No services found" body="Try another platform, category, or refill filter." /></div>}
       {products.data && (
         <Pagination
           page={products.data.page}
@@ -111,7 +156,10 @@ export function ServiceDetailPage() {
     <div className="container-page grid gap-8 py-12 lg:grid-cols-5">
       <div className="lg:col-span-3">
         <p className="text-sm font-semibold text-brand-700">{p.platform_name} → {p.category_name}</p>
-        <h1 className="mt-2 text-3xl font-extrabold">{p.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-3xl font-extrabold">{p.name}</h1>
+          <RefillBadge supported={Boolean(p.refill_supported)} days={p.refill_days} />
+        </div>
         <p className="mt-4 text-slate-600 dark:text-slate-300">{p.description}</p>
         <ul className="mt-6 space-y-2 text-sm">
           {(p.features || []).map((f) => <li key={f}>• {f}</li>)}

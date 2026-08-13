@@ -1,7 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 import {
-  BarChart3, Bell, Boxes, Code2, CreditCard, Gift, Globe, Handshake, KeyRound,
-  LayoutDashboard, Link2, Plug, Settings, ShoppingCart, Store, Ticket, Users, Wallet,
+  BarChart3, Bell, Boxes, Code2, CreditCard, Gift, Globe, Handshake,
+  LayoutDashboard, Link2, Plug, RefreshCcw, Settings, ShoppingCart, Store, Ticket, Users, Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppShell, PublicLayout, type AppNavItem } from "@/layouts/Shells";
@@ -57,6 +57,7 @@ export function AdminLayout() {
           label: "Commerce",
           items: [
             { to: "/admin/orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" /> },
+            { to: "/admin/refills", label: "Refills", icon: <RefreshCcw className="h-5 w-5" /> },
             { to: "/admin/products", label: "Products", icon: <Boxes className="h-5 w-5" /> },
             { to: "/admin/platforms", label: "Platforms", icon: <Globe className="h-5 w-5" /> },
             { to: "/admin/categories", label: "Categories", icon: <Boxes className="h-5 w-5" /> },
@@ -69,7 +70,6 @@ export function AdminLayout() {
             { to: "/admin/users", label: "Users", icon: <Users className="h-5 w-5" /> },
             { to: "/admin/resellers", label: "Resellers", icon: <Store className="h-5 w-5" /> },
             { to: "/admin/affiliates", label: "Affiliates", icon: <Handshake className="h-5 w-5" /> },
-            { to: "/admin/providers", label: "API Developers", icon: <KeyRound className="h-5 w-5" /> },
           ],
         },
         {

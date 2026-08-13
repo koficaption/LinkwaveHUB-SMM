@@ -29,12 +29,22 @@ export type SmmService = {
   cancel?: boolean;
 };
 
+export type SmmRefillResult = {
+  refillId?: string;
+  status: string;
+  manual?: boolean;
+  error?: string;
+  raw?: unknown;
+};
+
 export interface SmmProviderAdapter {
   name: string;
   createOrder(input: SmmOrderInput, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmOrderResult>;
   getStatus(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmStatusResult>;
   getBalance(credentials: { apiUrl?: string; apiKey?: string }): Promise<number>;
   listServices(credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmService[]>;
+  requestRefill?(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmRefillResult>;
+  getRefillStatus?(providerRefillId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmRefillResult>;
 }
 
 export const mockSmmAdapter: SmmProviderAdapter = {
@@ -54,9 +64,15 @@ export const mockSmmAdapter: SmmProviderAdapter = {
   },
   async listServices() {
     return [
-      { service: "1001", name: "Mock Followers", type: "Default", category: "Demo", rate: "0.90", min: "50", max: "10000" },
+      { service: "1001", name: "Mock Followers", type: "Default", category: "Demo", rate: "0.90", min: "50", max: "10000", refill: true },
       { service: "1002", name: "Mock Likes", type: "Default", category: "Demo", rate: "0.40", min: "20", max: "50000" },
     ];
+  },
+  async requestRefill(providerOrderId) {
+    return { refillId: `MOCK-RF-${Date.now()}`, status: "processing", raw: { order: providerOrderId } };
+  },
+  async getRefillStatus(providerRefillId) {
+    return { refillId: providerRefillId, status: "completed" };
   },
 };
 
@@ -127,6 +143,37 @@ export const genericHttpAdapter: SmmProviderAdapter = {
       refill: Boolean(row.refill),
       cancel: Boolean(row.cancel),
     }));
+  },
+  async requestRefill(providerOrderId, credentials) {
+    if (!credentials.apiUrl || !credentials.apiKey) {
+      return { status: "requested", manual: true, error: "Provider credentials are missing. Manual refill required." };
+    }
+    const json = await panelRequest<{ refill?: string | number; error?: string }>(credentials, {
+      action: "refill",
+      order: providerOrderId,
+    });
+    if (json.error) {
+      return { status: "failed", error: json.error, raw: json };
+    }
+    if (json.refill == null) {
+      return { status: "requested", manual: true, error: "Provider does not support automatic refill.", raw: json };
+    }
+    return { refillId: String(json.refill), status: "processing", raw: json };
+  },
+  async getRefillStatus(providerRefillId, credentials) {
+    if (!credentials.apiUrl || !credentials.apiKey) {
+      return { refillId: providerRefillId, status: "processing" };
+    }
+    const json = await panelRequest<{ status?: string; error?: string }>(credentials, {
+      action: "refill_status",
+      refill: providerRefillId,
+    });
+    if (json.error) return { refillId: providerRefillId, status: "failed", error: json.error, raw: json };
+    return {
+      refillId: providerRefillId,
+      status: (json.status || "processing").toLowerCase().replace(/\s+/g, "_"),
+      raw: json,
+    };
   },
 };
 

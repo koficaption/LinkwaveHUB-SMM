@@ -1,31 +1,72 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, money, ApiError } from "@/api/client";
-import type { Order, Paginated, PaymentMethod, Platform, User } from "@/types";
+import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
 import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
+import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
 
 export function AdminOrders() {
   const qc = useQueryClient();
+  const [params] = useSearchParams();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(params.get("q") || "");
   const [platformId, setPlatformId] = useState("");
+  const [providerId, setProviderId] = useState("");
+  const [refill, setRefill] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [active, setActive] = useState<Order | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms?all=1") });
+  const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<{ id: string; name: string }[]>("/admin/providers") });
   const orders = useQuery({
-    queryKey: ["admin-orders", page, status, search, platformId, from, to],
-    queryFn: () => api<Paginated<Order>>(`/admin/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}&platformId=${platformId}&from=${from}&to=${to}`),
+    queryKey: ["admin-orders", page, status, search, platformId, providerId, refill, from, to],
+    queryFn: () => api<Paginated<Order>>(`/admin/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}&platformId=${platformId}&providerId=${providerId}&refill=${refill}&from=${from}&to=${to}`),
   });
+  const items = orders.data?.items ?? [];
+  const selectedOrders = items.filter((o) => selected.includes(o.id));
+  const eligible = selectedOrders.filter((o) => o.refill?.eligible);
+
+  const bulkRefill = useMutation({
+    mutationFn: () => api<{ eligible: number; skipped: number }>("/admin/orders/bulk-refill", {
+      method: "POST",
+      body: JSON.stringify({ ids: eligible.map((o) => o.id) }),
+    }),
+    onSuccess: (data) => {
+      toast.success(`Refill requested for ${data.eligible} order${data.eligible === 1 ? "" : "s"}`);
+      setBulkOpen(false);
+      setSelected([]);
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Bulk refill failed"),
+  });
+
+  function exportSelected() {
+    const rows = selectedOrders.length ? selectedOrders : items;
+    const header = ["Order ID","Customer","Service","Target","Quantity","Charge","Status","Refill","Created"];
+    const csv = [header.join(","), ...rows.map((o) => [
+      o.public_id, o.customer_email, JSON.stringify(o.product_name), JSON.stringify(o.target),
+      o.quantity, o.charge, o.status, o.refill?.display ?? "", o.created_at,
+    ].join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "orders.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div>
       <h1 className="text-2xl font-extrabold">Orders</h1>
-      <div className="mt-4 grid gap-3 md:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:grid-cols-4 lg:grid-cols-7">
         <Input placeholder="Search ID, email, target" value={search} onChange={(e) => setSearch(e.target.value)} />
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
@@ -35,25 +76,67 @@ export function AdminOrders() {
           <option value="">All platforms</option>
           {platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </Select>
+        <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+          <option value="">All providers</option>
+          {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
+        <Select value={refill} onChange={(e) => setRefill(e.target.value)}>
+          <option value="">Refill: All</option>
+          <option value="available">Available</option>
+          <option value="supported">Supported</option>
+          <option value="unsupported">Not supported</option>
+          <option value="requested">Requested</option>
+          <option value="processing">Processing</option>
+          <option value="failed">Failed</option>
+          <option value="expired">Expired</option>
+        </Select>
         <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
-      <Card className="mt-4 overflow-x-auto">
+      {selected.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="outline" onClick={exportSelected}>Export selected</Button>
+          <Button onClick={() => setBulkOpen(true)}>Request refill where eligible</Button>
+        </div>
+      )}
+      <div className="mt-4 space-y-3 lg:hidden">
+        {items.map((o) => (
+          <Card key={o.id}>
+            <p className="font-mono text-xs text-muted">{o.public_id}</p>
+            <h3 className="mt-1 font-bold">{o.product_name}</h3>
+            <p className="mt-2 text-sm text-muted">Customer: {o.customer_name}</p>
+            <p className="text-sm text-muted">Quantity: {o.quantity.toLocaleString()} · {money(o.charge)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
+              <RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} />
+            </div>
+            <Button className="mt-4 w-full" variant="outline" onClick={() => setActive(o)}>View order</Button>
+          </Card>
+        ))}
+      </div>
+      <Card className="mt-4 hidden overflow-x-auto lg:block">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Order ID","Customer","Product","Platform","Qty","Amount","Status","Provider","Created","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead>
+            <tr className="text-slate-500">
+              <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? items.map((o) => o.id) : [])} /></th>
+              {["Order ID","Customer","Service","Target","Qty","Charge","Provider","Status","Refill","Created","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+            </tr>
+          </thead>
           <tbody>
-            {orders.data?.items.map((o) => (
+            {items.map((o) => (
               <tr key={o.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="p-2"><input type="checkbox" checked={selected.includes(o.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, o.id] : s.filter((id) => id !== o.id))} /></td>
                 <td className="p-2 font-semibold">{o.public_id}</td>
                 <td className="p-2">{o.customer_name}<div className="text-xs text-slate-500">{o.customer_email}</div></td>
                 <td className="p-2">{o.product_name}</td>
-                <td className="p-2">{o.platform_name}</td>
+                <td className="p-2 max-w-[140px] truncate" title={o.target}>{o.target}</td>
                 <td className="p-2">{o.quantity.toLocaleString()}</td>
                 <td className="p-2">{money(o.charge)}</td>
-                <td className="p-2"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
                 <td className="p-2">{o.provider_name || "—"}</td>
+                <td className="p-2"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
+                <td className="p-2"><RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} /></td>
                 <td className="p-2 text-slate-500">{formatDate(o.created_at)}</td>
-                <td className="p-2"><button className="font-semibold text-brand-700" onClick={() => setActive(o)}>Manage</button></td>
+                <td className="p-2"><button className="font-semibold text-brand-700" onClick={() => setActive(o)}>View</button></td>
               </tr>
             ))}
           </tbody>
@@ -61,6 +144,20 @@ export function AdminOrders() {
         {orders.data && <Pagination page={page} total={orders.data.total} limit={orders.data.limit} onPage={setPage} />}
       </Card>
       {active && <OrderDrawer order={active} onClose={() => setActive(null)} onChanged={() => { setActive(null); qc.invalidateQueries({ queryKey: ["admin-orders"] }); }} />}
+      {bulkOpen && (
+        <Modal open title="Bulk refill" onClose={() => setBulkOpen(false)}>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {eligible.length} of {selected.length} selected orders are eligible for refill.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">Orders that do not support refill, have expired, or already have a refill in progress will be skipped.</p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button disabled={!eligible.length || bulkRefill.isPending} onClick={() => bulkRefill.mutate()}>
+              Continue
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -68,6 +165,14 @@ export function AdminOrders() {
 function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () => void; onChanged: () => void }) {
   const [status, setStatus] = useState(order.status);
   const [note, setNote] = useState(order.admin_note ?? "");
+  const [confirm, setConfirm] = useState(false);
+  const detail = useQuery({ queryKey: ["order", order.id], queryFn: () => api<Order>(`/orders/${order.id}`) });
+  const refills = useQuery({
+    queryKey: ["order-refills", order.id],
+    queryFn: () => api<{ items: RefillRecord[] }>(`/orders/${order.id}/refills`),
+  });
+  const o = detail.data ?? order;
+  const refill = o.refill;
   const act = async (path: string, body?: unknown) => {
     try {
       await api(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
@@ -77,8 +182,48 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
   };
   return (
     <Modal open title={order.public_id} onClose={onClose}>
-      <p className="text-sm text-slate-500">{order.product_name} · {order.customer_email}</p>
-      <p className="mt-2 break-all text-sm">Target: {order.target}</p>
+      <p className="text-sm text-slate-500">{o.product_name} · {o.customer_email}</p>
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <div><dt className="text-slate-500">Customer</dt><dd className="font-medium">{o.customer_name}</dd></div>
+        <div><dt className="text-slate-500">Platform</dt><dd className="font-medium">{o.platform_name}</dd></div>
+        <div><dt className="text-slate-500">Quantity</dt><dd className="font-medium">{o.quantity.toLocaleString()}</dd></div>
+        <div><dt className="text-slate-500">Charge</dt><dd className="font-medium">{money(o.charge)}</dd></div>
+        {o.profit != null && <div><dt className="text-slate-500">Profit</dt><dd className="font-medium">{money(o.profit)}</dd></div>}
+        <div className="sm:col-span-2"><dt className="text-slate-500">Target</dt><dd className="break-all font-medium">{o.target}</dd></div>
+        <div><dt className="text-slate-500">Provider</dt><dd className="font-medium">{o.provider_name || "—"}</dd></div>
+        <div><dt className="text-slate-500">Provider order</dt><dd className="font-mono text-xs">{o.provider_order_id || "—"}</dd></div>
+        <div><dt className="text-slate-500">Created</dt><dd className="font-medium">{formatDate(o.created_at)}</dd></div>
+        <div><dt className="text-slate-500">Updated</dt><dd className="font-medium">{formatDate(o.updated_at)}</dd></div>
+      </dl>
+      <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+        <h3 className="font-semibold">Refill information</h3>
+        <div className="mt-2"><RefillBadge supported={refill?.refillSupported} days={refill?.refillDays} display={refill?.display} /></div>
+        {refill?.refillSupported ? (
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div><dt className="text-slate-500">Period</dt><dd>{refill.refillDays} days</dd></div>
+            <div><dt className="text-slate-500">Deadline</dt><dd>{formatDate(refill.expiresAt)}</dd></div>
+            <div><dt className="text-slate-500">Used</dt><dd>{refill.used} / {refill.maxRefills}</dd></div>
+            <div><dt className="text-slate-500">Provider API</dt><dd>{refill.providerRefillSupported ? "Yes" : "Manual refill required"}</dd></div>
+          </dl>
+        ) : <p className="mt-2 text-sm text-slate-500">This service does not support refill.</p>}
+        {refill?.eligible && <Button className="mt-3" onClick={() => setConfirm(true)}>↻ Request refill</Button>}
+        {!refills.data?.items.length && <p className="mt-3 text-sm text-slate-500">No refill requests yet.</p>}
+        {!!refills.data?.items.length && (
+          <table className="mt-3 w-full text-left text-xs">
+            <thead><tr className="text-slate-500">{["ID","Status","Provider","Requested"].map((h) => <th key={h} className="pb-1">{h}</th>)}</tr></thead>
+            <tbody>
+              {refills.data.items.map((r) => (
+                <tr key={r.id}>
+                  <td className="py-1 font-mono">{r.public_id}</td>
+                  <td>{prettyStatus(r.status)}</td>
+                  <td>{r.provider_refill_id || "—"}</td>
+                  <td>{formatDate(r.requested_at || r.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
       <div className="mt-4 space-y-3">
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>
           {["pending","processing","in_progress","completed","partial","cancelled","refunded","failed"].map((s) => <option key={s} value={s}>{prettyStatus(s)}</option>)}
@@ -90,6 +235,18 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
           <Button variant="danger" onClick={() => act(`/admin/orders/${order.id}/refund`, { note })}>Refund</Button>
         </div>
       </div>
+      {confirm && (
+        <RequestRefillDialog
+          order={o}
+          admin
+          open={confirm}
+          onClose={() => setConfirm(false)}
+          onConfirm={async () => {
+            const ok = await submitRefill(o, true);
+            if (ok) { setConfirm(false); onChanged(); }
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -576,6 +733,7 @@ export function AdminSettings() {
       <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
+      <NotificationSettingsCard data={settings.data?.notifications} onSave={(value) => save("notifications", value)} />
     </div>
   );
 }
@@ -785,6 +943,57 @@ function PricingSettingsCard({
         resellerMarkupPercent: Number(values.resellerMarkupPercent),
         minimumProfitPer1000: Number(values.minimumProfitPer1000),
       })}>Save pricing</Button>
+    </Card>
+  );
+}
+
+function NotificationSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    refillNotifications: String(source.refillNotifications !== false),
+    orderNotifications: String(source.orderNotifications !== false),
+    depositNotifications: String(source.depositNotifications !== false),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Notifications</h2>
+      <p className="mt-1 text-sm text-slate-500">Control whether customers are notified when an order becomes eligible for refill.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <label className="block">
+          <span className="label">Refill available</span>
+          <Select value={values.refillNotifications} onChange={(e) => setForm({ ...values, refillNotifications: e.target.value })}>
+            <option value="true">Notify customer</option>
+            <option value="false">Do not notify</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Order updates</span>
+          <Select value={values.orderNotifications} onChange={(e) => setForm({ ...values, orderNotifications: e.target.value })}>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Deposits</span>
+          <Select value={values.depositNotifications} onChange={(e) => setForm({ ...values, depositNotifications: e.target.value })}>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </Select>
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        refillNotifications: values.refillNotifications === "true",
+        orderNotifications: values.orderNotifications === "true",
+        depositNotifications: values.depositNotifications === "true",
+      })}>Save notifications</Button>
     </Card>
   );
 }

@@ -133,6 +133,7 @@ export async function importProviderPackages(
       delivery: string;
       serviceId: string;
       features: string;
+      refill: boolean;
     }[] = [];
     for (const service of services) {
       if (!/[a-z0-9]/i.test(String(service.name || ""))) continue;
@@ -157,9 +158,10 @@ export async function importProviderPackages(
       let minQty = Math.max(1, Number(service.min ?? 1) || 1);
       let maxQty = Math.max(minQty, Number(service.max ?? minQty) || minQty);
       const serviceId = String(service.service);
+      const refill = Boolean(service.refill);
       const features = [
         service.type ? String(service.type) : "",
-        service.refill ? "Refill available" : "",
+        refill ? "Refill available" : "",
         service.cancel ? "Cancel available" : "",
       ].filter(Boolean);
       rows.push({
@@ -176,6 +178,7 @@ export async function importProviderPackages(
         delivery: /instant|fast/i.test(service.name) ? "instant" : "gradual",
         serviceId,
         features: JSON.stringify(features),
+        refill,
       });
     }
 
@@ -187,20 +190,22 @@ export async function importProviderPackages(
         `INSERT INTO products (
            platform_id, category_id, provider_id, name, slug, description,
            min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
-           status, delivery_type, avg_delivery_time, provider_service_id, features
+           status, delivery_type, avg_delivery_time, provider_service_id, features,
+           refill_supported, provider_refill_supported, refill_days, refill_limit, refill_service_id
          )
          SELECT
            x.platform_id, x.category_id, $1::uuid, x.name, x.slug, x.description,
            x.min_quantity, x.max_quantity, x.price_per_1000, x.cost_per_1000, x.reseller_price_per_1000,
-           'active', x.delivery_type::delivery_type, 'Panel delivery', x.provider_service_id, x.features::jsonb
+           'active', x.delivery_type::delivery_type, 'Panel delivery', x.provider_service_id, x.features::jsonb,
+           x.refill_supported, x.refill_supported, 30, 1, x.provider_service_id
          FROM unnest(
            $2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::text[],
            $7::int[], $8::int[], $9::numeric[], $10::numeric[], $11::numeric[],
-           $12::text[], $13::text[], $14::text[]
+           $12::text[], $13::text[], $14::text[], $15::boolean[]
          ) AS x(
            platform_id, category_id, name, slug, description,
            min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
-           delivery_type, provider_service_id, features
+           delivery_type, provider_service_id, features, refill_supported
          )
          ON CONFLICT (provider_id, provider_service_id) WHERE provider_id IS NOT NULL AND provider_service_id IS NOT NULL
          DO UPDATE SET
@@ -214,6 +219,7 @@ export async function importProviderPackages(
            status = 'active',
            delivery_type = EXCLUDED.delivery_type,
            features = EXCLUDED.features,
+           provider_refill_supported = EXCLUDED.provider_refill_supported,
            updated_at = NOW()`,
         [
           providerId,
@@ -230,6 +236,7 @@ export async function importProviderPackages(
           batch.map((row) => row.delivery),
           batch.map((row) => row.serviceId),
           batch.map((row) => row.features),
+          batch.map((row) => row.refill),
         ],
         client
       );

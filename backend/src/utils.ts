@@ -34,6 +34,10 @@ export function publicOrderId(): string {
   return `LWH-${date}-${rand}`;
 }
 
+export function publicRefillId(): string {
+  return `RF-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+}
+
 export function publicTicketId(): string {
   return `TCK-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 }

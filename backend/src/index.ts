@@ -12,6 +12,7 @@ import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
 import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
 import { isAllowedWebHost } from "./utils.js";
+import { syncRefillStatuses } from "./services/refillService.js";
 
 const app = express();
 
@@ -60,6 +61,9 @@ async function start() {
   app.listen(config.port, () => {
     console.log(`LinkBoost Growth API listening on http://localhost:${config.port}`);
   });
+  setInterval(() => {
+    syncRefillStatuses().catch((err) => console.error("Refill status sync failed", err));
+  }, 60_000);
 }
 
 start().catch((err) => {

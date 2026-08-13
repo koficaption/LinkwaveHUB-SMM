@@ -27,7 +27,11 @@ export const statusTone: Record<string, string> = {
   high: "bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300",
   urgent: "bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300",
   medium: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
-  low: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+  requested: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  available: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+  used: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300",
+  expired: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+  not_supported: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
 
 export function prettyStatus(value: string) {

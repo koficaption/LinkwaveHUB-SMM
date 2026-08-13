@@ -9,6 +9,8 @@ const productSelect = `
   p.price_per_1000, p.cost_per_1000, p.reseller_price_per_1000, p.status,
   p.delivery_type, p.avg_delivery_time, p.provider_service_id, p.image_url,
   p.features, p.created_at, p.updated_at, p.platform_id, p.category_id, p.provider_id,
+  p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
+  p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -196,6 +198,10 @@ export async function listProducts(opts: {
   page?: number;
   limit?: number;
   resellerPrice?: boolean;
+  refill?: string;
+  providerId?: string;
+  apiAvailable?: string;
+  resellerAvailable?: string;
 }) {
   const params: unknown[] = [];
   const where: string[] = [];
@@ -212,6 +218,16 @@ export async function listProducts(opts: {
     params.push(opts.categoryId);
     where.push(`(p.category_id::text = $${params.length} OR c.slug = $${params.length})`);
   }
+  if (opts.providerId) {
+    params.push(opts.providerId);
+    where.push(`p.provider_id::text = $${params.length}`);
+  }
+  if (opts.refill === "yes" || opts.refill === "supported") where.push(`p.refill_supported = TRUE`);
+  if (opts.refill === "no" || opts.refill === "unsupported") where.push(`p.refill_supported = FALSE`);
+  if (opts.apiAvailable === "yes") where.push(`p.api_available = TRUE`);
+  if (opts.apiAvailable === "no") where.push(`p.api_available = FALSE`);
+  if (opts.resellerAvailable === "yes") where.push(`p.reseller_available = TRUE`);
+  if (opts.resellerAvailable === "no") where.push(`p.reseller_available = FALSE`);
   const search = like(opts.search);
   if (search) {
     params.push(search);
@@ -283,8 +299,10 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
     `INSERT INTO products (
       platform_id, category_id, provider_id, name, slug, description,
       min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
-      status, delivery_type, avg_delivery_time, provider_service_id, image_url, features
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
+      status, delivery_type, avg_delivery_time, provider_service_id, image_url, features,
+      refill_supported, refill_days, refill_type, refill_service_id, refill_instructions,
+      refill_limit, provider_refill_supported, reseller_available, api_available
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26)
     RETURNING *`,
     [
       input.platformId,
@@ -304,6 +322,15 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       input.providerServiceId ?? null,
       input.imageUrl ?? null,
       JSON.stringify(input.features ?? []),
+      Boolean(input.refillSupported),
+      Number(input.refillDays ?? 30),
+      input.refillType ?? null,
+      input.refillServiceId ?? null,
+      input.refillInstructions ?? null,
+      Number(input.refillLimit ?? 1) || 1,
+      Boolean(input.providerRefillSupported),
+      input.resellerAvailable !== false,
+      Boolean(input.apiAvailable),
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: input.name } });
@@ -330,7 +357,16 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       avg_delivery_time = COALESCE($14, avg_delivery_time),
       provider_service_id = COALESCE($15, provider_service_id),
       image_url = COALESCE($16, image_url),
-      features = COALESCE($17::jsonb, features)
+      features = COALESCE($17::jsonb, features),
+      refill_supported = COALESCE($18, refill_supported),
+      refill_days = COALESCE($19, refill_days),
+      refill_type = COALESCE($20, refill_type),
+      refill_service_id = COALESCE($21, refill_service_id),
+      refill_instructions = COALESCE($22, refill_instructions),
+      refill_limit = COALESCE($23, refill_limit),
+      provider_refill_supported = COALESCE($24, provider_refill_supported),
+      reseller_available = COALESCE($25, reseller_available),
+      api_available = COALESCE($26, api_available)
      WHERE id = $1`,
     [
       id,
@@ -350,6 +386,15 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.providerServiceId ?? null,
       input.imageUrl ?? null,
       input.features ? JSON.stringify(input.features) : null,
+      input.refillSupported === undefined ? null : Boolean(input.refillSupported),
+      input.refillDays === undefined ? null : Number(input.refillDays),
+      input.refillType === undefined ? null : input.refillType,
+      input.refillServiceId === undefined ? null : input.refillServiceId,
+      input.refillInstructions === undefined ? null : input.refillInstructions,
+      input.refillLimit === undefined ? null : Number(input.refillLimit),
+      input.providerRefillSupported === undefined ? null : Boolean(input.providerRefillSupported),
+      input.resellerAvailable === undefined ? null : Boolean(input.resellerAvailable),
+      input.apiAvailable === undefined ? null : Boolean(input.apiAvailable),
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -388,6 +433,15 @@ export async function duplicateProduct(id: string, actor: AuthUser, ip?: string)
       providerServiceId: current.provider_service_id,
       imageUrl: current.image_url,
       features: current.features,
+      refillSupported: current.refill_supported,
+      refillDays: current.refill_days,
+      refillType: current.refill_type,
+      refillServiceId: current.refill_service_id,
+      refillInstructions: current.refill_instructions,
+      refillLimit: current.refill_limit,
+      providerRefillSupported: current.provider_refill_supported,
+      resellerAvailable: current.reseller_available,
+      apiAvailable: current.api_available,
     },
     actor,
     ip

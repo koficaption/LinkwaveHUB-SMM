@@ -82,6 +82,15 @@ export const productSchema = z.object({
   providerServiceId: z.string().max(80).optional().nullable(),
   imageUrl: z.string().max(500).optional().nullable(),
   features: z.array(z.string()).optional(),
+  refillSupported: z.boolean().optional(),
+  refillDays: z.number().int().positive().max(365).optional(),
+  refillType: z.string().max(80).optional().nullable(),
+  refillServiceId: z.string().max(80).optional().nullable(),
+  refillInstructions: z.string().max(2000).optional().nullable(),
+  refillLimit: z.number().int().positive().max(50).optional(),
+  providerRefillSupported: z.boolean().optional(),
+  resellerAvailable: z.boolean().optional(),
+  apiAvailable: z.boolean().optional(),
 });
 
 export const orderSchema = z.object({

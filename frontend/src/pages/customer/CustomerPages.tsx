@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { api, money, formatDate, ApiError } from "@/api/client";
-import type { Order, Paginated, Wallet } from "@/types";
+import type { Order, Paginated, RefillRecord, Wallet } from "@/types";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,9 +14,10 @@ import type { PaymentMethod } from "@/types";
 import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
 import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
-import { NewsPanel } from "@/components/dashboard/NewsPanel";
 import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
 import { MobileActionButtons } from "@/components/dashboard/AccountMenu";
+import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { RequestRefillDialog } from "@/components/dashboard/RequestRefillDialog";
 
 function isCardMethod(adapter?: string) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -46,10 +47,7 @@ export function CustomerHome() {
         <BalanceCard amount={balance} loading={loading} />
       </div>
       <WaveDivider />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <NewOrderPanel />
-        <NewsPanel />
-      </div>
+      <NewOrderPanel />
     </div>
   );
 }
@@ -58,34 +56,86 @@ export function OrdersPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [refill, setRefill] = useState("");
   const orders = useQuery({
-    queryKey: ["my-orders", page, status, search],
-    queryFn: () => api<Paginated<Order>>(`/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}`),
+    queryKey: ["my-orders", page, status, search, refill],
+    queryFn: () => api<Paginated<Order>>(`/orders?page=${page}&status=${status}&search=${encodeURIComponent(search)}&refill=${refill}`),
   });
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Track every boost you have placed." />
+      <PageHeader title="Orders" subtitle="Track every boost you have placed. Refill appears only when that service supports it." />
       <div className="mt-4 flex flex-wrap gap-3">
         <Input placeholder="Search order ID or target" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
         <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="">All statuses</option>
           {["pending","processing","in_progress","completed","partial","cancelled","refunded","failed"].map((s) => <option key={s} value={s}>{prettyStatus(s)}</option>)}
         </Select>
+        <Select value={refill} onChange={(e) => { setRefill(e.target.value); setPage(1); }}>
+          <option value="">Refill: All</option>
+          <option value="available">Available</option>
+          <option value="supported">Supported</option>
+          <option value="unsupported">Not supported</option>
+          <option value="requested">Requested</option>
+          <option value="processing">Processing</option>
+          <option value="failed">Failed</option>
+          <option value="expired">Expired</option>
+        </Select>
       </div>
-      <Card className="mt-4">
+      <div className="mt-4 space-y-3 lg:hidden">
+        {orders.isLoading && <Skeleton className="h-40" />}
+        {!orders.isLoading && !orders.data?.items.length && (
+          <EmptyState title="No orders found yet." body="Place an order from New Order or browse the catalog." action={<Link to="/app"><Button>Browse Services</Button></Link>} />
+        )}
+        {(orders.data?.items ?? []).map((o) => (
+          <Card key={o.id}>
+            <p className="font-mono text-xs text-muted">{o.public_id}</p>
+            <h3 className="mt-1 font-bold">{o.product_name}</h3>
+            <p className="mt-2 text-sm text-muted">Quantity: {o.quantity.toLocaleString()}</p>
+            <p className="text-sm text-muted">Charge: {money(o.charge)}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
+              <RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} />
+            </div>
+            <Link to={`/app/orders/${o.public_id}`}><Button className="mt-4 w-full" variant="outline">View order</Button></Link>
+          </Card>
+        ))}
+      </div>
+      <Card className="mt-4 hidden lg:block">
         <OrdersTable data={orders.data?.items ?? []} loading={orders.isLoading} />
         {orders.data && <Pagination page={page} total={orders.data.total} limit={orders.data.limit} onPage={setPage} />}
       </Card>
+      <div className="mt-4 lg:hidden">
+        {orders.data && <Pagination page={page} total={orders.data.total} limit={orders.data.limit} onPage={setPage} />}
+      </div>
     </div>
   );
 }
 
 export function OrderDetailPage() {
   const { id } = useParams();
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<Order>(`/orders/${id}`) });
+  const history = useQuery({
+    queryKey: ["order-refills", id],
+    queryFn: () => api<{ items: RefillRecord[] }>(`/orders/${id}/refills`),
+    enabled: Boolean(id),
+  });
+  const request = useMutation({
+    mutationFn: () => api(`/orders/${id}/refill`, { method: "POST" }),
+    onSuccess: async () => {
+      toast.success("Refill requested");
+      setConfirm(false);
+      await qc.invalidateQueries({ queryKey: ["order", id] });
+      await qc.invalidateQueries({ queryKey: ["order-refills", id] });
+      await qc.invalidateQueries({ queryKey: ["my-orders"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not request refill"),
+  });
   if (order.isLoading) return <Skeleton className="h-64" />;
   if (!order.data) return <EmptyState title="Order not found" body="Check the order ID and try again." />;
   const o = order.data;
+  const refill = o.refill;
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
@@ -107,6 +157,28 @@ export function OrderDetailPage() {
         </dl>
       </Card>
       <Card>
+        <h2 className="font-bold">Refill</h2>
+        <div className="mt-3">
+          <RefillBadge supported={refill?.refillSupported} days={refill?.refillDays} display={refill?.display} />
+        </div>
+        {refill?.refillSupported ? (
+          <dl className="mt-4 space-y-2 text-sm">
+            <Item label="Period" value={`${refill.refillDays} days`} />
+            <Item label="Deadline" value={formatDate(refill.expiresAt)} />
+            <Item label="Used" value={`${refill.used} / ${refill.maxRefills}`} />
+            <Item label="Status" value={prettyStatus(refill.display)} />
+          </dl>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">Not available for this service.</p>
+        )}
+        {refill?.eligible && (
+          <Button className="mt-4 w-full" onClick={() => setConfirm(true)}>↻ Request refill</Button>
+        )}
+        {refill && !refill.eligible && refill.refillSupported && refill.reasons[0] && (
+          <p className="mt-3 text-xs text-slate-500">{refill.reasons[0]}</p>
+        )}
+      </Card>
+      <Card>
         <h2 className="font-bold">Status timeline</h2>
         <ul className="mt-4 space-y-3 text-sm">
           {(o.history ?? []).map((h) => (
@@ -118,6 +190,37 @@ export function OrderDetailPage() {
           ))}
         </ul>
       </Card>
+      <Card className="lg:col-span-2">
+        <h2 className="font-bold">Refill history</h2>
+        {!history.data?.items.length && <p className="mt-3 text-sm text-slate-500">No refill requests yet.</p>}
+        {!!history.data?.items.length && (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead><tr className="text-slate-500">{["Refill ID","Status","Provider ID","Requested","Completed"].map((h) => <th key={h} className="pb-2 pr-3">{h}</th>)}</tr></thead>
+              <tbody>
+                {history.data.items.map((r) => (
+                  <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 pr-3 font-mono text-xs">{r.public_id}</td>
+                    <td className="pr-3"><Badge className={statusTone[r.status]}>{prettyStatus(r.status)}</Badge></td>
+                    <td className="pr-3 font-mono text-xs">{r.provider_refill_id || "—"}</td>
+                    <td className="pr-3">{formatDate(r.requested_at || r.created_at)}</td>
+                    <td className="pr-3">{r.completed_at ? formatDate(r.completed_at) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+      {confirm && (
+        <RequestRefillDialog
+          order={o}
+          open={confirm}
+          pending={request.isPending}
+          onClose={() => setConfirm(false)}
+          onConfirm={() => request.mutate()}
+        />
+      )}
     </div>
   );
 }
@@ -133,7 +236,7 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead className="text-slate-500">
-          <tr>{["Order ID","Service","Qty","Amount","Status","Created",""].map((h) => <th key={h} className="pb-3 pr-4">{h}</th>)}</tr>
+          <tr>{["Order ID","Service","Qty","Amount","Status","Refill","Created",""].map((h) => <th key={h} className="pb-3 pr-4">{h}</th>)}</tr>
         </thead>
         <tbody>
           {data.map((o) => (
@@ -143,6 +246,7 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
               <td className="pr-4">{o.quantity.toLocaleString()}</td>
               <td className="pr-4">{money(o.charge)}</td>
               <td className="pr-4"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
+              <td className="pr-4"><RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} /></td>
               <td className="pr-4 text-slate-500">{formatDate(o.created_at)}</td>
               <td><Link to={`/app/orders/${o.public_id}`} className="font-semibold text-brand-700">View</Link></td>
             </tr>
@@ -380,6 +484,11 @@ export function NotificationsPage() {
             <p className="font-semibold">{String(n.title)}</p>
             <p className="text-sm text-slate-500">{String(n.body)}</p>
             {n.created_at ? <p className="mt-1 text-xs text-slate-400">{formatDate(String(n.created_at))}</p> : null}
+            {typeof (n.metadata as { publicId?: string } | undefined)?.publicId === "string" && (
+              <Link to={`/app/orders/${(n.metadata as { publicId: string }).publicId}`} className="mt-2 inline-block text-sm font-semibold text-brand-700">
+                View order
+              </Link>
+            )}
           </li>
         ))}
       </ul>

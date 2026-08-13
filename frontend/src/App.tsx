@@ -17,6 +17,7 @@ import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "
 import {
   AdminAudit, AdminNotifications, AdminOrders, AdminPayments, AdminResellers, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
 } from "@/pages/admin/AdminOps";
+import { AdminRefills } from "@/pages/admin/AdminRefills";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -64,6 +65,7 @@ export default function App() {
                 <Route element={<AdminLayout />}>
                   <Route path="/admin" element={<AdminOverview />} />
                   <Route path="/admin/orders" element={<AdminOrders />} />
+                  <Route path="/admin/refills" element={<AdminRefills />} />
                   <Route path="/admin/products" element={<AdminProducts />} />
                   <Route path="/admin/platforms" element={<AdminPlatforms />} />
                   <Route path="/admin/categories" element={<AdminCategories />} />

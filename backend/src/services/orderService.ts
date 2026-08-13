@@ -5,15 +5,21 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { getSmmAdapter } from "../providers/smm/index.js";
 import { decryptSecret } from "../utils.js";
+import { summarizeRefill } from "./refillService.js";
+import { getSettings } from "./settingsService.js";
 import type { AuthUser } from "../middleware/auth.js";
 import type { PoolClient } from "pg";
 
 const orderSelect = `
   o.*, p.name AS product_name, p.slug AS product_slug,
+  p.refill_supported, p.refill_days, p.refill_limit, p.provider_refill_supported, p.refill_instructions,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.color AS platform_color, pl.icon AS platform_icon,
   c.name AS category_name,
   u.full_name AS customer_name, u.email AS customer_email,
-  pr.name AS provider_name
+  pr.name AS provider_name,
+  (SELECT COUNT(*)::int FROM refills rf WHERE rf.order_id = o.id) AS refill_count,
+  (SELECT rf.status::text FROM refills rf WHERE rf.order_id = o.id ORDER BY rf.created_at DESC LIMIT 1) AS latest_refill_status,
+  (SELECT h.created_at FROM order_status_history h WHERE h.order_id = o.id AND h.to_status IN ('completed','partial') ORDER BY h.created_at DESC LIMIT 1) AS completed_at
 `;
 
 export async function quoteOrder(productId: string, quantity: number, user?: AuthUser | null, storeSlug?: string) {
@@ -203,6 +209,8 @@ export async function listOrders(opts: {
   page?: number;
   limit?: number;
   resellerOnly?: boolean;
+  providerId?: string;
+  refill?: string;
 }) {
   const { page, limit, offset } = parsePagination(opts as Record<string, unknown>);
   const params: unknown[] = [];
@@ -238,6 +246,30 @@ export async function listOrders(opts: {
     params.push(opts.to);
     where.push(`o.created_at <= $${params.length}::timestamptz`);
   }
+  if (opts.providerId) {
+    params.push(opts.providerId);
+    where.push(`COALESCE(o.provider_id, p.provider_id)::text = $${params.length}`);
+  }
+  if (opts.refill === "supported" || opts.refill === "yes") where.push(`p.refill_supported = TRUE`);
+  if (opts.refill === "unsupported" || opts.refill === "no") where.push(`p.refill_supported = FALSE`);
+  if (opts.refill === "available") {
+    where.push(`p.refill_supported = TRUE
+      AND o.status IN ('completed','partial')
+      AND COALESCE((SELECT COUNT(*) FROM refills rf WHERE rf.order_id = o.id), 0) < p.refill_limit
+      AND NOT EXISTS (SELECT 1 FROM refills rf WHERE rf.order_id = o.id AND rf.status IN ('requested','processing'))
+      AND (
+        COALESCE(
+          (SELECT h.created_at FROM order_status_history h
+            WHERE h.order_id = o.id AND h.to_status IN ('completed','partial')
+            ORDER BY h.created_at DESC LIMIT 1),
+          o.updated_at
+        ) + (p.refill_days || ' days')::interval
+      ) > NOW()`);
+  }
+  if (opts.refill && ["requested", "processing", "failed", "completed", "expired"].includes(opts.refill)) {
+    params.push(opts.refill);
+    where.push(`(SELECT rf.status::text FROM refills rf WHERE rf.order_id = o.id ORDER BY rf.created_at DESC LIMIT 1) = $${params.length}`);
+  }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const count = await queryOne<{ count: string }>(
@@ -261,7 +293,12 @@ export async function listOrders(opts: {
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
-    return { items: items.map((row) => sanitizeOrder(row)), total: Number(count?.count ?? 0), page, limit };
+    return {
+    items: items.map((row) => withRefill(sanitizeOrder(row, opts.user?.role === "admin"))),
+    total: Number(count?.count ?? 0),
+    page,
+    limit,
+  };
 }
 
 export async function getOrder(idOrPublic: string, user: AuthUser) {
@@ -288,7 +325,7 @@ export async function getOrder(idOrPublic: string, user: AuthUser) {
      WHERE h.order_id = $1 ORDER BY h.created_at ASC`,
     [order.id]
   );
-  return { ...sanitizeOrder(order, user.role === "admin"), history };
+  return { ...sanitizeOrder(order, user.role === "admin"), history, refill: summarizeRefill(order) };
 }
 
 async function getOrderById(id: string, client?: PoolClient) {
@@ -362,6 +399,24 @@ export async function updateOrderStatus(input: {
       details: { from: result.from, to: input.status, note: input.note },
       ip: input.ip,
     });
+    if (input.status === "completed" || input.status === "partial") {
+      const product = await queryOne<{ name: string; refill_supported: boolean; refill_days: number }>(
+        `SELECT name, refill_supported, refill_days FROM products WHERE id = $1`,
+        [result.current.product_id]
+      );
+      if (product?.refill_supported) {
+        const notes = ((await getSettings()).notifications ?? {}) as { refillNotifications?: boolean };
+        if (notes.refillNotifications !== false) {
+          await notify({
+            userId: String(result.current.user_id),
+            title: `Your order ${result.current.public_id} is eligible for refill.`,
+            body: `${product.name} can be refilled within ${product.refill_days} days. Open the order to request a refill.`,
+            type: "order",
+            metadata: { orderId: result.current.id, publicId: result.current.public_id },
+          });
+        }
+      }
+    }
   }
   return getOrder(input.id, input.actor);
 }
@@ -441,6 +496,10 @@ export async function retryOrder(id: string, actor: AuthUser, ip?: string) {
   );
   await writeAudit({ actor, action: "order.retry", targetType: "order", targetId: id, ip });
   return getOrder(id, actor);
+}
+
+function withRefill(order: Record<string, unknown>) {
+  return { ...order, refill: summarizeRefill(order) };
 }
 
 function sanitizeOrder(row: Record<string, unknown>, admin = false) {
