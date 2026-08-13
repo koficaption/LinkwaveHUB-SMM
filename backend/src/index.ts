@@ -11,6 +11,7 @@ import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
 import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
+import { isAllowedWebHost } from "./utils.js";
 
 const app = express();
 
@@ -19,14 +20,7 @@ function corsOrigin(origin: string | undefined, callback: (err: Error | null, al
   if (origin === config.frontendUrl) return callback(null, true);
   try {
     const host = new URL(origin).hostname;
-    if (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host.endsWith(".cursor.sh") ||
-      host.endsWith(".cursorusercontent.com")
-    ) {
-      return callback(null, true);
-    }
+    if (isAllowedWebHost(host, origin)) return callback(null, true);
   } catch {
     /* ignore */
   }

@@ -91,20 +91,25 @@ export function clientIp(req: { headers: Record<string, unknown>; ip?: string; s
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
+export function isAllowedWebHost(hostname: string, origin?: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+  if (origin && origin.replace(/\/$/, "") === config.frontendUrl.replace(/\/$/, "")) return true;
+  return (
+    hostname.endsWith(".cursor.sh") ||
+    hostname.endsWith(".cursorusercontent.com") ||
+    hostname.endsWith(".trycloudflare.com") ||
+    hostname.endsWith(".loca.lt") ||
+    hostname.endsWith(".ngrok-free.app") ||
+    hostname.endsWith(".ngrok.io")
+  );
+}
+
 export function publicAppOrigin(originHeader?: string | string[]): string {
   const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
   if (origin) {
     try {
       const host = new URL(origin).hostname;
-      if (
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.endsWith(".cursor.sh") ||
-        host.endsWith(".cursorusercontent.com") ||
-        origin.replace(/\/$/, "") === config.frontendUrl.replace(/\/$/, "")
-      ) {
-        return origin.replace(/\/$/, "");
-      }
+      if (isAllowedWebHost(host, origin)) return origin.replace(/\/$/, "");
     } catch {
       /* ignore */
     }
