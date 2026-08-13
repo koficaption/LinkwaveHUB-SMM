@@ -72,6 +72,19 @@ npm run dev
 
 The API applies migrations and seeds demo data on first boot.
 
+## Production deploy
+
+The API and React app ship as **one Node service**. Express serves `/api` and the built frontend.
+
+```bash
+npm ci --prefix backend
+npm ci --prefix frontend
+npm run build
+NODE_ENV=production npm start
+```
+
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/koficaption/LinkwaveHUB-SMM) using `render.yaml`, or build the `Dockerfile`. Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL` to the public HTTPS origin. Never put secrets in git.
+
 ## Demo logins
 
 Use these on `/login` after a fresh seed (click a row to fill the form):

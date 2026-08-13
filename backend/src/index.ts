@@ -69,14 +69,23 @@ app.use("/uploads", express.static(config.uploadDir));
 app.use("/api/v1", v1Router);
 app.use("/api", router);
 
+const frontendDist = path.resolve(__dirname, "../../frontend/dist");
+if (fs.existsSync(path.join(frontendDist, "index.html"))) {
+  app.use(express.static(frontendDist, { index: false }));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    res.sendFile(path.join(frontendDist, "index.html"));
+  });
+}
+
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use(errorHandler);
 
 async function start() {
   await migrate();
   await seedIfEmpty();
-  app.listen(config.port, () => {
-    console.log(`LinkBoost Growth API listening on http://localhost:${config.port}`);
+  app.listen(config.port, "0.0.0.0", () => {
+    console.log(`LinkBoost Growth API listening on http://0.0.0.0:${config.port}`);
   });
   setInterval(() => {
     syncRefillStatuses().catch((err) => console.error("Refill status sync failed", err));
