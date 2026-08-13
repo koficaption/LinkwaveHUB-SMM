@@ -24,7 +24,7 @@ export function PublicLayout() {
   const settings = usePublicSettings();
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 dark:bg-brand-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-brand-950">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur-xl">
         <div className="container-page flex h-[4.25rem] items-center justify-between">
           <BrandLogo className="h-10 sm:h-11" />
@@ -93,7 +93,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24 dark:bg-brand-950">
+    <div className="min-h-screen bg-slate-100 dark:bg-brand-950">
       <aside aria-label={title} className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/10 bg-black text-white transition lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-[4.25rem] items-center px-3">
           <BrandLogo to={home} className="h-10" />
