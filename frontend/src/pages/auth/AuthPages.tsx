@@ -99,11 +99,7 @@ export function RegisterPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
-        {paidUpgrade ? (
-          <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            Want a reseller / child panel? Create this customer account first, then pay the upgrade fee from your dashboard. Admin confirms the Mobile Money payment and switches you to reseller.
-          </p>
-        ) : (
+        {!paidUpgrade && (
           <>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={asReseller} onChange={(e) => setAsReseller(e.target.checked)} />
@@ -171,8 +167,6 @@ function GoogleSignIn() {
     document.head.appendChild(script);
   }, [enabled]);
 
-  if (!enabled) return null;
-
   const finish = async (payload: { accessToken?: string; credential?: string }) => {
     const me = await loginWithGoogle(payload);
     toast.success("Logged in with Google");
@@ -201,11 +195,7 @@ function GoogleSignIn() {
       }).requestAccessToken();
       return;
     }
-    if (config.data?.redirectEnabled) {
-      window.location.href = "/api/auth/google/start";
-      return;
-    }
-    toast.error("Google script is still loading. Try again in a moment.");
+    window.location.href = "/api/auth/google/start";
   };
 
   return (
@@ -213,7 +203,7 @@ function GoogleSignIn() {
       <button
         type="button"
         onClick={onClick}
-        disabled={busy}
+        disabled={busy || config.isLoading}
         className="btn w-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
       >
         <GoogleMark />
