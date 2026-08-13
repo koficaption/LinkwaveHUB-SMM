@@ -7,6 +7,13 @@ export type PaymentInitInput = {
   metadata?: Record<string, unknown>;
   config?: Record<string, unknown>;
   callbackUrl?: string | null;
+  merchantBearsCost?: boolean;
+  feeQuote?: {
+    walletAmount: number;
+    fee: number;
+    vat: number;
+    chargedAmount: number;
+  };
 };
 
 export type PaymentInitResult = {

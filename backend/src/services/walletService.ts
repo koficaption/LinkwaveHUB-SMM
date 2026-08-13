@@ -7,6 +7,12 @@ import { getPaymentAdapter } from "../providers/payment/index.js";
 import { paymentReference } from "../utils.js";
 import { config } from "../config.js";
 import type { AuthUser } from "../middleware/auth.js";
+import {
+  getKorapayFeeSettings,
+  isCardPaymentAdapter,
+  quoteKorapayFees,
+  type KorapayFeeQuote,
+} from "./korapayFees.js";
 
 export async function getWallet(userId: string) {
   const wallet = await queryOne(`SELECT * FROM wallets WHERE user_id = $1`, [userId]);
@@ -43,12 +49,18 @@ export async function listTransactions(userId: string, page = 1, limit = 20, adm
 export async function listPaymentMethods(includeDisabled = false) {
   const where = includeDisabled ? "" : "WHERE is_enabled = TRUE";
   const rows = await query(`SELECT id, code, name, description, adapter, is_enabled, sort_order, config FROM payment_methods ${where} ORDER BY sort_order, name`);
+  const korapayFees = await getKorapayFeeSettings();
   return rows.map((row) => {
     const methodConfig = { ...(row.config as Record<string, unknown> | null) };
     delete methodConfig.secretKey;
     delete methodConfig.apiKey;
-    if (["korapay", "paystack", "card"].includes(String(row.adapter)) && !methodConfig.publicKey && config.korapayPublicKey) {
-      methodConfig.publicKey = config.korapayPublicKey;
+    if (isCardPaymentAdapter(row.adapter)) {
+      if (!methodConfig.publicKey && config.korapayPublicKey) {
+        methodConfig.publicKey = config.korapayPublicKey;
+      }
+      methodConfig.customerPaysFees = korapayFees.customerPaysFees;
+      methodConfig.feePercent = korapayFees.feePercent;
+      methodConfig.vatPercent = korapayFees.vatPercent;
     }
     return { ...row, config: methodConfig };
   });
@@ -58,6 +70,34 @@ function paymentMetadata(payment: Record<string, unknown>) {
   const meta = payment.metadata;
   if (meta && typeof meta === "object" && !Array.isArray(meta)) return meta as Record<string, unknown>;
   return {};
+}
+
+async function korapayInitOptions(adapter: string, walletAmount: number) {
+  if (!isCardPaymentAdapter(adapter)) {
+    return {
+      amount: walletAmount,
+      merchantBearsCost: true,
+      feeQuote: undefined as KorapayFeeQuote | undefined,
+    };
+  }
+  const quote = quoteKorapayFees(walletAmount, await getKorapayFeeSettings());
+  const addedFees = quote.chargedAmount > quote.walletAmount + 0.001;
+  return {
+    amount: quote.chargedAmount,
+    merchantBearsCost: addedFees || !quote.customerPaysFees,
+    feeQuote: quote,
+  };
+}
+
+function feeMetadata(quote?: KorapayFeeQuote) {
+  if (!quote || quote.chargedAmount <= quote.walletAmount) return {};
+  return {
+    chargedAmount: quote.chargedAmount,
+    korapayFee: quote.fee,
+    korapayVat: quote.vat,
+    feePercent: quote.feePercent,
+    vatPercent: quote.vatPercent,
+  };
 }
 
 export function isResellerUpgradePayment(payment: Record<string, unknown>) {
@@ -83,8 +123,9 @@ export async function initiateDirectedPayment(
   );
   const reference = paymentReference();
   const adapter = getPaymentAdapter(String(method.adapter));
+  const charge = await korapayInitOptions(String(method.adapter), amount);
   const init = await adapter.initialize({
-    amount,
+    amount: charge.amount,
     currency: "GHS",
     email: user.email,
     customerName: user.full_name,
@@ -92,6 +133,8 @@ export async function initiateDirectedPayment(
     metadata: { userId: user.id, ...meta },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl,
+    merchantBearsCost: charge.merchantBearsCost,
+    feeQuote: charge.feeQuote,
   });
 
   const payment = await queryOne<Record<string, unknown>>(
@@ -106,6 +149,7 @@ export async function initiateDirectedPayment(
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
+        ...feeMetadata(charge.feeQuote),
         ...meta,
       }),
     ]
@@ -116,6 +160,7 @@ export async function initiateDirectedPayment(
     method,
     checkoutUrl: init.checkoutUrl,
     instructions: init.instructions,
+    feeQuote: charge.feeQuote,
   };
 }
 
@@ -128,8 +173,9 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
 
   const reference = paymentReference();
   const adapter = getPaymentAdapter(String(method.adapter));
+  const charge = await korapayInitOptions(String(method.adapter), amount);
   const init = await adapter.initialize({
-    amount,
+    amount: charge.amount,
     currency: "GHS",
     email: user.email,
     customerName: user.full_name,
@@ -137,6 +183,8 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     metadata: { userId: user.id },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl: safeCheckoutReturnUrl(returnUrl, "/app/wallet"),
+    merchantBearsCost: charge.merchantBearsCost,
+    feeQuote: charge.feeQuote,
   });
 
   const payment = await queryOne(
@@ -149,7 +197,11 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
       init.autoComplete ? "completed" : "pending",
       init.reference,
       init.providerRef ?? null,
-      JSON.stringify({ instructions: init.instructions, checkoutUrl: init.checkoutUrl }),
+      JSON.stringify({
+        instructions: init.instructions,
+        checkoutUrl: init.checkoutUrl,
+        ...feeMetadata(charge.feeQuote),
+      }),
     ]
   );
 
@@ -176,12 +228,11 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     });
   }
 
-  return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions };
+  return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions, feeQuote: charge.feeQuote };
 }
 
 function isCardAdapter(adapter: unknown) {
-  const code = String(adapter || "");
-  return code === "korapay" || code === "paystack" || code === "card";
+  return isCardPaymentAdapter(adapter);
 }
 
 function normalizeKorapayAmount(value: unknown, expected: number) {
@@ -222,10 +273,14 @@ export async function completeVerifiedPayment(
     const expected = Number(payment.amount);
     const paid = normalizeKorapayAmount(verified.amount, expected);
     const raw = verified.raw && typeof verified.raw === "object" ? verified.raw as Record<string, unknown> : {};
-    const charged = normalizeKorapayAmount(raw.amount_charged ?? raw.amount, expected);
+    const charged = normalizeKorapayAmount(raw.amount_charged ?? raw.amount_paid ?? raw.amount, expected);
+    const quotedCharge = Number(paymentMetadata(payment).chargedAmount ?? 0);
     const matchesWallet = Math.abs(paid - expected) <= 0.5;
+    const matchesQuoted = quotedCharge > 0 && (
+      Math.abs(paid - quotedCharge) <= 0.5 || Math.abs(charged - quotedCharge) <= 0.5
+    );
     const includesFees = charged + 0.01 >= expected && charged <= expected * 1.25 + 10;
-    if (!matchesWallet && !includesFees) {
+    if (!matchesWallet && !matchesQuoted && !includesFees) {
       throw new AppError("Paid amount does not match this invoice", 400);
     }
   }

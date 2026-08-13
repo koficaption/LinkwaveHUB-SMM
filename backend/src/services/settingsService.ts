@@ -21,6 +21,9 @@ const defaults: Record<string, unknown> = {
   },
   payments: {
     autoApproveMock: true,
+    korapayCustomerPaysFees: true,
+    korapayFeePercent: 1.5,
+    korapayVatPercent: 15,
   },
   orders: {
     autoProcessing: true,
@@ -113,6 +116,11 @@ export async function getPublicSettings() {
     usdToGhs: Number((all.pricing as Record<string, unknown>)?.usdToGhs ?? 15.4),
     channels: (channels.items ?? []).filter((item) => item?.name && item?.url),
     affiliates: all.affiliates,
+    payments: {
+      korapayCustomerPaysFees: (all.payments as Record<string, unknown>)?.korapayCustomerPaysFees !== false,
+      korapayFeePercent: Number((all.payments as Record<string, unknown>)?.korapayFeePercent ?? 1.5),
+      korapayVatPercent: Number((all.payments as Record<string, unknown>)?.korapayVatPercent ?? 15),
+    },
     resellers: {
       upgradeEnabled: (all.resellers as Record<string, unknown>).upgradeEnabled !== false,
       upgradeFee: Number((all.resellers as Record<string, unknown>).upgradeFee ?? 0),

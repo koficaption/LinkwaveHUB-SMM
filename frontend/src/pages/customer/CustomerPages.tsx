@@ -19,6 +19,7 @@ import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
 import { MobileActionButtons } from "@/components/dashboard/AccountMenu";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog } from "@/components/dashboard/RequestRefillDialog";
+import { quoteKorapayFees } from "@/utils/korapayFees";
 
 function isCardMethod(adapter?: string) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -309,6 +310,10 @@ export function WalletPage() {
   });
   const w = wallet.data;
   const cfg = selected?.config ?? {};
+  const depositAmount = Number(amount);
+  const korapayQuote = isCardMethod(selected?.adapter)
+    ? quoteKorapayFees(depositAmount, cfg)
+    : null;
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-3">
@@ -325,9 +330,19 @@ export function WalletPage() {
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
           </Select>
           {isCardMethod(selected?.adapter) && (
-            <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              You will be redirected to Korapay to pay by card (or mobile money). Korapay adds its processing fee and tax on checkout. The amount you enter is what is credited to your wallet after they confirm.
-            </p>
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {korapayQuote && korapayQuote.total > korapayQuote.wallet ? (
+                <dl className="space-y-1">
+                  <div className="flex justify-between gap-3"><dt>Wallet credit</dt><dd className="font-semibold">{money(korapayQuote.wallet)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(korapayQuote.fee)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(korapayQuote.vat)}</dd></div>
+                  <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(korapayQuote.total)}</dd></div>
+                </dl>
+              ) : (
+                <p>You will be redirected to Korapay to pay by card (or mobile money).</p>
+              )}
+              <p className="mt-2 text-xs">Korapay processing fee and tax are added on top of the amount you enter. Your wallet is credited with the amount above, not the extra tax.</p>
+            </div>
           )}
           {selected?.adapter === "manual" && (
             <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -339,7 +354,9 @@ export function WalletPage() {
             </div>
           )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
-            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : isCardMethod(selected?.adapter) ? "Pay with card" : "Deposit"}
+            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : isCardMethod(selected?.adapter)
+              ? `Pay ${money(korapayQuote?.total ?? depositAmount)} with card`
+              : "Deposit"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
         </div>
@@ -600,12 +617,15 @@ export function BecomeResellerPage() {
   const pending = application?.status === "pending_review" || application?.status === "pending_payment";
   const instructions = application?.payment_metadata?.instructions;
   const pendingCheckout = application?.payment_metadata?.checkoutUrl;
+  const upgradeQuote = cardCheckout
+    ? quoteKorapayFees(Number(data?.upgradeFee ?? 0), selected?.config)
+    : null;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Become a reseller / child panel</h1>
-        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on their checkout. Mobile Money still waits for admin confirmation.</p>
+        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation.</p>
       </div>
       <Card>
         <p className="text-sm text-slate-500">Upgrade fee</p>
@@ -650,9 +670,19 @@ export function BecomeResellerPage() {
               </Select>
             </label>
             {cardCheckout && (
-              <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                You will be redirected to Korapay. Their processing fee and tax are added on checkout. After a successful payment, your dashboard switches to reseller automatically.
-              </p>
+              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {upgradeQuote && upgradeQuote.total > upgradeQuote.wallet ? (
+                  <dl className="space-y-1">
+                    <div className="flex justify-between gap-3"><dt>Upgrade fee</dt><dd className="font-semibold">{money(upgradeQuote.wallet, data.currency)}</dd></div>
+                    <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(upgradeQuote.fee, data.currency)}</dd></div>
+                    <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(upgradeQuote.vat, data.currency)}</dd></div>
+                    <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(upgradeQuote.total, data.currency)}</dd></div>
+                  </dl>
+                ) : (
+                  <p>You will be redirected to Korapay.</p>
+                )}
+                <p className="mt-2 text-xs">After a successful payment, your dashboard switches to reseller automatically.</p>
+              </div>
             )}
             {selected?.adapter === "manual" && (
               <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -670,7 +700,9 @@ export function BecomeResellerPage() {
               </>
             )}
             <Button disabled={apply.isPending || verifying || storeName.trim().length < 2} onClick={() => apply.mutate()}>
-              {apply.isPending ? "Submitting…" : cardCheckout ? `Pay ${money(data.upgradeFee, data.currency)} with card` : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
+              {apply.isPending ? "Submitting…" : cardCheckout
+                ? `Pay ${money(upgradeQuote?.total ?? data.upgradeFee, data.currency)} with card`
+                : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
             </Button>
           </div>
         </Card>

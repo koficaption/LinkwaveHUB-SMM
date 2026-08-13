@@ -201,6 +201,16 @@ export type PublicSettings = {
   logoUrl?: string;
   usdToGhs?: number;
   channels?: ChannelLink[];
+  affiliates?: {
+    enabled?: boolean;
+    commissionPercent?: number;
+    minimumPayout?: number;
+  };
+  payments?: {
+    korapayCustomerPaysFees?: boolean;
+    korapayFeePercent?: number;
+    korapayVatPercent?: number;
+  };
   resellers?: {
     upgradeEnabled?: boolean;
     upgradeFee?: number;
@@ -223,5 +233,8 @@ export type PaymentMethod = {
     accountNumber?: string;
     instructions?: string;
     publicKey?: string;
+    customerPaysFees?: boolean;
+    feePercent?: number;
+    vatPercent?: number;
   };
 };

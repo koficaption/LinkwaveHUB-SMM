@@ -505,7 +505,12 @@ export function AdminPayments() {
                 <td className="p-2">{String(p.reference)}</td>
                 <td className="p-2">{String(p.email)}</td>
                 <td className="p-2">{String(p.purpose) === "reseller_upgrade" ? "Reseller upgrade" : "Wallet deposit"}</td>
-                <td className="p-2">{money(Number(p.amount))}</td>
+                <td className="p-2">
+                  {money(Number(p.amount))}
+                  {Number((p.metadata as { chargedAmount?: number } | null)?.chargedAmount) > Number(p.amount) && (
+                    <div className="text-xs text-slate-500">Paid {money(Number((p.metadata as { chargedAmount: number }).chargedAmount))} incl. tax</div>
+                  )}
+                </td>
                 <td className="p-2"><Badge className={statusTone[String(p.status)]}>{String(p.status)}</Badge></td>
                 <td className="p-2 space-x-2">
                   {p.status === "pending" && (
@@ -745,6 +750,7 @@ export function AdminSettings() {
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <OrdersSettingsCard data={settings.data?.orders} onSave={(value) => save("orders", value)} />
+      <KorapayFeesSettingsCard data={settings.data?.payments} onSave={(value) => save("payments", value)} />
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
       <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
@@ -793,6 +799,53 @@ function OrdersSettingsCard({
         maxPendingPerUser: Number(values.maxPendingPerUser || 20),
         refundWindowHours: Number(values.refundWindowHours || 48),
       })}>Save order settings</Button>
+    </Card>
+  );
+}
+
+function KorapayFeesSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    korapayCustomerPaysFees: String(source.korapayCustomerPaysFees !== false),
+    korapayFeePercent: String(source.korapayFeePercent ?? 1.5),
+    korapayVatPercent: String(source.korapayVatPercent ?? 15),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Korapay fees and tax</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        When a customer pays with Korapay, add Korapay’s processing fee and VAT on top of the wallet or upgrade amount. The extra is paid to Korapay — the wallet is still credited with the amount they entered. Match these rates to your Korapay contract.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <label className="block">
+          <span className="label">Customer pays Korapay fees</span>
+          <Select value={values.korapayCustomerPaysFees} onChange={(e) => setForm({ ...values, korapayCustomerPaysFees: e.target.value })}>
+            <option value="true">Yes — add fee and tax</option>
+            <option value="false">No — business absorbs them</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Processing fee %</span>
+          <Input type="number" min="0" step="0.01" value={values.korapayFeePercent} onChange={(e) => setForm({ ...values, korapayFeePercent: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">VAT / tax % on the fee</span>
+          <Input type="number" min="0" step="0.01" value={values.korapayVatPercent} onChange={(e) => setForm({ ...values, korapayVatPercent: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        korapayCustomerPaysFees: values.korapayCustomerPaysFees === "true",
+        korapayFeePercent: Number(values.korapayFeePercent || 0),
+        korapayVatPercent: Number(values.korapayVatPercent || 0),
+      })}>Save Korapay fees</Button>
     </Card>
   );
 }
