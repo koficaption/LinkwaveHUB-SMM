@@ -77,13 +77,18 @@ The API applies migrations and seeds demo data on first boot.
 The API and React app ship as **one Node service**. Express serves `/api` and the built frontend.
 
 ```bash
-npm ci --prefix backend
-npm ci --prefix frontend
+npm ci --include=dev --prefix backend
+npm ci --include=dev --prefix frontend
 npm run build
 NODE_ENV=production npm start
 ```
 
-[Deploy to Render](https://render.com/deploy?repo=https://github.com/koficaption/LinkwaveHUB-SMM) using `render.yaml`, or build the `Dockerfile`. Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL` to the public HTTPS origin. Never put secrets in git.
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/koficaption/LinkwaveHUB-SMM) as a **Web Service** (not a static site). Use npm, not Yarn:
+
+- **Build command:** `npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build`
+- **Start command:** `npm start --prefix backend`
+
+Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL` to the public HTTPS origin. Never put secrets in git.
 
 ## Demo logins
 
