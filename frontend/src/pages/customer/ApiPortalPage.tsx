@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND_TAGLINE } from "@/brand";
 import { cn } from "@/utils/cn";
+import { publicProductName } from "@/utils/catalog";
 import type { Paginated, Wallet as WalletType } from "@/types";
 
 type Section = "overview" | "keys" | "docs" | "services" | "orders" | "wallet" | "usage" | "tester" | "webhooks" | "settings";
@@ -369,7 +370,7 @@ function ServicesSection() {
           <tbody>
             {services.data?.items.map((s) => (
               <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="py-2"><p className="font-semibold">{s.name}</p><p className="font-mono text-xs text-muted">{s.id}</p></td>
+                <td className="py-2"><p className="font-semibold">{publicProductName(s.name)}</p><p className="font-mono text-xs text-muted">{s.id}</p></td>
                 <td>{s.platform} · {s.category}</td>
                 <td>{s.min}–{s.max}</td>
                 <td>{money(s.price)}</td>
@@ -400,7 +401,7 @@ function OrdersSection() {
             {orders.data?.items.map((o) => (
               <tr key={String(o.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="py-2 font-mono">{String(o.public_id)}</td>
-                <td>{String(o.product_name)}</td>
+                <td>{publicProductName(String(o.product_name))}</td>
                 <td>{String(o.quantity)}</td>
                 <td>{money(o.charge)}</td>
                 <td><Badge className={statusTone(String(o.status))}>{String(o.status)}</Badge></td>

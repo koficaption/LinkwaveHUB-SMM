@@ -12,7 +12,7 @@ import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, isProviderCategory } from "@/utils/catalog";
+import { publicCategoryName, isProviderCategory, publicProductName } from "@/utils/catalog";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -62,7 +62,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
         {products.data?.items.map((p) => (
           <Card key={p.id}>
             <p className="text-xs font-mono text-muted">#{p.provider_service_id || p.id.slice(0, 8)}</p>
-            <h3 className="mt-1 font-bold">{p.name}</h3>
+            <h3 className="mt-1 font-bold">{publicProductName(p.name)}</h3>
             <p className="mt-1 text-sm text-muted">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1k</span></p>
             <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
@@ -97,7 +97,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
                     </span>
                   </td>
                   <td className="px-3 py-3">{publicCategoryName(p.category_name)}</td>
-                  <td className="px-3 py-3 font-medium">{p.name}</td>
+                  <td className="px-3 py-3 font-medium">{publicProductName(p.name)}</td>
                   <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}</span></td>
                   <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
                   <td className="px-3 py-3 text-xs">{p.avg_delivery_time || "—"}</td>
@@ -159,7 +159,7 @@ export function ServiceDetailPage() {
       <div className="lg:col-span-3">
         <p className="text-sm font-semibold text-brand-700">{p.platform_name} → {publicCategoryName(p.category_name)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <h1 className="text-3xl font-extrabold">{p.name}</h1>
+          <h1 className="text-3xl font-extrabold">{publicProductName(p.name)}</h1>
           <RefillBadge {...productRefill(p)} />
         </div>
         <p className="mt-4 text-slate-600 dark:text-slate-300">{p.description}</p>
@@ -212,7 +212,7 @@ export function StorefrontPage() {
         {store.data.products.map((p) => (
           <Card key={p.id}>
             <p className="text-xs text-slate-500">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
-            <h3 className="mt-2 font-bold">{p.name}</h3>
+            <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
             <p className="mt-3 font-extrabold">{money(p.display_price_per_1000)} / 1000</p>
             <Link to={`/services/${p.slug}?store=${slug}`}><Button className="mt-4 w-full">Order</Button></Link>
           </Card>

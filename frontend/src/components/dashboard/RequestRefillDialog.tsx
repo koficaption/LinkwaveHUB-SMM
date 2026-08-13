@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { api, formatDate, ApiError } from "@/api/client";
 import type { Order } from "@/types";
+import { publicProductName } from "@/utils/catalog";
 import { Button, Modal } from "@/components/ui";
 
 export function RequestRefillDialog({
@@ -25,7 +26,7 @@ export function RequestRefillDialog({
         Are you sure you want to request a refill for Order {order.public_id}?
       </p>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <div><dt className="text-slate-500">Service</dt><dd className="font-medium">{order.product_name}</dd></div>
+        <div><dt className="text-slate-500">Service</dt><dd className="font-medium">{publicProductName(order.product_name)}</dd></div>
         <div><dt className="text-slate-500">Target</dt><dd className="break-all font-medium">{order.target}</dd></div>
         <div><dt className="text-slate-500">Original quantity</dt><dd className="font-medium">{order.quantity.toLocaleString()}</dd></div>
         <div><dt className="text-slate-500">Refill period</dt><dd className="font-medium">{refill?.refillDays ?? 30} days</dd></div>

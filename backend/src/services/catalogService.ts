@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -488,6 +488,7 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   product.category_name = publicCategoryName(String(product.category_name || ""));
   product.description = publicProductDescription(product.description as string | null);
   if (!admin) {
+    product.name = publicProductName(String(product.name || ""));
     delete product.cost_per_1000;
     delete product.profit_per_1000;
     delete product.provider_service_id;
@@ -511,7 +512,7 @@ export function toApiService(product: Record<string, unknown>) {
     id: product.id,
     platform: product.platform_name,
     category: product.category_name,
-    name: product.name,
+    name: publicProductName(String(product.name || "")),
     description: product.description,
     min: Number(product.api_min_quantity || product.min_quantity),
     max: Number(product.api_max_quantity || product.max_quantity),

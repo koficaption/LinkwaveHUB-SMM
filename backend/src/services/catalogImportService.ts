@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug } from "../utils.js";
-import { detectServiceCategory } from "./catalogClassify.js";
+import { detectServiceCategory, publicProductName } from "./catalogClassify.js";
 import { parsePanelFlag, parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import { getSettings } from "./settingsService.js";
@@ -174,7 +174,7 @@ export async function importProviderPackages(
       rows.push({
         platformId,
         categoryId,
-        name: String(service.name).slice(0, 180),
+        name: publicProductName(String(service.name)).slice(0, 180),
         slug: `p-${String(provider.id).replace(/-/g, "").slice(0, 8)}-${serviceId}`.toLowerCase(),
         description: null,
         minQty,

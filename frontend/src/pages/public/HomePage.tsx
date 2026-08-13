@@ -7,6 +7,7 @@ import { Button, Card, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
 import { BrandLogo } from "@/components/BrandLogo";
+import { publicProductName } from "@/utils/catalog";
 
 export function HomePage() {
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
@@ -80,7 +81,7 @@ export function HomePage() {
             <Link key={p.id} to={`/services/${p.slug}`}>
               <Card className="h-full transition hover:-translate-y-0.5 hover:border-brand-300">
                 <p className="text-xs font-semibold uppercase text-muted">{p.platform_name}</p>
-                <h3 className="mt-2 font-bold">{p.name}</h3>
+                <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
                 <p className="mt-3 text-lg font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1000</span></p>
               </Card>
             </Link>

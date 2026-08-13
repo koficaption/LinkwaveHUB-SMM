@@ -6,6 +6,7 @@ import { api, money, formatDate, ApiError } from "@/api/client";
 import type { Order, Paginated, RefillRecord, Wallet } from "@/types";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
+import { publicProductName } from "@/utils/catalog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -89,7 +90,7 @@ export function OrdersPage() {
         {(orders.data?.items ?? []).map((o) => (
           <Card key={o.id}>
             <p className="font-mono text-xs text-muted">{o.public_id}</p>
-            <h3 className="mt-1 font-bold">{o.product_name}</h3>
+            <h3 className="mt-1 font-bold">{publicProductName(o.product_name)}</h3>
             <p className="mt-2 text-sm text-muted">Quantity: {o.quantity.toLocaleString()}</p>
             <p className="text-sm text-muted">Charge: {money(o.charge)}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -147,7 +148,7 @@ export function OrderDetailPage() {
           <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
         </div>
         <dl className="mt-6 grid gap-4 sm:grid-cols-2 text-sm">
-          <Item label="Service" value={o.product_name} />
+          <Item label="Service" value={publicProductName(o.product_name)} />
           <Item label="Platform" value={o.platform_name} />
           <Item label="Quantity" value={o.quantity.toLocaleString()} />
           <Item label="Amount" value={money(o.charge)} />
@@ -242,7 +243,7 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
           {data.map((o) => (
             <tr key={o.id} className="border-t border-slate-100 dark:border-slate-800">
               <td className="py-3 pr-4 font-semibold">{o.public_id}</td>
-              <td className="pr-4">{o.product_name}</td>
+              <td className="pr-4">{publicProductName(o.product_name)}</td>
               <td className="pr-4">{o.quantity.toLocaleString()}</td>
               <td className="pr-4">{money(o.charge)}</td>
               <td className="pr-4"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>

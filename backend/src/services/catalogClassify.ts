@@ -51,6 +51,23 @@ export function publicProductDescription(description?: string | null) {
   return text;
 }
 
+/** Strip provider decorative wrappers (dashed lines, arrows, tildes) from service titles. */
+export function publicProductName(name?: string | null) {
+  const original = String(name ?? "").trim();
+  if (!original) return "";
+  let cleaned = original
+    .replace(/[↓↑➤►◀▶★☆✦✧✔✅✨🔹◄▼▲➔➜➡⬅⬆⬇⇨⇦⇧⇩]+/g, " ")
+    .replace(/[-_=~•·~—–−]{3,}/g, " ")
+    .replace(/[~]{2,}/g, " ")
+    .replace(/\[\s+/g, "[")
+    .replace(/\s+\]/g, "]")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || original;
+}
+
 export function detectServiceCategory(panelCategory: string, serviceName: string) {
   const fromName = SERVICE_TYPES.find((type) => type.test.test(serviceName));
   if (fromName) return fromName;

@@ -23,3 +23,20 @@ export function publicProductDescription(description?: string | null) {
   if (!text || PROVIDER_NOISE.test(text)) return null;
   return text;
 }
+
+/** Strip provider decorative wrappers (dashed lines, arrows, tildes) from service titles. */
+export function publicProductName(name?: string | null) {
+  const original = String(name ?? "").trim();
+  if (!original) return "";
+  let cleaned = original
+    .replace(/[↓↑➤►◀▶★☆✦✧✔✅✨🔹◄▼▲➔➜➡⬅⬆⬇⇨⇦⇧⇩]+/g, " ")
+    .replace(/[-_=~•·~—–−]{3,}/g, " ")
+    .replace(/[~]{2,}/g, " ")
+    .replace(/\[\s+/g, "[")
+    .replace(/\s+\]/g, "]")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || original;
+}

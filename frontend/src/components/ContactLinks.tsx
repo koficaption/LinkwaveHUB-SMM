@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Headphones, Mail, MessageCircle, Phone, Send, Users } from "lucide-react";
+import { Headphones, LifeBuoy, Mail, MessageCircle, Phone, Send, Users, X } from "lucide-react";
 import { api } from "@/api/client";
 import type { ChannelLink, PublicSettings } from "@/types";
 
@@ -33,14 +34,24 @@ function isChannel(channel: ChannelLink) {
   return kind === "channel" || kind === "telegram" || /channel/.test(name);
 }
 
+function isTelegram(channel: ChannelLink) {
+  return /telegram|t\.me/i.test(`${channel.kind || ""} ${channel.name} ${channel.url}`);
+}
+
 function helpItems(s?: PublicSettings) {
   const channels = s?.channels ?? [];
-  const group = channels.find(isGroup);
-  const channel = channels.find((item) => isChannel(item) && item.url !== group?.url) ?? channels.find(isChannel);
   const whatsapp = waLink(s?.whatsappNumber);
+  const used = new Set<string>();
   const items: { href: string; label: string; detail?: string; icon: React.ReactNode }[] = [];
+
+  const push = (item: { href: string; label: string; detail?: string; icon: React.ReactNode }) => {
+    if (!item.href || used.has(item.href)) return;
+    used.add(item.href);
+    items.push(item);
+  };
+
   if (s?.supportEmail) {
-    items.push({
+    push({
       href: `mailto:${s.supportEmail}`,
       label: "Email",
       detail: s.supportEmail,
@@ -48,21 +59,40 @@ function helpItems(s?: PublicSettings) {
     });
   }
   if (s?.contactPhone) {
-    items.push({
+    push({
       href: `tel:${s.contactPhone}`,
-      label: "Customer service",
+      label: "Call",
       detail: s.contactPhone,
       icon: <Phone className="h-4 w-4" />,
     });
   }
   if (whatsapp) {
-    items.push({ href: whatsapp, label: "WhatsApp", icon: <MessageCircle className="h-4 w-4" /> });
+    push({
+      href: whatsapp,
+      label: "WhatsApp",
+      detail: s?.whatsappNumber,
+      icon: <MessageCircle className="h-4 w-4" />,
+    });
   }
-  if (channel) {
-    items.push({ href: channel.url, label: "Channel", detail: channel.name, icon: <Send className="h-4 w-4" /> });
+
+  const telegram = channels.find(isTelegram);
+  if (telegram) {
+    push({
+      href: telegram.url,
+      label: "Telegram",
+      detail: telegram.name,
+      icon: <Send className="h-4 w-4" />,
+    });
   }
-  if (group) {
-    items.push({ href: group.url, label: "Group", detail: group.name, icon: <Users className="h-4 w-4" /> });
+
+  for (const channel of channels) {
+    const group = isGroup(channel);
+    push({
+      href: channel.url,
+      label: group ? "Group" : isChannel(channel) ? "Channel" : channel.name,
+      detail: channel.name,
+      icon: group ? <Users className="h-4 w-4" /> : <Send className="h-4 w-4" />,
+    });
   }
   return items;
 }
@@ -93,7 +123,7 @@ export function ContactLinks({ className = "", tone = "dark" }: { className?: st
               className={`inline-flex items-center gap-1.5 font-medium ${linkClass}`}
             >
               {item.icon}
-              {item.label === "Customer service" ? item.detail ?? item.label : item.label}
+              {item.label === "Call" || item.label === "Customer service" ? item.detail ?? item.label : item.label}
             </a>
           ))}
         </div>
@@ -125,12 +155,10 @@ export function HelpBar() {
     };
   }, [open]);
 
-  if (!s || !items.length) return null;
-
   return (
-    <div ref={root} className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
+    <div ref={root} className="pointer-events-none fixed bottom-5 right-4 z-50 flex flex-col items-end gap-3 sm:right-5">
       {open && (
-        <div className="w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-black/20 dark:border-slate-700 dark:bg-slate-900">
+        <div className="pointer-events-auto w-[min(18.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-black/20 dark:border-slate-700 dark:bg-slate-900">
           <p className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
             How can we help?
           </p>
@@ -141,9 +169,9 @@ export function HelpBar() {
                 href={item.href}
                 target={item.href.startsWith("http") ? "_blank" : undefined}
                 rel="noreferrer"
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-green-50 dark:text-slate-200 dark:hover:bg-green-500/10"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00A341] text-white">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
                   {item.icon}
                 </span>
                 <span className="min-w-0">
@@ -154,6 +182,19 @@ export function HelpBar() {
                 </span>
               </a>
             ))}
+            <Link
+              to="/app/support"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                <LifeBuoy className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-semibold">Support tickets</span>
+                <span className="block text-xs text-slate-500">Open a request in your account</span>
+              </span>
+            </Link>
           </div>
         </div>
       )}
@@ -162,9 +203,9 @@ export function HelpBar() {
         aria-expanded={open}
         aria-label={open ? "Close help" : "Open help"}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-2 rounded-full bg-[#00A341] px-5 py-3 text-base font-medium text-white shadow-lg shadow-green-900/25 hover:bg-[#00963c]"
+        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-3 text-base font-semibold text-white shadow-fab hover:bg-brand-700"
       >
-        <Headphones className="h-5 w-5" strokeWidth={2.25} />
+        {open ? <X className="h-5 w-5" strokeWidth={2.25} /> : <Headphones className="h-5 w-5" strokeWidth={2.25} />}
         Help
       </button>
     </div>

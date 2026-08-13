@@ -5,6 +5,7 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { getResellerUpgradeSettings } from "./settingsService.js";
+import { publicProductName } from "./catalogClassify.js";
 import { initiateDirectedPayment } from "./walletService.js";
 
 export async function listResellers(status?: string) {
@@ -71,7 +72,13 @@ export async function getPublicStorefront(slug: string) {
      ORDER BY pl.sort_order, p.name`,
     [reseller.id]
   );
-  return { store: reseller, products };
+  return {
+    store: reseller,
+    products: products.map((product) => ({
+      ...product,
+      name: publicProductName(String(product.name || "")),
+    })),
+  };
 }
 
 export async function setResellerStatus(id: string, status: string, actor: AuthUser, ip?: string) {

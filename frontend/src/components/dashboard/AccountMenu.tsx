@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronDown, LogOut, MessageCircle, Send, Headphones } from "lucide-react";
+import { ChevronDown, LogOut, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { money } from "@/api/client";
 import { usePublicSettings } from "@/components/ContactLinks";
-import { cn } from "@/utils/cn";
 
 function digits(value?: string) {
   return (value || "").replace(/\D/g, "");
@@ -127,129 +126,6 @@ export function MobileActionButtons() {
         <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white text-xs">+</span>
         Make Deposit
       </Link>
-    </div>
-  );
-}
-
-export function SupportFabs() {
-  const settings = usePublicSettings();
-  const [chatOpen, setChatOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const s = settings.data;
-
-  const whatsapp = waLink(s?.whatsappNumber);
-  const telegram = s?.channels?.find((c) => /telegram|channel/i.test(`${c.kind || ""} ${c.name}`))?.url
-    || s?.channels?.find((c) => /t\.me|telegram/i.test(c.url))?.url;
-
-  useEffect(() => {
-    if (!chatOpen) return;
-    const onPointer = (event: MouseEvent) => {
-      if (root.current && !root.current.contains(event.target as Node)) setChatOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setChatOpen(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [chatOpen]);
-
-  if (!s) return null;
-
-  const chatItems = [
-    s.supportEmail ? { href: `mailto:${s.supportEmail}`, label: "Email", detail: s.supportEmail } : null,
-    s.contactPhone ? { href: `tel:${s.contactPhone}`, label: "Call", detail: s.contactPhone } : null,
-    whatsapp ? { href: whatsapp, label: "WhatsApp", detail: s.whatsappNumber } : null,
-    ...(s.channels ?? []).map((c) => ({ href: c.url, label: c.name, detail: c.kind })),
-  ].filter(Boolean) as { href: string; label: string; detail?: string }[];
-
-  if (!whatsapp && !telegram && !chatItems.length) return null;
-
-  return (
-    <div ref={root} className="pointer-events-none fixed inset-x-4 bottom-5 z-40 flex items-end justify-between lg:inset-x-auto lg:right-5 lg:justify-end">
-      <div className="pointer-events-auto relative lg:hidden">
-        <ChatButton open={chatOpen} onToggle={() => setChatOpen((v) => !v)} items={chatItems} align="left" />
-      </div>
-      <div className="pointer-events-auto flex flex-col items-end gap-3">
-        {whatsapp && (
-          <a
-            href={whatsapp}
-            target="_blank"
-            rel="noreferrer"
-            title="WhatsApp"
-            className="group relative flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-fab"
-          >
-            <MessageCircle className="h-6 w-6" />
-            <span className="pointer-events-none absolute right-14 hidden rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 lg:block">WhatsApp</span>
-          </a>
-        )}
-        {telegram && (
-          <a
-            href={telegram}
-            target="_blank"
-            rel="noreferrer"
-            title="Telegram"
-            className="group relative flex h-12 w-12 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-fab"
-          >
-            <Send className="h-5 w-5" />
-            <span className="pointer-events-none absolute right-14 hidden rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 lg:block">Telegram</span>
-          </a>
-        )}
-        <div className="hidden lg:block">
-          <ChatButton open={chatOpen} onToggle={() => setChatOpen((v) => !v)} items={chatItems} align="right" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChatButton({
-  open,
-  onToggle,
-  items,
-  align,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  items: { href: string; label: string; detail?: string }[];
-  align: "left" | "right";
-}) {
-  return (
-    <div className="relative">
-      {open && (
-        <div className={cn("absolute bottom-16 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900", align === "right" ? "right-0" : "left-0")}>
-          <p className="border-b border-slate-100 px-4 py-3 text-sm font-semibold dark:border-slate-800">How can we help?</p>
-          <div className="p-2">
-            {items.map((item) => (
-              <a
-                key={`${item.label}-${item.href}`}
-                href={item.href}
-                target={item.href.startsWith("http") ? "_blank" : undefined}
-                rel="noreferrer"
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-brand-50 dark:hover:bg-slate-800"
-              >
-                <span className="font-semibold">{item.label}</span>
-                {item.detail && <span className="truncate text-xs text-muted">{item.detail}</span>}
-              </a>
-            ))}
-            <Link to="/app/support" className="mt-1 block rounded-xl px-3 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50">
-              Open support tickets
-            </Link>
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        aria-label={open ? "Close live chat" : "Open live chat"}
-        title="Live chat"
-        onClick={onToggle}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-fab hover:bg-brand-700"
-      >
-        <Headphones className="h-6 w-6" />
-      </button>
     </div>
   );
 }

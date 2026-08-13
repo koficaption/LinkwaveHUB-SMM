@@ -9,7 +9,7 @@ import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, publicProductDescription, isProviderCategory } from "@/utils/catalog";
+import { publicCategoryName, publicProductDescription, isProviderCategory, publicProductName } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -88,7 +88,7 @@ export function NewOrderPanel() {
 
   function serviceLabel(p: Product) {
     const sid = p.provider_service_id || p.id.slice(0, 8);
-    return `[${sid}] — ${p.name} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} / 1000`;
+    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} / 1000`;
   }
 
   return (

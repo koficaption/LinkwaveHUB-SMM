@@ -5,6 +5,7 @@ import { requireApiKey, requireScope } from "../middleware/apiAuth.js";
 import { apiV1OrderSchema } from "../validators.js";
 import { openApiV1 } from "../openapi/v1.js";
 import * as catalog from "../services/catalogService.js";
+import { publicProductName } from "../services/catalogClassify.js";
 import * as orders from "../services/orderService.js";
 import * as wallet from "../services/walletService.js";
 import * as refills from "../services/refillService.js";
@@ -128,7 +129,7 @@ function toPublicApiOrder(order: Record<string, unknown>) {
   return {
     id: order.public_id,
     service: order.product_id,
-    service_name: order.product_name,
+    service_name: publicProductName(String(order.product_name || "")),
     quantity: order.quantity,
     target: order.target,
     charge: Number(order.charge),

@@ -6,6 +6,7 @@ import { notify } from "./notificationService.js";
 import { getSmmAdapter } from "../providers/smm/index.js";
 import { decryptSecret } from "../utils.js";
 import { summarizeRefill } from "./refillService.js";
+import { publicProductName } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -604,6 +605,7 @@ function withRefill(order: Record<string, unknown>) {
 function sanitizeOrder(row: Record<string, unknown>, admin = false) {
   const order = { ...row };
   if (!admin) {
+    order.product_name = publicProductName(String(order.product_name || ""));
     delete order.cost;
     delete order.profit;
     delete order.provider_order_id;

@@ -3,9 +3,9 @@ import { ChevronDown, Menu, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui";
-import { usePublicSettings } from "@/components/ContactLinks";
+import { HelpBar, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
-import { AccountMenu, CurrencyButton, SupportFabs } from "@/components/dashboard/AccountMenu";
+import { AccountMenu, CurrencyButton } from "@/components/dashboard/AccountMenu";
 import { cn } from "@/utils/cn";
 
 const publicLinks = [
@@ -72,7 +72,7 @@ export function PublicLayout() {
           </div>
         </div>
       </footer>
-      <SupportFabs />
+      <HelpBar />
     </div>
   );
 }
@@ -171,7 +171,7 @@ export function AppShell({
           </div>
         </main>
       </div>
-      <SupportFabs />
+      <HelpBar />
     </div>
   );
 }
