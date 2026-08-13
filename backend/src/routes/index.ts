@@ -35,6 +35,7 @@ import {
   paymentMethodSchema,
   adminBroadcastSchema,
   resellerUpgradeSchema,
+  paymentVerifySchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
@@ -227,7 +228,10 @@ router.get("/payments/methods", asyncHandler(async (_req, res) => {
   res.json(ok(await wallet.listPaymentMethods(false)));
 }));
 router.post("/payments/deposit", requireAuth, validate(walletDepositSchema), asyncHandler(async (req, res) => {
-  res.json(ok(await wallet.initiateDeposit(req.user!, req.body.amount, req.body.methodCode), "Deposit initiated"));
+  res.json(ok(await wallet.initiateDeposit(req.user!, req.body.amount, req.body.methodCode, req.body.returnUrl), "Deposit initiated"));
+}));
+router.post("/payments/verify", requireAuth, validate(paymentVerifySchema), asyncHandler(async (req, res) => {
+  res.json(ok(await wallet.completeVerifiedPayment(req.body.reference, { userId: req.user!.id }), "Payment verified"));
 }));
 
 router.get("/support", requireAuth, asyncHandler(async (req, res) => {

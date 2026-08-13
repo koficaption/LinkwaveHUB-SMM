@@ -5,6 +5,7 @@ export type PaymentInitInput = {
   reference: string;
   metadata?: Record<string, unknown>;
   config?: Record<string, unknown>;
+  callbackUrl?: string | null;
 };
 
 export type PaymentInitResult = {

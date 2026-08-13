@@ -37,17 +37,19 @@ Add your own products from **Admin → Products**. Sample catalog rows can stay 
 
 Signed-in users get a personal link (`/register?ref=CODE`). When a referred user adds funds (auto or confirmed deposits), the referrer earns **7% for life**. Commission is credited to the referrer wallet and can be used to order services. Rate and minimum payout are in **Admin → Settings**.
 
-## Payments and SMM API (later)
+## Payments and SMM API
 
-Do not connect live keys yet. The site uses:
+Wallet deposits and reseller upgrade fees can use:
 
-- **Instant Demo Top-up** and **Mobile Money** (manual confirm) for deposits
-- **mock** SMM adapter so orders can be placed without a supplier
+- **Card / Paystack** — hosted checkout. Set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, and `PAYSTACK_ENCRYPTION_KEY` in `.env` (never commit them). After a successful charge, the API verifies with Paystack and credits the wallet. Reseller upgrade card payments do **not** credit the wallet; they promote the account instead.
+- **Mobile Money** — manual confirmation by an admin
+- **Instant Demo Top-up** — local/demo only; disable it when real payments are on
 
-When the website is complete:
+Webhook URL (Paystack Dashboard → Settings → API Keys & Webhooks):
 
-- **Korapay** for instant and manual payments
-- **resellersmm.com `/api/v2`** (PerfectPanel: `key` + `action=services|add|status|refill|cancel|balance`) via Admin → Providers, adapter `generic_http`, API URL `https://resellersmm.com/api/v2`
+`{API_ORIGIN}/api/payments/webhooks/paystack`
+
+Korapay can be added later. SMM fulfilment uses the **resellersmm.com `/api/v2`** PerfectPanel adapter from Admin → Providers.
 
 ## Admin configuration
 

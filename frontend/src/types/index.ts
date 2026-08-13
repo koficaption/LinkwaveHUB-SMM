@@ -154,5 +154,6 @@ export type PaymentMethod = {
     bankName?: string;
     accountNumber?: string;
     instructions?: string;
+    publicKey?: string;
   };
 };

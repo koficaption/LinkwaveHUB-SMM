@@ -74,6 +74,7 @@ export const orderSchema = z.object({
 export const walletDepositSchema = z.object({
   amount: z.number().positive(),
   methodCode: z.string().min(2).max(40),
+  returnUrl: z.string().url().max(500).optional(),
 });
 
 export const ticketSchema = z.object({
@@ -127,6 +128,7 @@ export const paymentMethodSchema = z.object({
     accountName: z.string().max(120).optional(),
     bankName: z.string().max(120).optional(),
     accountNumber: z.string().max(80).optional(),
+    publicKey: z.string().max(200).optional(),
     instructions: z.string().max(2000).optional(),
   }).optional(),
 });
@@ -161,4 +163,9 @@ export const resellerUpgradeSchema = z.object({
   methodCode: z.string().min(1).max(40).optional(),
   senderName: z.string().max(120).optional(),
   senderNumber: z.string().max(30).optional(),
+  returnUrl: z.string().url().max(500).optional(),
+});
+
+export const paymentVerifySchema = z.object({
+  reference: z.string().min(4).max(80),
 });

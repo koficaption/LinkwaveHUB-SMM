@@ -1,4 +1,5 @@
 import type { PaymentAdapter, PaymentInitInput, PaymentInitResult, PaymentVerifyResult } from "./types.js";
+import { AppError } from "../../errors.js";
 
 export const mockAdapter: PaymentAdapter = {
   code: "mock",
@@ -56,7 +57,7 @@ export const paystackAdapter: PaymentAdapter = {
       return {
         reference: input.reference,
         instructions:
-          "Paystack is enabled but not configured. Add a secret key in Admin → Settings → Payments.",
+          "Paystack is enabled but not configured. Add PAYSTACK_SECRET_KEY to the server environment.",
         autoComplete: false,
       };
     }
@@ -71,8 +72,10 @@ export const paystackAdapter: PaymentAdapter = {
         email: input.email,
         amount: amountKobo,
         reference: input.reference,
-        currency: input.currency === "GHS" ? "GHS" : "GHS",
+        currency: input.currency || "GHS",
+        callback_url: input.callbackUrl || undefined,
         metadata: input.metadata ?? {},
+        channels: ["card", "mobile_money", "bank"],
       }),
     });
     const json = (await response.json()) as {
@@ -81,18 +84,19 @@ export const paystackAdapter: PaymentAdapter = {
       data?: { authorization_url: string; reference: string };
     };
     if (!json.status || !json.data) {
-      throw new Error(json.message || "Paystack initialization failed");
+      throw new AppError(json.message || "Paystack initialization failed", 400);
     }
     return {
       reference: json.data.reference,
       checkoutUrl: json.data.authorization_url,
       providerRef: json.data.reference,
+      instructions: "Complete payment on the Paystack checkout page. Your wallet updates after Paystack confirms.",
     };
   },
   async verify(reference: string, cfg?: Record<string, unknown>): Promise<PaymentVerifyResult> {
     const secret = (cfg?.secretKey as string) || process.env.PAYSTACK_SECRET_KEY;
     if (!secret) return { success: false, reference };
-    const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+    const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
       headers: { Authorization: `Bearer ${secret}` },
     });
     const json = (await response.json()) as {

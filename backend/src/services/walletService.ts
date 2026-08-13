@@ -1,10 +1,11 @@
-import { query, queryOne, withTransaction } from "../db.js";
+import { query, queryOne, withTransaction, type Queryable } from "../db.js";
 import { AppError } from "../errors.js";
-import { uniqueSlug, parsePagination } from "../utils.js";
+import { uniqueSlug, parsePagination, safeCheckoutReturnUrl } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { getPaymentAdapter } from "../providers/payment/index.js";
 import { paymentReference } from "../utils.js";
+import { config } from "../config.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 export async function getWallet(userId: string) {
@@ -43,10 +44,13 @@ export async function listPaymentMethods(includeDisabled = false) {
   const where = includeDisabled ? "" : "WHERE is_enabled = TRUE";
   const rows = await query(`SELECT id, code, name, description, adapter, is_enabled, sort_order, config FROM payment_methods ${where} ORDER BY sort_order, name`);
   return rows.map((row) => {
-    const config = { ...(row.config as Record<string, unknown> | null) };
-    delete config.secretKey;
-    delete config.apiKey;
-    return { ...row, config };
+    const methodConfig = { ...(row.config as Record<string, unknown> | null) };
+    delete methodConfig.secretKey;
+    delete methodConfig.apiKey;
+    if (String(row.adapter) === "paystack" && !methodConfig.publicKey && config.paystackPublicKey) {
+      methodConfig.publicKey = config.paystackPublicKey;
+    }
+    return { ...row, config: methodConfig };
   });
 }
 
@@ -72,6 +76,11 @@ export async function initiateDirectedPayment(
   );
   if (!method) throw new AppError("Payment method is not available");
 
+  const { callbackUrl: extraCallback, ...meta } = extra;
+  const callbackUrl = safeCheckoutReturnUrl(
+    typeof extraCallback === "string" ? extraCallback : undefined,
+    "/app/become-reseller"
+  );
   const reference = paymentReference();
   const adapter = getPaymentAdapter(String(method.adapter));
   const init = await adapter.initialize({
@@ -79,8 +88,9 @@ export async function initiateDirectedPayment(
     currency: "GHS",
     email: user.email,
     reference,
-    metadata: { userId: user.id, ...extra },
+    metadata: { userId: user.id, ...meta },
     config: (method.config as Record<string, unknown>) || {},
+    callbackUrl,
   });
 
   const payment = await queryOne<Record<string, unknown>>(
@@ -95,7 +105,7 @@ export async function initiateDirectedPayment(
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
-        ...extra,
+        ...meta,
       }),
     ]
   );
@@ -108,7 +118,7 @@ export async function initiateDirectedPayment(
   };
 }
 
-export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string) {
+export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string, returnUrl?: string) {
   const method = await queryOne<Record<string, unknown>>(
     `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
     [methodCode]
@@ -124,6 +134,7 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     reference,
     metadata: { userId: user.id },
     config: (method.config as Record<string, unknown>) || {},
+    callbackUrl: safeCheckoutReturnUrl(returnUrl, "/app/wallet"),
   });
 
   const payment = await queryOne(
@@ -166,6 +177,108 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
   return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions };
 }
 
+function isPaystackAdapter(adapter: unknown) {
+  const code = String(adapter || "");
+  return code === "paystack" || code === "card";
+}
+
+export async function completeVerifiedPayment(
+  reference: string,
+  opts: { userId?: string; actor?: AuthUser | null; ip?: string } = {}
+) {
+  const payment = await queryOne<Record<string, unknown>>(
+    `SELECT p.*, m.adapter, m.config, m.name AS method_name
+     FROM payments p LEFT JOIN payment_methods m ON m.id = p.method_id
+     WHERE p.reference = $1`,
+    [reference]
+  );
+  if (!payment) throw new AppError("Payment not found", 404);
+  if (opts.userId && String(payment.user_id) !== opts.userId) {
+    throw new AppError("Payment not found", 404);
+  }
+  const purpose = isResellerUpgradePayment(payment) ? "reseller_upgrade" : "deposit";
+  if (payment.status === "completed") {
+    return { payment, alreadyCompleted: true, purpose };
+  }
+  if (payment.status === "cancelled") {
+    throw new AppError("This payment was cancelled", 400);
+  }
+
+  const adapter = getPaymentAdapter(String(payment.adapter || "manual"));
+  const verified = await adapter.verify(String(payment.reference), (payment.config as Record<string, unknown>) || {});
+  if (!verified.success) {
+    throw new AppError("This payment has not been confirmed yet", 400);
+  }
+  if (verified.amount != null && Math.abs(verified.amount - Number(payment.amount)) > 0.5) {
+    throw new AppError("Paid amount does not match this invoice", 400);
+  }
+
+  if (purpose === "reseller_upgrade") {
+    await query(
+      `UPDATE payments SET provider_ref = COALESCE($2, provider_ref), updated_at = NOW() WHERE id = $1`,
+      [payment.id, verified.providerRef ?? null]
+    );
+    const { approveUpgradeByPaymentReference } = await import("./resellerService.js");
+    const application = await approveUpgradeByPaymentReference(reference, opts.actor ?? null, opts.ip);
+    return { payment: { ...payment, status: "completed" }, alreadyCompleted: false, purpose, application };
+  }
+
+  const result = await withTransaction(async (client) => {
+    const locked = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM payments WHERE id = $1 FOR UPDATE`,
+      [payment.id],
+      client
+    );
+    if (!locked) throw new AppError("Payment not found", 404);
+    if (locked.status === "completed") return { row: locked, credited: false };
+    await creditWallet(
+      {
+        userId: String(payment.user_id),
+        amount: Number(payment.amount),
+        type: "deposit",
+        reference: String(payment.reference),
+        description: `Deposit via ${payment.method_name || "Paystack"}`,
+        createdBy: opts.actor?.id,
+      },
+      client
+    );
+    const row = await queryOne<Record<string, unknown>>(
+      `UPDATE payments SET status = 'completed', provider_ref = COALESCE($2, provider_ref), updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [payment.id, verified.providerRef ?? null],
+      client
+    );
+    return { row, credited: true };
+  });
+
+  if (result.credited) {
+    await notify({
+      userId: String(payment.user_id),
+      title: "Deposit successful",
+      body: `GHS ${Number(payment.amount).toFixed(2)} was added to your wallet.`,
+      type: "deposit",
+    });
+    if (opts.actor) {
+      await writeAudit({
+        actor: opts.actor,
+        action: "payment.confirm",
+        targetType: "payment",
+        targetId: String(payment.id),
+        ip: opts.ip,
+      });
+    }
+    const { payReferralCommission } = await import("./affiliateService.js");
+    await payReferralCommission({
+      depositorId: String(payment.user_id),
+      depositAmount: Number(payment.amount),
+      paymentId: String(payment.id),
+      reference: String(payment.reference),
+    });
+  }
+
+  return { payment: result.row, alreadyCompleted: !result.credited, purpose };
+}
+
 export async function confirmPayment(reference: string, actor: AuthUser, ip?: string) {
   const payment = await queryOne<Record<string, unknown>>(
     `SELECT p.*, m.adapter, m.config, m.name AS method_name
@@ -174,6 +287,10 @@ export async function confirmPayment(reference: string, actor: AuthUser, ip?: st
     [reference]
   );
   if (!payment) throw new AppError("Payment not found", 404);
+  if (isPaystackAdapter(payment.adapter)) {
+    const result = await completeVerifiedPayment(reference, { actor, ip });
+    return result.application ?? result.payment;
+  }
   if (isResellerUpgradePayment(payment)) {
     const { approveUpgradeByPaymentReference } = await import("./resellerService.js");
     return approveUpgradeByPaymentReference(reference, actor, ip);
@@ -237,25 +354,27 @@ export async function creditWallet(input: {
   reference?: string;
   description: string;
   createdBy?: string;
-}) {
-  return withTransaction(async (client) => {
+}, client?: Queryable) {
+  const run = async (c: Queryable) => {
     const wallet = await queryOne<{ id: string; balance: string }>(
       `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
       [input.userId],
-      client
+      c
     );
     if (!wallet) throw new AppError("Wallet not found", 404);
     const next = Number((Number(wallet.balance) + input.amount).toFixed(4));
     if (next < 0) throw new AppError("Wallet balance cannot go below zero");
-    await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, next], client);
+    await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, next], c);
     await query(
       `INSERT INTO wallet_transactions (wallet_id, user_id, type, amount, balance_after, reference, description, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [wallet.id, input.userId, input.type, input.amount, next, input.reference ?? null, input.description, input.createdBy ?? null],
-      client
+      c
     );
     return next;
-  });
+  };
+  if (client) return run(client);
+  return withTransaction(run);
 }
 
 export async function adminAdjustWallet(userId: string, amount: number, reason: string, actor: AuthUser, ip?: string) {

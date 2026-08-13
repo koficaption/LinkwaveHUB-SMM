@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ContactLinks } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
+import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
 
 export function CustomerHome() {
   const { me } = useAuth();
@@ -153,17 +154,32 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
 
 export function WalletPage() {
   const qc = useQueryClient();
+  const { verifying } = usePaystackReturn();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
   const tx = useQuery({ queryKey: ["tx"], queryFn: () => api<Paginated<Record<string, unknown>>>("/wallet/transactions") });
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
   const [amount, setAmount] = useState("50");
   const [method, setMethod] = useState("");
   const [lastInstructions, setLastInstructions] = useState("");
-  const selected = methods.data?.find((m) => m.code === method) ?? methods.data?.[0];
-  const methodCode = method || selected?.code || "mock";
+  const selected = methods.data?.find((m) => m.code === method)
+    ?? methods.data?.find((m) => m.adapter === "paystack")
+    ?? methods.data?.[0];
+  const methodCode = method || selected?.code || "paystack";
   const deposit = useMutation({
-    mutationFn: () => api<{ instructions?: string }>("/payments/deposit", { method: "POST", body: JSON.stringify({ amount: Number(amount), methodCode }) }),
+    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null }>("/payments/deposit", {
+      method: "POST",
+      body: JSON.stringify({
+        amount: Number(amount),
+        methodCode,
+        returnUrl: checkoutReturnUrl("/app/wallet"),
+      }),
+    }),
     onSuccess: async (data) => {
+      if (data.checkoutUrl) {
+        toast.success("Redirecting to Paystack…");
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
       setLastInstructions(data.instructions || "Deposit initiated");
       toast.success(data.instructions || "Deposit initiated");
       await qc.invalidateQueries({ queryKey: ["wallet"] });
@@ -186,6 +202,11 @@ export function WalletPage() {
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
           </Select>
+          {selected?.adapter === "paystack" && (
+            <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              You will be redirected to Paystack to pay by card (or mobile money). Your wallet updates as soon as Paystack confirms.
+            </p>
+          )}
           {selected?.adapter === "manual" && (
             <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
@@ -195,7 +216,9 @@ export function WalletPage() {
               <p className="mt-1 text-xs">After you pay, an admin confirms the deposit.</p>
             </div>
           )}
-          <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending}>Deposit</Button>
+          <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
+            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : selected?.adapter === "paystack" ? "Pay with card" : "Deposit"}
+          </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
         </div>
       </Card>
@@ -376,7 +399,7 @@ type UpgradeOffer = {
     payment_reference?: string | null;
     payment_status?: string | null;
     method_name?: string | null;
-    payment_metadata?: { instructions?: string };
+    payment_metadata?: { instructions?: string; checkoutUrl?: string | null };
     created_at: string;
   } | null;
 };
@@ -385,6 +408,7 @@ export function BecomeResellerPage() {
   const { me, refresh } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { verifying } = usePaystackReturn();
   const offer = useQuery({
     queryKey: ["reseller-upgrade"],
     queryFn: () => api<UpgradeOffer>("/account/reseller-upgrade"),
@@ -398,9 +422,13 @@ export function BecomeResellerPage() {
   const [method, setMethod] = useState("");
   const [senderName, setSenderName] = useState(me?.user.full_name ?? "");
   const [senderNumber, setSenderNumber] = useState(me?.user.phone ?? "");
-  const selected = methods.data?.find((m) => m.code === method) ?? methods.data?.find((m) => m.adapter === "manual") ?? methods.data?.[0];
-  const methodCode = method || selected?.code || "momo";
+  const selected = methods.data?.find((m) => m.code === method)
+    ?? methods.data?.find((m) => m.adapter === "paystack")
+    ?? methods.data?.find((m) => m.adapter === "manual")
+    ?? methods.data?.[0];
+  const methodCode = method || selected?.code || "paystack";
   const cfg = selected?.config ?? {};
+  const cardCheckout = selected?.adapter === "paystack";
 
   useEffect(() => {
     if (me?.user.role === "reseller") navigate("/app/reseller", { replace: true });
@@ -413,16 +441,23 @@ export function BecomeResellerPage() {
   }, [offer.data?.application?.status, refresh, navigate]);
 
   const apply = useMutation({
-    mutationFn: () => api<{ instructions?: string }>("/account/reseller-upgrade", {
+    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null; payment?: { checkoutUrl?: string | null } }>("/account/reseller-upgrade", {
       method: "POST",
       body: JSON.stringify({
         storeName,
         methodCode,
-        senderName,
-        senderNumber,
+        senderName: cardCheckout ? undefined : senderName,
+        senderNumber: cardCheckout ? undefined : senderNumber,
+        returnUrl: checkoutReturnUrl("/app/become-reseller"),
       }),
     }),
     onSuccess: async (data) => {
+      const url = data.checkoutUrl || data.payment?.checkoutUrl;
+      if (url) {
+        toast.success("Redirecting to Paystack…");
+        window.location.assign(url);
+        return;
+      }
       toast.success(data.instructions || "Application submitted. Pay by Mobile Money, then wait for admin confirmation.");
       await qc.invalidateQueries({ queryKey: ["reseller-upgrade"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
@@ -435,22 +470,24 @@ export function BecomeResellerPage() {
   const application = data?.application;
   const pending = application?.status === "pending_review" || application?.status === "pending_payment";
   const instructions = application?.payment_metadata?.instructions;
+  const pendingCheckout = application?.payment_metadata?.checkoutUrl;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Become a reseller / child panel</h1>
-        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. After Mobile Money is confirmed, your customer dashboard switches to reseller.</p>
+        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Paystack are confirmed automatically. Mobile Money still waits for admin confirmation.</p>
       </div>
       <Card>
         <p className="text-sm text-slate-500">Upgrade fee</p>
         <p className="mt-1 text-3xl font-extrabold">{money(data?.upgradeFee ?? 0, data?.currency ?? "GHS")}</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{data?.upgradeNote}</p>
       </Card>
+      {verifying && <Card><p className="text-sm">Confirming your Paystack payment…</p></Card>}
       {pending && application && (
         <Card>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-bold">Waiting for admin confirmation</h2>
+            <h2 className="font-bold">{pendingCheckout ? "Finish card payment" : "Waiting for admin confirmation"}</h2>
             <Badge className={statusTone[application.status] ?? statusTone.pending}>{prettyStatus(application.status)}</Badge>
           </div>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
@@ -458,7 +495,11 @@ export function BecomeResellerPage() {
             {application.payment_reference ? <> · Reference <span className="font-mono">{application.payment_reference}</span></> : null}
           </p>
           {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
-          <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using that reference. When an admin confirms it, this page will switch to your reseller dashboard.</p>
+          {pendingCheckout ? (
+            <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Paystack</Button>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using that reference. When an admin confirms it, this page will switch to your reseller dashboard.</p>
+          )}
         </Card>
       )}
       {application?.status === "rejected" && (
@@ -479,6 +520,11 @@ export function BecomeResellerPage() {
                 {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
               </Select>
             </label>
+            {cardCheckout && (
+              <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                You will be redirected to Paystack. After a successful card payment, your dashboard switches to reseller automatically.
+              </p>
+            )}
             {selected?.adapter === "manual" && (
               <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
@@ -488,10 +534,14 @@ export function BecomeResellerPage() {
                 <p className="mt-1 text-xs">Pay {money(data.upgradeFee, data.currency)} and use the payment reference as the MoMo note.</p>
               </div>
             )}
-            <label className="block"><span className="label">MoMo name you will send from</span><Input value={senderName} onChange={(e) => setSenderName(e.target.value)} /></label>
-            <label className="block"><span className="label">MoMo number you will send from</span><Input value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} /></label>
-            <Button disabled={apply.isPending || storeName.trim().length < 2} onClick={() => apply.mutate()}>
-              {apply.isPending ? "Submitting…" : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
+            {selected?.adapter === "manual" && (
+              <>
+                <label className="block"><span className="label">MoMo name you will send from</span><Input value={senderName} onChange={(e) => setSenderName(e.target.value)} /></label>
+                <label className="block"><span className="label">MoMo number you will send from</span><Input value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} /></label>
+              </>
+            )}
+            <Button disabled={apply.isPending || verifying || storeName.trim().length < 2} onClick={() => apply.mutate()}>
+              {apply.isPending ? "Submitting…" : cardCheckout ? `Pay ${money(data.upgradeFee, data.currency)} with card` : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
             </Button>
           </div>
         </Card>

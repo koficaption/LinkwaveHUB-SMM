@@ -39,4 +39,7 @@ export const config = {
   googleRedirectUri:
     process.env.GOOGLE_REDIRECT_URI ??
     `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/api/auth/google/callback`,
+  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY ?? "",
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
+  paystackEncryptionKey: process.env.PAYSTACK_ENCRYPTION_KEY ?? "",
 };

@@ -195,6 +195,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   methodCode?: string;
   senderName?: string;
   senderNumber?: string;
+  returnUrl?: string;
 }) {
   if (user.role === "admin") throw new AppError("Admins cannot apply for a reseller upgrade");
   const settings = await getResellerUpgradeSettings();
@@ -227,6 +228,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
     const started = await initiateDirectedPayment(user, fee, String(input.methodCode), {
       purpose: "reseller_upgrade",
       storeName,
+      callbackUrl: input.returnUrl,
     });
     paymentId = String(started.payment!.id);
     methodCode = String(started.method.code);
@@ -272,6 +274,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
       application,
       payment: paymentId ? { id: paymentId, reference, amount: fee, instructions, checkoutUrl } : null,
       instructions,
+      checkoutUrl,
     };
   } catch (error) {
     if (paymentId) {
@@ -308,7 +311,7 @@ async function loadApplicationByPaymentReference(reference: string) {
   return row.id;
 }
 
-export async function approveUpgradeByPaymentReference(reference: string, actor: AuthUser, ip?: string) {
+export async function approveUpgradeByPaymentReference(reference: string, actor: AuthUser | null, ip?: string) {
   const id = await loadApplicationByPaymentReference(reference);
   return approveResellerApplication(id, actor, ip);
 }
@@ -318,7 +321,7 @@ export async function rejectUpgradeByPaymentReference(reference: string, actor: 
   return rejectResellerApplication(id, actor, ip);
 }
 
-export async function approveResellerApplication(id: string, actor: AuthUser, ip?: string) {
+export async function approveResellerApplication(id: string, actor: AuthUser | null, ip?: string) {
   const result = await withTransaction(async (client) => {
     const application = await queryOne<Record<string, unknown>>(
       `SELECT * FROM reseller_applications WHERE id = $1 FOR UPDATE`,
@@ -377,7 +380,7 @@ export async function approveResellerApplication(id: string, actor: AuthUser, ip
       `UPDATE reseller_applications
        SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
        WHERE id = $1 RETURNING *`,
-      [id, actor.id],
+      [id, actor?.id ?? null],
       client
     );
   });
@@ -389,11 +392,11 @@ export async function approveResellerApplication(id: string, actor: AuthUser, ip
     type: "reseller",
   });
   await writeAudit({
-    actor,
+    actor: actor ?? undefined,
     action: "reseller.upgrade.approve",
     targetType: "reseller_application",
     targetId: id,
-    details: { userId: result?.user_id, storeName: result?.store_name },
+    details: { userId: result?.user_id, storeName: result?.store_name, source: actor ? "admin" : "paystack" },
     ip,
   });
   return result;

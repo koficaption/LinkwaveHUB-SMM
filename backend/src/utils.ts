@@ -90,3 +90,18 @@ export function clientIp(req: { headers: Record<string, unknown>; ip?: string; s
   if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
+
+/** Paystack redirects the payer's browser here after checkout. Only /app/* paths are allowed. */
+export function safeCheckoutReturnUrl(candidate: string | undefined, fallbackPath: string): string {
+  const path = fallbackPath.startsWith("/") ? fallbackPath : `/${fallbackPath}`;
+  const fallback = `${config.frontendUrl.replace(/\/$/, "")}${path}`;
+  if (!candidate) return fallback;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return fallback;
+    if (!url.pathname.startsWith("/app/")) return fallback;
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return fallback;
+  }
+}

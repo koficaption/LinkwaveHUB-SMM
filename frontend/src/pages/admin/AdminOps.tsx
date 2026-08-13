@@ -375,6 +375,7 @@ function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null;
         <label className="block"><span className="label">Type</span>
           <Select value={form.adapter} onChange={(e) => set("adapter", e.target.value)} disabled={Boolean(method)}>
             <option value="manual">Manual (MoMo / bank)</option>
+            <option value="paystack">Card / Paystack</option>
             <option value="mock">Instant demo top-up</option>
           </Select>
         </label>

@@ -7,15 +7,21 @@ import path from "node:path";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { router } from "./routes/index.js";
-import { errorHandler } from "./middleware/errorHandler.js";
+import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
+import { handlePaystackWebhook } from "./routes/paystackWebhook.js";
 
 const app = express();
 
 app.set("trust proxy", 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({ origin: config.frontendUrl, credentials: true }));
+app.post(
+  "/api/payments/webhooks/paystack",
+  express.raw({ type: "application/json" }),
+  asyncHandler(handlePaystackWebhook)
+);
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }));
