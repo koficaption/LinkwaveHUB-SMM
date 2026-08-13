@@ -6,6 +6,7 @@ import type { Platform, Product } from "@/types";
 import { Button, Card, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export function HomePage() {
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
@@ -18,6 +19,7 @@ export function HomePage() {
     <div>
       <section className="relative overflow-hidden bg-white">
         <div className="container-page relative py-16 sm:py-24">
+          <BrandLogo variant="full" withLink={false} className="mb-8" />
           <p className="text-sm font-bold uppercase tracking-wider text-brand-700">Social media services</p>
           <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight text-slate-900 dark:text-white sm:text-5xl">
             Buy followers, likes and views in a few taps

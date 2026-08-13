@@ -26,8 +26,8 @@ export function PublicLayout() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6FAF9] dark:bg-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-100 bg-white shadow-nav dark:border-slate-800 dark:bg-slate-900">
-        <div className="container-page flex h-16 items-center justify-between">
-          <BrandLogo className="h-9 sm:h-10" />
+        <div className="container-page flex h-[4.25rem] items-center justify-between">
+          <BrandLogo />
           <nav className="hidden items-center gap-6 text-sm font-semibold md:flex">
             {publicLinks.map((l) => (
               <Link key={l.label} to={l.to} className="text-slate-600 hover:text-brand-700 dark:text-slate-300">
@@ -66,7 +66,7 @@ export function PublicLayout() {
       <footer className="border-t border-slate-100 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
         <div className="container-page flex flex-col gap-4 text-sm text-muted sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <BrandLogo className="mb-3 h-9" />
+            <BrandLogo className="mb-3" />
             <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "LinkBoost Growth SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
             {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
           </div>
@@ -98,9 +98,9 @@ export function AppShell({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6FAF9] dark:bg-slate-950">
-      <header className="sticky top-0 z-50 flex h-16 items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
+      <header className="sticky top-0 z-50 flex h-[4.25rem] items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <BrandLogo to={home} className="h-9" />
+          <BrandLogo to={home} />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {me?.wallet && <span className="hidden sm:inline"><CurrencyButton /></span>}

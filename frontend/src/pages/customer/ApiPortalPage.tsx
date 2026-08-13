@@ -9,6 +9,8 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { api, errorMessage, formatDate, money } from "@/api/client";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
+import { BrandLogo } from "@/components/BrandLogo";
+import { BRAND_TAGLINE } from "@/brand";
 import { cn } from "@/utils/cn";
 import type { Paginated, Wallet as WalletType } from "@/types";
 
@@ -111,9 +113,10 @@ export function ApiPortalPage() {
 
   return (
     <div className="space-y-5">
+      <BrandLogo variant="full" withLink={false} />
       <PageHeader
         title="API Developer Portal"
-        subtitle="Connect your website to LinkBoost Growth SMM. Same catalog, wallet, and providers as the dashboard."
+        subtitle={`Connect your website to LinkBoost Growth SMM. Same catalog, wallet, and providers as the dashboard. ${BRAND_TAGLINE}.`}
       />
       <div className="flex flex-col gap-5 lg:flex-row">
         <nav className="flex gap-2 overflow-x-auto lg:w-56 lg:flex-col lg:overflow-visible">
