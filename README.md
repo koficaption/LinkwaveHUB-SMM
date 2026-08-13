@@ -72,6 +72,18 @@ npm run dev
 
 The API applies migrations and seeds demo data on first boot.
 
+## Demo logins
+
+Use these on `/login` after a fresh seed (click a row to fill the form):
+
+| Role | Email | Password |
+|------|-------|----------|
+| Customer | `customer@linkwavehub.com` | `Customer@12345` |
+| Reseller | `reseller@linkwavehub.com` | `Reseller@12345` |
+| Admin | `owussamuel18@gmail.com` | `Admin@12345` |
+
+If the live database was created earlier and the admin password was changed, use that account’s own password instead of `Admin@12345`. Extra seeded users `demo1@linkwavehub.com` … `demo3@linkwavehub.com` also use `Customer@12345`.
+
 ## Google sign-in
 
 1. Create an OAuth client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (Web application).

@@ -63,6 +63,7 @@ export function LoginPage() {
           {form.formState.isSubmitting ? "Signing in..." : "Login"}
         </Button>
       </form>
+      <DemoLogins onPick={(email, password) => form.reset({ email, password })} />
       <p className="mt-4 text-center text-sm">No account? <Link to="/register" className="font-semibold text-brand-700">Register</Link></p>
     </AuthCard>
   );
@@ -352,6 +353,35 @@ function Divider() {
       <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
       or
       <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+    </div>
+  );
+}
+
+function DemoLogins({ onPick }: { onPick: (email: string, password: string) => void }) {
+  const accounts = [
+    { role: "Customer", email: "customer@linkwavehub.com", password: "Customer@12345" },
+    { role: "Reseller", email: "reseller@linkwavehub.com", password: "Reseller@12345" },
+    { role: "Admin", email: "owussamuel18@gmail.com", password: "Admin@12345" },
+  ];
+  return (
+    <div className="mt-5 rounded-2xl bg-brand-50 p-3 dark:bg-slate-800">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-brand-700">Demo logins</p>
+      <div className="space-y-2">
+        {accounts.map((account) => (
+          <button
+            key={account.email}
+            type="button"
+            onClick={() => onPick(account.email, account.password)}
+            className="flex w-full items-start justify-between gap-3 rounded-xl bg-white px-3 py-2 text-left text-sm shadow-sm hover:bg-brand-50 dark:bg-slate-900 dark:hover:bg-slate-800"
+          >
+            <span>
+              <span className="block font-semibold text-slate-800 dark:text-slate-100">{account.role}</span>
+              <span className="block truncate text-xs text-muted">{account.email}</span>
+            </span>
+            <span className="shrink-0 font-mono text-xs text-brand-700">{account.password}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
