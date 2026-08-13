@@ -1,5 +1,6 @@
 import type { ApiSuccess } from "@/types";
 import { getStoredToken } from "@/api/token";
+import { convertFromGhs, formatCurrencyAmount, getDisplayCurrency, getUsdToGhsRate } from "@/utils/currency";
 
 export class ApiError extends Error {
   status: number;
@@ -47,11 +48,11 @@ export function errorMessage(error: unknown, fallback = "Request failed") {
   return error.message || fallback;
 }
 
-export const money = (value: number | string | null | undefined, currency = "GHS") => {
+export const money = (value: number | string | null | undefined, currency?: string) => {
   const n = Number(value ?? 0);
-  const amount = n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (currency === "GHS") return `₵ ${amount}`;
-  return `${currency} ${amount}`;
+  if (currency) return formatCurrencyAmount(n, currency);
+  const code = getDisplayCurrency();
+  return formatCurrencyAmount(convertFromGhs(n, code, getUsdToGhsRate()), code);
 };
 
 export const formatDate = (value: string) =>

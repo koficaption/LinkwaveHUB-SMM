@@ -36,6 +36,7 @@ export function PublicLayout() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
+            {me?.wallet && <CurrencyButton />}
             <button onClick={() => setDark(!dark)} className="rounded-xl p-2 text-slate-600 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Toggle theme">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -103,7 +104,7 @@ export function AppShell({
           <BrandLogo to={home} />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          {me?.wallet && <span className="hidden sm:inline"><CurrencyButton /></span>}
+          {me?.wallet && <CurrencyButton />}
           <button onClick={() => setDark(!dark)} className="hidden rounded-xl p-2 text-slate-600 hover:bg-brand-50 sm:inline-flex dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Toggle theme">
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>

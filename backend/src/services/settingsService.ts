@@ -110,6 +110,7 @@ export async function getPublicSettings() {
     developer: general.developer,
     currency: general.currency,
     logoUrl: general.logoUrl,
+    usdToGhs: Number((all.pricing as Record<string, unknown>)?.usdToGhs ?? 15.4),
     channels: (channels.items ?? []).filter((item) => item?.name && item?.url),
     affiliates: all.affiliates,
     resellers: {

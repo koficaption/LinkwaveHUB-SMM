@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, ThemeProvider } from "@/contexts/AuthContext";
+import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { AdminLayout, CustomerLayout, Guard, PublicLayout } from "@/layouts/Guards";
 import { HomePage } from "@/pages/public/HomePage";
 import { LoginPage, RegisterPage, AuthCallbackPage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/auth/AuthPages";
@@ -30,8 +31,9 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
-            <ReferralCapture />
-            <Routes>
+            <CurrencyProvider>
+              <ReferralCapture />
+              <Routes>
               <Route element={<PublicLayout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/services" element={<ServicesPage />} />
@@ -86,7 +88,8 @@ export default function App() {
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+              </Routes>
+            </CurrencyProvider>
           </BrowserRouter>
           <Toaster richColors position="top-right" />
         </AuthProvider>

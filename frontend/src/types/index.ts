@@ -199,6 +199,7 @@ export type PublicSettings = {
   developer?: string;
   currency?: string;
   logoUrl?: string;
+  usdToGhs?: number;
   channels?: ChannelLink[];
   resellers?: {
     upgradeEnabled?: boolean;
