@@ -10,10 +10,6 @@ import { BrandLogo } from "@/components/BrandLogo";
 const publicLinks = [
   { to: "/", label: "Home" },
   { to: "/services", label: "Services" },
-  { to: "/#how-it-works", label: "How It Works" },
-  { to: "/#pricing", label: "Pricing" },
-  { to: "/#affiliates", label: "Affiliates" },
-  { to: "/#faq", label: "FAQ" },
 ];
 
 export function PublicLayout() {

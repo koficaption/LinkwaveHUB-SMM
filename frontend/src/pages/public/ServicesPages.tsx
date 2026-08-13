@@ -29,8 +29,8 @@ export function ServicesPage() {
 
   return (
     <div className="container-page py-12">
-      <h1 className="text-3xl font-extrabold">Services marketplace</h1>
-      <p className="mt-2 text-slate-500">Platform → category → product. Everything below is loaded from the database.</p>
+      <h1 className="text-3xl font-extrabold">Buy a service</h1>
+      <p className="mt-2 text-slate-500">Pick a platform, then choose what you want to buy.</p>
       <div className="mt-6 grid gap-3 md:grid-cols-4">
         <Input placeholder="Search services" defaultValue={search} onBlur={(e) => setParams((p) => { p.set("q", e.target.value); p.set("page", "1"); return p; })} />
         <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>

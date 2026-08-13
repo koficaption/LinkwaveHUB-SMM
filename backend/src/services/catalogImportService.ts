@@ -52,7 +52,12 @@ function categorySlug(name: string) {
   return slug || `cat-${Buffer.from(name).toString("hex").slice(0, 10)}`;
 }
 
-export async function importProviderPackages(providerId: string, actor: AuthUser, ip?: string) {
+export async function importProviderPackages(
+  providerId: string,
+  actor: AuthUser,
+  ip?: string,
+  opts?: { markupPercent?: number }
+) {
   const { provider, services } = await listProviderServices(providerId);
   if (!services.length) throw new AppError("This provider returned no packages to import", 400);
 
@@ -65,7 +70,9 @@ export async function importProviderPackages(providerId: string, actor: AuthUser
     importMarkupPercent?: number;
   };
   const usdToGhs = Number(pricing.usdToGhs ?? 15.4);
-  const markup = Number(pricing.importMarkupPercent ?? pricing.customerMarkupPercent ?? 40);
+  const markup = Number(
+    opts?.markupPercent ?? pricing.importMarkupPercent ?? pricing.customerMarkupPercent ?? 40
+  );
   const resellerMarkup = Number(pricing.resellerMarkupPercent ?? 15);
   const minProfit = Number(pricing.minimumProfitPer1000 ?? 0.5);
 

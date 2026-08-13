@@ -6,6 +6,24 @@ import type { Category, Paginated, Platform, Product } from "@/types";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 
+function round4(value: number) {
+  return Number((Number.isFinite(value) ? value : 0).toFixed(4));
+}
+
+function sellFromCost(cost: number, percent: number) {
+  return round4(cost * (1 + percent / 100));
+}
+
+function percentFromPrices(cost: number, sell: number) {
+  if (!cost) return 0;
+  return round4(((sell - cost) / cost) * 100);
+}
+
+function markupLabel(cost: number, sell: number) {
+  if (!cost) return "—";
+  return `${percentFromPrices(cost, sell).toFixed(1)}%`;
+}
+
 export function AdminProducts() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -35,7 +53,7 @@ export function AdminProducts() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Products</h1>
-          <p className="text-sm text-slate-500">Add a service or import packages from a connected API provider. They appear on the customer marketplace immediately.</p>
+          <p className="text-sm text-slate-500">What customers buy. Set provider cost and your percent to see profit.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add product</Button>
       </div>
@@ -64,7 +82,7 @@ export function AdminProducts() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Category","Price / 1k","Cost","Profit","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Provider cost","Your %","Sell / 1k","Profit","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -73,10 +91,10 @@ export function AdminProducts() {
                 <td className="p-2"><input type="checkbox" checked={selected.includes(p.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, p.id] : s.filter((id) => id !== p.id))} /></td>
                 <td className="p-2 font-medium">{p.name}</td>
                 <td className="p-2">{p.platform_name}</td>
-                <td className="p-2">{p.category_name}</td>
-                <td className="p-2">{money(p.price_per_1000)}</td>
                 <td className="p-2">{money(p.cost_per_1000)}</td>
-                <td className="p-2">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
+                <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
+                <td className="p-2">{money(p.price_per_1000)}</td>
+                <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
                 <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-2">
@@ -106,6 +124,10 @@ export function AdminProducts() {
 function ProductForm({ product, platforms, categories, onClose }: { product: Product | null; platforms: Platform[]; categories: Category[]; onClose: () => void }) {
   const qc = useQueryClient();
   const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<{ id: string; name: string }[]>("/admin/providers") });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
+  const defaultPercent = Number(settings.data?.pricing?.importMarkupPercent ?? 40);
+  const startCost = Number(product?.cost_per_1000 ?? 0);
+  const startSell = Number(product?.price_per_1000 ?? 0);
   const [form, setForm] = useState({
     platformId: product?.platform_id ?? platforms[0]?.id ?? "",
     categoryId: product?.category_id ?? categories[0]?.id ?? "",
@@ -114,42 +136,65 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     description: product?.description ?? "",
     minQuantity: product?.min_quantity ?? 100,
     maxQuantity: product?.max_quantity ?? 100000,
-    pricePer1000: Number(product?.price_per_1000 ?? 10),
-    costPer1000: Number(product?.cost_per_1000 ?? 5),
-    resellerPricePer1000: Number(product?.reseller_price_per_1000 ?? 8),
+    costPer1000: startCost,
+    markupPercent: startCost > 0 && startSell > 0 ? percentFromPrices(startCost, startSell) : defaultPercent,
+    pricePer1000: startSell || sellFromCost(startCost, defaultPercent),
+    resellerPricePer1000: Number(product?.reseller_price_per_1000 ?? 0),
     status: product?.status ?? "active",
     deliveryType: product?.delivery_type ?? "gradual",
     avgDeliveryTime: product?.avg_delivery_time ?? "0-6 hours",
     providerServiceId: product?.provider_service_id ?? "",
     features: (product?.features ?? []).join("\n"),
   });
-  const profit = form.pricePer1000 - form.costPer1000;
+  const profit = round4(form.pricePer1000 - form.costPer1000);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+  const setCost = (cost: number) => {
+    const next = sellFromCost(cost, form.markupPercent);
+    setForm((f) => ({ ...f, costPer1000: cost, pricePer1000: next }));
+  };
+  const setPercent = (percent: number) => {
+    const next = sellFromCost(form.costPer1000, percent);
+    setForm((f) => ({ ...f, markupPercent: percent, pricePer1000: next }));
+  };
+  const setSell = (sell: number) => {
+    setForm((f) => ({ ...f, pricePer1000: sell, markupPercent: percentFromPrices(f.costPer1000, sell) }));
+  };
 
   return (
     <Modal open title={product ? "Edit product" : "Add product"} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block sm:col-span-1"><span className="label">Platform</span><Select value={form.platformId} onChange={(e) => set("platformId", e.target.value)}>{platforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
+        <label className="block"><span className="label">Platform</span><Select value={form.platformId} onChange={(e) => set("platformId", e.target.value)}>{platforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
         <label className="block"><span className="label">Category</span><Select value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></label>
         <label className="block sm:col-span-2"><span className="label">Product name</span><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></label>
-        <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
+        <div className="sm:col-span-2 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-500/10">
+          <p className="text-sm font-semibold">Your price</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Provider cost is what you pay the panel. Add your percent to see what customers pay and the profit you keep.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="block"><span className="label">Provider cost / 1000 (GHS)</span><Input type="number" step="0.01" value={form.costPer1000} onChange={(e) => setCost(Number(e.target.value))} /></label>
+            <label className="block"><span className="label">Your percent %</span><Input type="number" step="0.1" value={form.markupPercent} onChange={(e) => setPercent(Number(e.target.value))} /></label>
+            <label className="block"><span className="label">Customer pays / 1000</span><Input type="number" step="0.01" value={form.pricePer1000} onChange={(e) => setSell(Number(e.target.value))} /></label>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
+            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">Profit / 1000: <strong className="text-emerald-700 dark:text-emerald-400">{money(profit)}</strong></div>
+            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">On 1000 units you keep <strong>{money(profit)}</strong> after paying the provider {money(form.costPer1000)}</div>
+          </div>
+        </div>
+        <label className="block"><span className="label">Reseller price / 1000 (optional)</span><Input type="number" step="0.01" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Min qty</span><Input type="number" value={form.minQuantity} onChange={(e) => set("minQuantity", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Max qty</span><Input type="number" value={form.maxQuantity} onChange={(e) => set("maxQuantity", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Selling price / 1000</span><Input type="number" value={form.pricePer1000} onChange={(e) => set("pricePer1000", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Cost price / 1000</span><Input type="number" value={form.costPer1000} onChange={(e) => set("costPer1000", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Reseller price / 1000</span><Input type="number" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
-        <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">Profit / 1000: <strong>{money(profit)}</strong></div>
-        <label className="block"><span className="label">Delivery time</span><Input value={form.avgDeliveryTime} onChange={(e) => set("avgDeliveryTime", e.target.value)} /></label>
-        <label className="block"><span className="label">Delivery type</span><Select value={form.deliveryType} onChange={(e) => set("deliveryType", e.target.value)}><option value="instant">Instant</option><option value="gradual">Gradual</option><option value="mixed">Mixed</option></Select></label>
+        <label className="block"><span className="label">Status</span><Select value={form.status} onChange={(e) => set("status", e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></Select></label>
+        <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
         <label className="block"><span className="label">Provider</span><Select value={form.providerId} onChange={(e) => set("providerId", e.target.value)}><option value="">None</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
         <label className="block"><span className="label">Provider service ID</span><Input value={form.providerServiceId} onChange={(e) => set("providerServiceId", e.target.value)} /></label>
-        <label className="block"><span className="label">Status</span><Select value={form.status} onChange={(e) => set("status", e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></Select></label>
-        <label className="block sm:col-span-2"><span className="label">Features (one per line)</span><Textarea value={form.features} onChange={(e) => set("features", e.target.value)} /></label>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={async () => {
-          const payload = { ...form, features: form.features.split("\n").map((s) => s.trim()).filter(Boolean), providerId: form.providerId || null };
+          const payload = {
+            ...form,
+            features: form.features.split("\n").map((s) => s.trim()).filter(Boolean),
+            providerId: form.providerId || null,
+          };
           try {
             if (product) await api(`/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify(payload) });
             else await api("/admin/products", { method: "POST", body: JSON.stringify(payload) });
@@ -268,31 +313,59 @@ export function AdminCategories() {
 export function AdminProviders() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["/admin/providers"], queryFn: () => api<Record<string, unknown>[]>("/admin/providers") });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
   const [editing, setEditing] = useState<Record<string, unknown> | "new" | null>(null);
   const [servicesFor, setServicesFor] = useState<string | null>(null);
+  const [percent, setPercent] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
   const services = useQuery({
     queryKey: ["provider-services", servicesFor],
     queryFn: () => api<{ services: { service: string; name: string; category?: string; rate?: string; min?: string; max?: string }[] }>(`/admin/providers/${servicesFor}/services`),
     enabled: !!servicesFor,
   });
+  const usdToGhs = Number(settings.data?.pricing?.usdToGhs ?? 15.4);
+  const markup = percent ?? Number(settings.data?.pricing?.importMarkupPercent ?? 40);
+  const filtered = (services.data?.services ?? []).filter((s) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return `${s.name} ${s.category} ${s.service}`.toLowerCase().includes(q);
+  });
+
+  const importWithPercent = async (providerId: string, markupPercent: number) => {
+    const toastId = toast.loading("Importing packages from the provider…");
+    try {
+      const result = await api<{ upserted: number; packages: number; deactivated: number }>(`/admin/providers/${providerId}/import`, {
+        method: "POST",
+        body: JSON.stringify({ markupPercent }),
+      });
+      toast.success(`Imported ${result.upserted} packages at ${markupPercent}%`, { id: toastId });
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["platforms"] });
+      qc.invalidateQueries({ queryKey: ["platforms-all"] });
+      qc.invalidateQueries({ queryKey: ["categories-all"] });
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Import failed", { id: toastId });
+    }
+  };
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">API providers</h1>
-          <p className="text-sm text-slate-500">Connect a panel and import its packages into the catalog. Selling prices use your USD→GHS rate and markup from Settings.</p>
+          <h1 className="text-2xl font-extrabold">Provider prices</h1>
+          <p className="text-sm text-slate-500">See what the panel charges, add your percent, then import. You will see the profit before you save.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add provider</Button>
       </div>
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Name","API URL","Adapter","Balance","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Name","API URL","Balance","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {(list.data ?? []).map((row) => (
               <tr key={String(row.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2 font-medium">{String(row.name)}{row.has_api_key ? <span className="ml-2 text-xs text-emerald-600">key saved</span> : <span className="ml-2 text-xs text-amber-600">no key</span>}</td>
                 <td className="p-2 text-xs">{String(row.api_url || "—")}</td>
-                <td className="p-2">{String(row.adapter)}</td>
                 <td className="p-2">{row.balance != null ? String(row.balance) : "—"} {String(row.currency || "")}</td>
                 <td className="p-2"><Badge className={statusTone[String(row.status)]}>{String(row.status)}</Badge></td>
                 <td className="p-2 space-x-2">
@@ -304,21 +377,7 @@ export function AdminProviders() {
                       qc.invalidateQueries({ queryKey: ["/admin/providers"] });
                     } catch (e) { toast.error(e instanceof ApiError ? e.message : "Balance check failed"); }
                   }}>Test</button>
-                  <button className="font-semibold text-brand-700" onClick={async () => {
-                    const toastId = toast.loading("Importing packages from the provider…");
-                    try {
-                      const result = await api<{ upserted: number; packages: number; deactivated: number }>(`/admin/providers/${row.id}/import`, { method: "POST" });
-                      toast.success(`Imported ${result.upserted} packages`, { id: toastId });
-                      qc.invalidateQueries({ queryKey: ["admin-products"] });
-                      qc.invalidateQueries({ queryKey: ["products"] });
-                      qc.invalidateQueries({ queryKey: ["platforms"] });
-                      qc.invalidateQueries({ queryKey: ["platforms-all"] });
-                      qc.invalidateQueries({ queryKey: ["categories-all"] });
-                    } catch (e) {
-                      toast.error(e instanceof ApiError ? e.message : "Import failed", { id: toastId });
-                    }
-                  }}>Import packages</button>
-                  <button className="font-semibold text-brand-700" onClick={() => setServicesFor(String(row.id))}>Preview</button>
+                  <button className="font-semibold text-brand-700" onClick={() => { setPercent(null); setSearch(""); setServicesFor(String(row.id)); }}>See prices</button>
                 </td>
               </tr>
             ))}
@@ -327,27 +386,53 @@ export function AdminProviders() {
       </Card>
       {editing && <ProviderForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       {servicesFor && (
-        <Modal open title="Provider services" onClose={() => setServicesFor(null)}>
-          {services.isLoading && <p className="text-sm text-slate-500">Loading from the panel API…</p>}
+        <Modal open title="Provider prices and your profit" onClose={() => setServicesFor(null)}>
+          {services.isLoading && <p className="text-sm text-slate-500">Loading panel prices…</p>}
           {services.error && <p className="text-sm text-rose-600">{services.error instanceof ApiError ? services.error.message : "Could not load services"}</p>}
+          <div className="mb-3 grid gap-3 sm:grid-cols-3">
+            <label className="block sm:col-span-1">
+              <span className="label">Your percent %</span>
+              <Input type="number" step="0.1" value={markup} onChange={(e) => setPercent(Number(e.target.value))} />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="label">Search</span>
+              <Input placeholder="TikTok followers…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
+          </div>
+          <p className="mb-2 text-xs text-slate-500">USD {usdToGhs} → GHS. Provider cost is converted, then your percent is added. Profit is what you keep per 1,000.</p>
           <div className="max-h-80 overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead><tr className="text-slate-500">{["ID","Name","Category","Rate","Min","Max"].map((h) => <th key={h} className="p-1">{h}</th>)}</tr></thead>
+              <thead><tr className="text-slate-500">{["Name","Provider","Your cost","Customer pays","Your profit"].map((h) => <th key={h} className="p-1">{h}</th>)}</tr></thead>
               <tbody>
-                {(services.data?.services ?? []).map((s) => (
-                  <tr key={s.service} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="p-1 font-mono">{s.service}</td>
-                    <td className="p-1">{s.name}</td>
-                    <td className="p-1">{s.category}</td>
-                    <td className="p-1">{s.rate}</td>
-                    <td className="p-1">{s.min}</td>
-                    <td className="p-1">{s.max}</td>
-                  </tr>
-                ))}
+                {filtered.slice(0, 80).map((s) => {
+                  const rateUsd = Number(s.rate ?? 0);
+                  const cost = round4(rateUsd * usdToGhs);
+                  const sell = sellFromCost(cost, markup);
+                  const profit = round4(sell - cost);
+                  return (
+                    <tr key={s.service} className="border-t border-slate-100 dark:border-slate-800">
+                      <td className="p-1">
+                        <span className="font-medium">{s.name}</span>
+                        <span className="block text-[11px] text-slate-500">{s.category} · ID {s.service}</span>
+                      </td>
+                      <td className="p-1 whitespace-nowrap">{rateUsd} USD</td>
+                      <td className="p-1 whitespace-nowrap">{money(cost)}</td>
+                      <td className="p-1 whitespace-nowrap">{money(sell)}</td>
+                      <td className="p-1 whitespace-nowrap font-semibold text-emerald-700 dark:text-emerald-400">{money(profit)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-xs text-slate-500">This is a preview. Use <strong>Import packages</strong> to add them to the website catalog.</p>
+          {filtered.length > 80 && <p className="mt-2 text-xs text-slate-500">Showing 80 of {filtered.length}. Search to narrow the list.</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setServicesFor(null)}>Close</Button>
+            <Button onClick={async () => {
+              await importWithPercent(servicesFor, markup);
+              setServicesFor(null);
+            }}>Import with {markup}% profit</Button>
+          </div>
         </Modal>
       )}
     </div>

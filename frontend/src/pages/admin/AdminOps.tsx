@@ -770,12 +770,12 @@ function PricingSettingsCard({
   };
   return (
     <Card>
-      <h2 className="font-bold">Provider import pricing</h2>
-      <p className="mt-1 text-sm text-slate-500">Panel rates are usually USD per 1,000. LinkWaveHub sells in GHS. Re-import packages after you change these numbers.</p>
+      <h2 className="font-bold">Your prices</h2>
+      <p className="mt-1 text-sm text-slate-500">Provider rates are usually USD per 1,000. We convert to GHS, then add your percent. That percent is your profit on top of provider cost.</p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <label className="block"><span className="label">USD to GHS rate</span><Input type="number" value={values.usdToGhs} onChange={(e) => setForm({ ...values, usdToGhs: e.target.value })} /></label>
-        <label className="block"><span className="label">Import markup %</span><Input type="number" value={values.importMarkupPercent} onChange={(e) => setForm({ ...values, importMarkupPercent: e.target.value })} /></label>
-        <label className="block"><span className="label">Reseller markup %</span><Input type="number" value={values.resellerMarkupPercent} onChange={(e) => setForm({ ...values, resellerMarkupPercent: e.target.value })} /></label>
+        <label className="block"><span className="label">USD to GHS</span><Input type="number" value={values.usdToGhs} onChange={(e) => setForm({ ...values, usdToGhs: e.target.value })} /></label>
+        <label className="block"><span className="label">Your percent %</span><Input type="number" value={values.importMarkupPercent} onChange={(e) => setForm({ ...values, importMarkupPercent: e.target.value })} /></label>
+        <label className="block"><span className="label">Reseller percent %</span><Input type="number" value={values.resellerMarkupPercent} onChange={(e) => setForm({ ...values, resellerMarkupPercent: e.target.value })} /></label>
         <label className="block"><span className="label">Minimum profit / 1,000 (GHS)</span><Input type="number" value={values.minimumProfitPer1000} onChange={(e) => setForm({ ...values, minimumProfitPer1000: e.target.value })} /></label>
       </div>
       <Button className="mt-4" onClick={() => onSave({

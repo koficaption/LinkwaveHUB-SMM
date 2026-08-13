@@ -465,7 +465,10 @@ admin.get("/providers/:id/services", asyncHandler(async (req, res) => {
 }));
 admin.post("/providers/:id/import", asyncHandler(async (req, res) => {
   req.setTimeout(180000);
-  const imported = await catalogImport.importProviderPackages(req.params.id, req.user!, clientIp(req));
+  const markupPercent = req.body?.markupPercent != null ? Number(req.body.markupPercent) : undefined;
+  const imported = await catalogImport.importProviderPackages(req.params.id, req.user!, clientIp(req), {
+    markupPercent: Number.isFinite(markupPercent) ? markupPercent : undefined,
+  });
   res.json(ok(imported, `${imported.upserted} packages imported from the provider`));
 }));
 

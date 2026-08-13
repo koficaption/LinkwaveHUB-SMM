@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, money } from "@/api/client";
@@ -30,15 +31,15 @@ export function AdminOverview() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold">Overview</h1>
-        <p className="text-slate-500">Live statistics from your LinkWaveHub PostgreSQL database.</p>
+        <h1 className="text-2xl font-extrabold">Home</h1>
+        <p className="text-slate-500">Orders, money in, and profit.</p>
       </div>
-      <Card className="border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40">
-        <p className="font-semibold text-amber-950 dark:text-amber-100">This is your database, not someone else’s live panel</p>
-        <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">
-          Demo Admin, Demo Customer, sample orders and the sample provider are fictional preview rows so the dashboard is not empty. Add your own products from Products. The resellersmm.com API and Korapay payments will be connected after the website is complete.
-        </p>
-      </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+        <Link to="/admin/providers" className="rounded-2xl border border-brand-200 bg-brand-50 p-4 font-semibold text-brand-800 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-100">See provider prices and set your percent</Link>
+        <Link to="/admin/products" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Edit product prices</Link>
+        <Link to="/admin/settings" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">USD rate and default percent</Link>
+        <Link to="/admin/wallets" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Wallets</Link>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {overview.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         {cards.map(([label, value]) => (

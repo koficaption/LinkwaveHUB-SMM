@@ -24,26 +24,15 @@ export function CustomerHome() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold">Hello, {me?.user.full_name.split(" ")[0]}</h1>
-        <p className="text-slate-500">Manage orders, wallet and support from one place.</p>
+        <p className="text-slate-500">Buy a service, check your orders, or add money.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card><p className="text-sm text-slate-500">Wallet balance</p><p className="mt-2 text-2xl font-extrabold">{money(me?.wallet?.balance)}</p></Card>
-        <Card><p className="text-sm text-slate-500">Recent orders</p><p className="mt-2 text-2xl font-extrabold">{orders.data?.total ?? 0}</p></Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card><p className="text-sm text-slate-500">Wallet</p><p className="mt-2 text-2xl font-extrabold">{money(me?.wallet?.balance)}</p><Link to="/app/wallet" className="mt-2 inline-block text-sm font-semibold text-brand-700">Add money</Link></Card>
+        <Card><p className="text-sm text-slate-500">Orders</p><p className="mt-2 text-2xl font-extrabold">{orders.data?.total ?? 0}</p><Link to="/app/orders" className="mt-2 inline-block text-sm font-semibold text-brand-700">View orders</Link></Card>
         <Card>
-          <p className="text-sm text-slate-500">Account</p>
-          <p className="mt-2 text-2xl font-extrabold capitalize">{me?.user.role}</p>
-        </Card>
-        {me?.user.role === "customer" && (
-          <Card>
-            <p className="text-sm text-slate-500">Reseller / child panel</p>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pay the admin-set fee by Mobile Money to upgrade. After confirmation your dashboard switches to reseller.</p>
-            <Link to="/app/become-reseller" className="mt-2 inline-block text-sm font-semibold text-brand-700">Become a reseller</Link>
-          </Card>
-        )}
-        <Card>
-          <p className="text-sm text-slate-500">Affiliates</p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Earn 7% for life when people you invite add funds.</p>
-          <Link to="/app/affiliates" className="mt-2 inline-block text-sm font-semibold text-brand-700">Open affiliates</Link>
+          <p className="text-sm text-slate-500">Ready to grow?</p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pick Instagram, TikTok, YouTube and more.</p>
+          <Link to="/services"><Button className="mt-3">Buy a service</Button></Link>
         </Card>
       </div>
       <Card>
