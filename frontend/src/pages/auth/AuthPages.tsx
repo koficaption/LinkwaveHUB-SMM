@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button, Card, Input, PasswordInput } from "@/components/ui";
 import { ApiError, api } from "@/api/client";
 import { storedReferralCode } from "@/pages/customer/AffiliatePages";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const loginSchema = z.object({ email: z.string().email("Enter a valid email"), password: z.string().min(1, "Password is required") });
 const registerSchema = z.object({
@@ -34,7 +35,7 @@ export function LoginPage() {
   }, [params]);
 
   return (
-    <AuthCard title="Welcome back" subtitle="Sign in to LinkWaveHub">
+    <AuthCard title="Welcome back" subtitle="Sign in to Linkwave SMM">
       <GoogleButton />
       <Divider />
       <form
@@ -248,6 +249,7 @@ function AuthCard({ title, subtitle, children }: { title: string; subtitle: stri
   return (
     <div className="container-page flex min-h-[70vh] items-center justify-center py-16">
       <Card className="w-full max-w-md">
+        <BrandLogo className="mb-5 h-12" to="/" />
         <h1 className="text-2xl font-extrabold">{title}</h1>
         <p className="mb-6 text-sm text-slate-500">{subtitle}</p>
         {children}

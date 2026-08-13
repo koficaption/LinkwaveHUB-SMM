@@ -4,7 +4,7 @@ import type { AuthUser } from "../middleware/auth.js";
 
 const defaults: Record<string, unknown> = {
   general: {
-    siteName: "LinkWaveHub SMM",
+    siteName: "Linkwave SMM",
     tagline: "Grow Your Social Presence With Powerful Social Media Services",
     supportEmail: "support@linkwavehub.com",
     contactPhone: "+233 00 000 0000",

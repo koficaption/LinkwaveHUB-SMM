@@ -16,12 +16,13 @@ export function HomePage() {
 
   return (
     <div>
-      <section className="relative overflow-hidden bg-slate-950 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(20,184,166,0.25),_transparent_40%),radial-gradient(circle_at_bottom_left,_rgba(99,102,241,0.2),_transparent_35%)]" />
+      <section className="relative overflow-hidden bg-black text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(0,229,255,0.22),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(79,70,229,0.28),_transparent_38%)]" />
         <div className="container-page relative grid gap-12 py-20 lg:grid-cols-2 lg:py-28">
           <div>
-            <p className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand-300">
-              LinkWaveHub SMM · by OB CodeLab
+            <img src="/logo.png" alt="Linkwave SMM" className="mb-6 h-16 w-auto object-contain sm:h-20" />
+            <p className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-cyan-300">
+              Linkwave SMM · by OB CodeLab
             </p>
             <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl">
               Grow Your Social Presence With Powerful Social Media Services
