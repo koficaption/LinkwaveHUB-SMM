@@ -37,7 +37,7 @@ export function LoginPage() {
 
   return (
     <AuthCard title="Welcome back" subtitle="Sign in to LinkBoost Growth SMM">
-      <GoogleSignIn />
+      <GoogleSignIn forceHelp={["failed", "denied"].includes(params.get("google") || "")} />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
@@ -269,7 +269,7 @@ export function AuthCallbackPage() {
   );
 }
 
-function GoogleSignIn() {
+function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const config = useQuery({
@@ -283,18 +283,10 @@ function GoogleSignIn() {
     }>("/auth/google/config"),
   });
   const [busy, setBusy] = useState(false);
+  const [showHelp, setShowHelp] = useState(forceHelp);
   const enabled = Boolean(config.data?.enabled && config.data.clientId);
-  const redirectUri = config.data?.redirectUri || `${window.location.origin}/api/auth/google/callback`;
-  const jsOrigin = config.data?.origin || window.location.origin;
-
-  useEffect(() => {
-    if (!enabled || document.getElementById("google-gsi")) return;
-    const script = document.createElement("script");
-    script.id = "google-gsi";
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    document.head.appendChild(script);
-  }, [enabled]);
+  const origin = (config.data?.origin || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
+  const redirectUri = config.data?.redirectUri || `${origin}/api/auth/google/callback`;
 
   const finish = async (payload: { accessToken?: string; credential?: string; code?: string }) => {
     const me = await loginWithGoogle(payload);
@@ -305,31 +297,9 @@ function GoogleSignIn() {
   const onClick = async () => {
     if (!config.data?.clientId) return;
     setBusy(true);
+    setShowHelp(false);
     try {
-      const oauth2 = await waitForGoogleOauth();
-      if (oauth2?.initCodeClient) {
-        oauth2.initCodeClient({
-          client_id: config.data.clientId,
-          scope: "openid email profile",
-          ux_mode: "popup",
-          callback: async (response) => {
-            try {
-              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
-                throw new Error("Google sign-in was cancelled");
-              }
-              if (response.error || !response.code) {
-                throw new Error(consoleHint(jsOrigin, redirectUri));
-              }
-              await finish({ code: response.code });
-            } catch (e) {
-              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
-            } finally {
-              setBusy(false);
-            }
-          },
-        }).requestCode();
-        return;
-      }
+      const oauth2 = await waitForGoogleOauth(8000);
       if (oauth2?.initTokenClient) {
         oauth2.initTokenClient({
           client_id: config.data.clientId,
@@ -340,7 +310,8 @@ function GoogleSignIn() {
                 throw new Error("Google sign-in was cancelled");
               }
               if (response.error || !response.access_token) {
-                throw new Error(consoleHint(jsOrigin, redirectUri));
+                setShowHelp(true);
+                throw new Error(consoleHint(origin, redirectUri));
               }
               await finish({ accessToken: response.access_token });
             } catch (e) {
@@ -352,30 +323,102 @@ function GoogleSignIn() {
         }).requestAccessToken();
         return;
       }
-      if (config.data.redirectEnabled) {
-        window.location.assign(`${window.location.origin}/api/auth/google/start`);
+      if (oauth2?.initCodeClient) {
+        oauth2.initCodeClient({
+          client_id: config.data.clientId,
+          scope: "openid email profile",
+          ux_mode: "popup",
+          callback: async (response) => {
+            try {
+              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
+                throw new Error("Google sign-in was cancelled");
+              }
+              if (response.error || !response.code) {
+                setShowHelp(true);
+                throw new Error(consoleHint(origin, redirectUri));
+              }
+              await finish({ code: response.code });
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
+            } finally {
+              setBusy(false);
+            }
+          },
+        }).requestCode();
         return;
       }
-      throw new Error(consoleHint(jsOrigin, redirectUri));
+      setShowHelp(true);
+      throw new Error(consoleHint(origin, redirectUri));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Google sign-in failed");
+      setShowHelp(true);
       setBusy(false);
     }
   };
+
+  if (!enabled && !config.isLoading) return null;
 
   return (
     <>
       <button
         type="button"
         onClick={onClick}
-        disabled={busy || config.isLoading}
+        disabled={busy || config.isLoading || !enabled}
         className="btn w-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
       >
         <GoogleMark />
         {busy ? "Connecting..." : "Continue with Google"}
       </button>
+      {showHelp ? (
+        <GoogleConsoleHelp origin={origin} redirectUri={redirectUri} />
+      ) : (
+        <button type="button" className="mt-2 text-xs font-semibold text-slate-500" onClick={() => setShowHelp(true)}>
+          Google sign-in still blocked?
+        </button>
+      )}
       <Divider />
     </>
+  );
+}
+
+function googleRedirectUris(origin: string, redirectUri: string) {
+  const base = origin.replace(/\/$/, "");
+  return [...new Set([
+    redirectUri,
+    `${base}/api/auth/google/callback`,
+    `${base}/login`,
+    `${base}/register`,
+    base,
+  ])];
+}
+
+function GoogleConsoleHelp({ origin, redirectUri }: { origin: string; redirectUri: string }) {
+  const uris = googleRedirectUris(origin, redirectUri);
+  const copy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-500/10 dark:text-amber-100">
+      <p className="font-semibold">Google still blocked this site. Paste these into Google Cloud Console → Credentials → your Web client, then wait a minute.</p>
+      <p className="mt-2 text-xs font-semibold uppercase tracking-wide">Authorized JavaScript origins</p>
+      <CopyRow value={origin} onCopy={() => copy(origin)} />
+      <p className="mt-2 text-xs font-semibold uppercase tracking-wide">Authorized redirect URIs</p>
+      {uris.map((uri) => <CopyRow key={uri} value={uri} onCopy={() => copy(uri)} />)}
+    </div>
+  );
+}
+
+function CopyRow({ value, onCopy }: { value: string; onCopy: () => void }) {
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <code className="flex-1 break-all rounded-lg bg-white/80 px-2 py-1 font-mono text-xs dark:bg-slate-950/60">{value}</code>
+      <button type="button" className="shrink-0 text-xs font-semibold text-brand-700" onClick={onCopy}>Copy</button>
+    </div>
   );
 }
 
@@ -383,7 +426,7 @@ function consoleHint(origin: string, redirectUri: string) {
   return `Google blocked this site. In Google Cloud Console add JavaScript origin ${origin} and redirect URI ${redirectUri}`;
 }
 
-function waitForGoogleOauth() {
+function waitForGoogleOauth(timeoutMs = 8000) {
   return new Promise<NonNullable<NonNullable<Window["google"]>["accounts"]["oauth2"]> | null>((resolve) => {
     const started = Date.now();
     const tick = () => {
@@ -392,7 +435,7 @@ function waitForGoogleOauth() {
         resolve(oauth2);
         return;
       }
-      if (Date.now() - started > 2500) {
+      if (Date.now() - started > timeoutMs) {
         resolve(null);
         return;
       }

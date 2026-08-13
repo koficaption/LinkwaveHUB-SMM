@@ -704,6 +704,7 @@ export function AdminSettings() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Settings</h1>
+      <GoogleOAuthSettingsCard />
       <Card>
         <h2 className="font-bold">Business & customer service</h2>
         <p className="mt-1 text-sm text-slate-500">These details appear on the website footer, the bottom help bar, and the support page.</p>
@@ -757,6 +758,47 @@ export function AdminSettings() {
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
       <NotificationSettingsCard data={settings.data?.notifications} onSave={(value) => save("notifications", value)} />
     </div>
+  );
+}
+
+function GoogleOAuthSettingsCard() {
+  const config = useQuery({
+    queryKey: ["google-config"],
+    queryFn: () => api<{ origin?: string; redirectUri?: string; enabled?: boolean; clientId?: string | null }>("/auth/google/config"),
+  });
+  const origin = (config.data?.origin || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
+  const redirectUri = config.data?.redirectUri || `${origin}/api/auth/google/callback`;
+  const uris = [...new Set([redirectUri, `${origin}/api/auth/google/callback`, `${origin}/login`, `${origin}/register`, origin])];
+  const copy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Google sign-in</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Google error <span className="font-mono">redirect_uri_mismatch</span> means these URLs are missing from
+        {" "}<a className="font-semibold text-brand-700" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console → Credentials</a>
+        {" "}on the same Web client as <span className="font-mono">GOOGLE_CLIENT_ID</span>. Save, wait about a minute, then try again.
+      </p>
+      {!config.data?.enabled && <p className="mt-2 text-sm text-amber-700">GOOGLE_CLIENT_ID is not set on the server yet.</p>}
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized JavaScript origins</p>
+      <div className="mt-1 flex items-center gap-2">
+        <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{origin}</code>
+        <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(origin)}>Copy</button>
+      </div>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized redirect URIs</p>
+      {uris.map((uri) => (
+        <div key={uri} className="mt-1 flex items-center gap-2">
+          <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{uri}</code>
+          <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(uri)}>Copy</button>
+        </div>
+      ))}
+    </Card>
   );
 }
 
