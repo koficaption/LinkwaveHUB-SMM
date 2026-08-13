@@ -12,6 +12,7 @@ import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
+import { publicCategoryName, isProviderCategory } from "@/utils/catalog";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -47,7 +48,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
         </Select>
         <Select value={category} onChange={(e) => set("category", e.target.value)}>
           <option value="">All categories</option>
-          {categories.data?.map((c) => <option key={c.id} value={c.slug}>{c.name}</option>)}
+          {categories.data?.filter((c) => !isProviderCategory(c.name)).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
         </Select>
         <Select value={refill} onChange={(e) => set("refill", e.target.value)}>
           <option value="">Refill: All</option>
@@ -62,7 +63,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
           <Card key={p.id}>
             <p className="text-xs font-mono text-muted">#{p.provider_service_id || p.id.slice(0, 8)}</p>
             <h3 className="mt-1 font-bold">{p.name}</h3>
-            <p className="mt-1 text-sm text-muted">{p.platform_name} · {p.category_name}</p>
+            <p className="mt-1 text-sm text-muted">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1k</span></p>
             <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -95,7 +96,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
                       {p.platform_name}
                     </span>
                   </td>
-                  <td className="px-3 py-3">{p.category_name}</td>
+                  <td className="px-3 py-3">{publicCategoryName(p.category_name)}</td>
                   <td className="px-3 py-3 font-medium">{p.name}</td>
                   <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}</span></td>
                   <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
@@ -156,7 +157,7 @@ export function ServiceDetailPage() {
   return (
     <div className="container-page grid gap-8 py-12 lg:grid-cols-5">
       <div className="lg:col-span-3">
-        <p className="text-sm font-semibold text-brand-700">{p.platform_name} → {p.category_name}</p>
+        <p className="text-sm font-semibold text-brand-700">{p.platform_name} → {publicCategoryName(p.category_name)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-extrabold">{p.name}</h1>
           <RefillBadge {...productRefill(p)} />
@@ -210,7 +211,7 @@ export function StorefrontPage() {
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         {store.data.products.map((p) => (
           <Card key={p.id}>
-            <p className="text-xs text-slate-500">{p.platform_name} · {p.category_name}</p>
+            <p className="text-xs text-slate-500">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <h3 className="mt-2 font-bold">{p.name}</h3>
             <p className="mt-3 font-extrabold">{money(p.display_price_per_1000)} / 1000</p>
             <Link to={`/services/${p.slug}?store=${slug}`}><Button className="mt-4 w-full">Order</Button></Link>

@@ -1,6 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -129,7 +130,10 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
     COALESCE((SELECT json_agg(pc.platform_id) FROM platform_categories pc WHERE pc.category_id = c.id), '[]'::json) AS platform_ids
     FROM categories c ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY c.sort_order, c.name`;
-  return query(sql, params);
+  const rows = await query(sql, params);
+  return rows
+    .filter((row) => opts.includeInactive || !looksLikeProviderCategory(String(row.name || "")))
+    .map((row) => opts.includeInactive ? row : ({ ...row, name: publicCategoryName(String(row.name || "")) }));
 }
 
 export async function createCategory(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
@@ -467,11 +471,14 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     product.refill_supported = true;
     product.refill_days = hint.fromName ? hint.days : Number(product.refill_days || hint.days);
   }
+  product.category_name = publicCategoryName(String(product.category_name || ""));
+  product.description = publicProductDescription(product.description as string | null);
   if (!admin) {
     delete product.cost_per_1000;
     delete product.profit_per_1000;
     delete product.provider_service_id;
     delete product.provider_id;
+    delete product.provider_name;
   }
   if (reseller && product.reseller_price_per_1000 != null) {
     product.display_price_per_1000 = product.reseller_price_per_1000;

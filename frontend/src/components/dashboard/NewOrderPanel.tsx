@@ -9,6 +9,7 @@ import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
+import { publicCategoryName, publicProductDescription, isProviderCategory } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -44,6 +45,7 @@ export function NewOrderPanel() {
     for (const category of categories.data ?? []) {
       const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
       const linked = plats.filter((p) => linkedIds.includes(p.id));
+      if (isProviderCategory(category.name)) continue;
       for (const platform of linked) {
         options.push({ key: `${platform.id}:${category.id}`, category, platform });
       }
@@ -123,7 +125,7 @@ export function NewOrderPanel() {
             <option value="">Select a category</option>
             {categoryOptions.map(({ key, category, platform }) => (
               <option key={key} value={key}>
-                {platform.name} · {category.name}
+                {platform.name} · {publicCategoryName(category.name)}
               </option>
             ))}
           </select>
@@ -177,7 +179,9 @@ export function NewOrderPanel() {
             </p>
             <RefillBadge {...productRefill(selected)} />
           </div>
-          {selected.description && <p className="text-sm text-slate-600 dark:text-slate-300">{selected.description}</p>}
+          {selected.description && publicProductDescription(selected.description) && (
+            <p className="text-sm text-slate-600 dark:text-slate-300">{publicProductDescription(selected.description)}</p>
+          )}
           <label className="block">
             <span className="label">Target / Link</span>
             <Input placeholder="https://..." value={target} onChange={(e) => setTarget(e.target.value)} />

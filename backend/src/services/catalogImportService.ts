@@ -1,6 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug } from "../utils.js";
+import { detectServiceCategory } from "./catalogClassify.js";
 import { parsePanelFlag, parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import { getSettings } from "./settingsService.js";
@@ -125,7 +126,7 @@ export async function importProviderPackages(
       categoryId: string;
       name: string;
       slug: string;
-      description: string;
+      description: string | null;
       minQty: number;
       maxQty: number;
       price: number;
@@ -143,7 +144,8 @@ export async function importProviderPackages(
       const panelCategory = String(service.category || "General").slice(0, 80);
       const platform = detectPlatform(panelCategory, service.name);
       const platformId = await ensurePlatform(platform);
-      const categoryId = await ensureCategory(panelCategory);
+      const serviceCategory = detectServiceCategory(panelCategory, String(service.name));
+      const categoryId = await ensureCategory(serviceCategory.name);
       const linkKey = `${platformId}:${categoryId}`;
       if (!linked.has(linkKey)) {
         await query(
@@ -174,7 +176,7 @@ export async function importProviderPackages(
         categoryId,
         name: String(service.name).slice(0, 180),
         slug: `p-${String(provider.id).replace(/-/g, "").slice(0, 8)}-${serviceId}`.toLowerCase(),
-        description: `${panelCategory} · imported from ${provider.name}`,
+        description: null,
         minQty,
         maxQty,
         price,
