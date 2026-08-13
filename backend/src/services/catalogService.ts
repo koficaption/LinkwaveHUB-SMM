@@ -13,6 +13,7 @@ const productSelect = `
   p.features, p.created_at, p.updated_at, p.platform_id, p.category_id, p.provider_id,
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
+  p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -306,8 +307,9 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       min_quantity, max_quantity, price_per_1000, cost_per_1000, reseller_price_per_1000,
       status, delivery_type, avg_delivery_time, provider_service_id, image_url, features,
       refill_supported, refill_days, refill_type, refill_service_id, refill_instructions,
-      refill_limit, provider_refill_supported, reseller_available, api_available
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+      refill_limit, provider_refill_supported, reseller_available, api_available,
+      api_price_per_1000, api_min_quantity, api_max_quantity
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
     RETURNING *`,
     [
       input.platformId,
@@ -336,6 +338,9 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       Boolean(input.providerRefillSupported),
       input.resellerAvailable !== false,
       Boolean(input.apiAvailable),
+      input.apiPricePer1000 ?? null,
+      input.apiMinQuantity ?? null,
+      input.apiMaxQuantity ?? null,
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: input.name } });
@@ -371,7 +376,10 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       refill_limit = COALESCE($23, refill_limit),
       provider_refill_supported = COALESCE($24, provider_refill_supported),
       reseller_available = COALESCE($25, reseller_available),
-      api_available = COALESCE($26, api_available)
+      api_available = COALESCE($26, api_available),
+      api_price_per_1000 = COALESCE($27, api_price_per_1000),
+      api_min_quantity = COALESCE($28, api_min_quantity),
+      api_max_quantity = COALESCE($29, api_max_quantity)
      WHERE id = $1`,
     [
       id,
@@ -400,6 +408,9 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.providerRefillSupported === undefined ? null : Boolean(input.providerRefillSupported),
       input.resellerAvailable === undefined ? null : Boolean(input.resellerAvailable),
       input.apiAvailable === undefined ? null : Boolean(input.apiAvailable),
+      input.apiPricePer1000 === undefined ? null : input.apiPricePer1000,
+      input.apiMinQuantity === undefined ? null : input.apiMinQuantity,
+      input.apiMaxQuantity === undefined ? null : input.apiMaxQuantity,
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -447,6 +458,9 @@ export async function duplicateProduct(id: string, actor: AuthUser, ip?: string)
       providerRefillSupported: current.provider_refill_supported,
       resellerAvailable: current.reseller_available,
       apiAvailable: current.api_available,
+      apiPricePer1000: current.api_price_per_1000 ? Number(current.api_price_per_1000) : null,
+      apiMinQuantity: current.api_min_quantity ? Number(current.api_min_quantity) : null,
+      apiMaxQuantity: current.api_max_quantity ? Number(current.api_max_quantity) : null,
     },
     actor,
     ip
@@ -486,6 +500,27 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     product.display_price_per_1000 = product.price_per_1000;
   }
   return product;
+}
+
+export function toApiService(product: Record<string, unknown>) {
+  const apiPrice = Number(product.api_price_per_1000);
+  const price = Number.isFinite(apiPrice) && apiPrice > 0
+    ? apiPrice
+    : Number(product.display_price_per_1000 ?? product.price_per_1000);
+  return {
+    id: product.id,
+    platform: product.platform_name,
+    category: product.category_name,
+    name: product.name,
+    description: product.description,
+    min: Number(product.api_min_quantity || product.min_quantity),
+    max: Number(product.api_max_quantity || product.max_quantity),
+    price,
+    currency: "GHS",
+    delivery: product.avg_delivery_time,
+    delivery_type: product.delivery_type,
+    status: product.status,
+  };
 }
 
 export { makeSlug };

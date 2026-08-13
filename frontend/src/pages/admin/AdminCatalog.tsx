@@ -148,6 +148,9 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     markupPercent: startCost > 0 && startSell > 0 ? percentFromPrices(startCost, startSell) : defaultPercent,
     pricePer1000: startSell || sellFromCost(startCost, defaultPercent),
     resellerPricePer1000: Number(product?.reseller_price_per_1000 ?? 0),
+    apiPricePer1000: Number(product?.api_price_per_1000 ?? 0),
+    apiMinQuantity: Number(product?.api_min_quantity ?? 0) || "",
+    apiMaxQuantity: Number(product?.api_max_quantity ?? 0) || "",
     status: product?.status ?? "active",
     deliveryType: product?.delivery_type ?? "gradual",
     avgDeliveryTime: product?.avg_delivery_time ?? "0-6 hours",
@@ -226,11 +229,19 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
         </div>
         <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
           <p className="text-sm font-semibold">Availability</p>
+          <p className="mt-1 text-xs text-slate-500">The same product can be sold on the customer dashboard, reseller storefront, and developer API.</p>
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.resellerAvailable} onChange={(e) => set("resellerAvailable", e.target.checked)} /> Reseller</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={form.apiAvailable} onChange={(e) => set("apiAvailable", e.target.checked)} /> API refill</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.apiAvailable} onChange={(e) => set("apiAvailable", e.target.checked)} /> API available</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.status === "active"} onChange={(e) => set("status", e.target.checked ? "active" : "inactive")} /> Active</label>
           </div>
+          {form.apiAvailable && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="block"><span className="label">API price / 1000</span><Input type="number" step="0.01" value={form.apiPricePer1000} onChange={(e) => set("apiPricePer1000", Number(e.target.value))} /></label>
+              <label className="block"><span className="label">API min qty</span><Input type="number" value={form.apiMinQuantity} onChange={(e) => set("apiMinQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
+              <label className="block"><span className="label">API max qty</span><Input type="number" value={form.apiMaxQuantity} onChange={(e) => set("apiMaxQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4 flex justify-end gap-2">
@@ -240,6 +251,9 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
             ...form,
             features: form.features.split("\n").map((s) => s.trim()).filter(Boolean),
             providerId: form.providerId || null,
+            apiPricePer1000: Number(form.apiPricePer1000) || null,
+            apiMinQuantity: form.apiMinQuantity === "" ? null : Number(form.apiMinQuantity),
+            apiMaxQuantity: form.apiMaxQuantity === "" ? null : Number(form.apiMaxQuantity),
           };
           try {
             if (product) await api(`/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify(payload) });

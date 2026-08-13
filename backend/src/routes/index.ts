@@ -39,6 +39,7 @@ import {
   adminBroadcastSchema,
   resellerUpgradeSchema,
   paymentVerifySchema,
+  apiAdminDeveloperPatchSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
@@ -46,6 +47,8 @@ import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
 import { clientIp, publicAppOrigin } from "../utils.js";
 import { sendMail } from "../mailer.js";
+import { developerRouter } from "./developer.js";
+import * as apiDev from "../services/apiDeveloperService.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
@@ -63,6 +66,8 @@ function setAuthCookie(res: import("express").Response, token: string, req?: imp
 }
 
 export const router = Router();
+
+router.use("/developer", developerRouter);
 
 router.get("/health", (_req, res) => res.json(ok({ status: "ok", service: "LinkBoost Growth API" })));
 router.get("/settings/public", asyncHandler(async (_req, res) => {
@@ -238,15 +243,6 @@ router.post("/orders", requireAuth, validate(orderSchema), asyncHandler(async (r
 }));
 router.post("/orders/:id/refill", requireAuth, asyncHandler(async (req, res) => {
   res.status(201).json(ok(await refills.requestRefill(req.params.id, req.user!, clientIp(req)), "Refill requested"));
-}));
-router.post("/v1/orders/:id/refill", requireAuth, asyncHandler(async (req, res) => {
-  const refill = await refills.requestRefill(req.params.id, req.user!, clientIp(req), undefined, { requireApi: true });
-  res.status(201).json(ok({
-    id: refill.public_id,
-    order_id: refill.order_public_id,
-    status: refill.status,
-    created_at: refill.requested_at ?? refill.created_at,
-  }, "Refill requested"));
 }));
 router.get("/orders/:id/refills", requireAuth, asyncHandler(async (req, res) => {
   const order = await orders.getOrder(req.params.id, req.user!);
@@ -607,6 +603,74 @@ admin.post("/settings/mail/test", asyncHandler(async (req, res) => {
   });
   if (!result.sent) throw new AppError("Email is not connected yet. Save SMTP details first (Gmail: smtp.gmail.com, port 587, your Gmail and an App Password).", 400);
   res.json(ok({ to }, "Test email sent"));
+}));
+
+admin.get("/api/overview", asyncHandler(async (_req, res) => {
+  res.json(ok(await apiDev.adminApiOverview()));
+}));
+admin.get("/api/developers", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.listDevelopersAdmin({
+    status: req.query.status as string | undefined,
+    search: req.query.search as string | undefined,
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 20),
+  })));
+}));
+admin.post("/api/developers/:id/approve", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.setDeveloperStatus(req.params.id, "approved", req.user!, clientIp(req)), "Developer approved"));
+}));
+admin.post("/api/developers/:id/reject", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.setDeveloperStatus(req.params.id, "rejected", req.user!, clientIp(req)), "Application rejected"));
+}));
+admin.post("/api/developers/:id/suspend", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.setDeveloperStatus(req.params.id, "suspended", req.user!, clientIp(req)), "API access suspended"));
+}));
+admin.post("/api/developers/:id/activate", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.setDeveloperStatus(req.params.id, "approved_reactivate", req.user!, clientIp(req)), "API access activated"));
+}));
+admin.patch("/api/developers/:id", validate(apiAdminDeveloperPatchSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.patchDeveloperAdmin(req.params.id, req.body, req.user!, clientIp(req))));
+}));
+admin.get("/api/keys", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.listKeysAdmin({
+    search: req.query.search as string | undefined,
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 20),
+  })));
+}));
+admin.post("/api/keys/:id/revoke", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.revokeApiKey(req.user!, req.params.id, true), "API key revoked"));
+}));
+admin.get("/api/requests", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.listRequestsAdmin({
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 50),
+    developerId: req.query.developerId as string | undefined,
+  })));
+}));
+admin.get("/api/orders", asyncHandler(async (req, res) => {
+  res.json(ok(await orders.listOrders({
+    status: req.query.status as string | undefined,
+    search: req.query.search as string | undefined,
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 20),
+    source: "api",
+  })));
+}));
+admin.get("/api/usage", asyncHandler(async (_req, res) => {
+  res.json(ok(await apiDev.adminApiOverview()));
+}));
+admin.get("/api/webhooks", asyncHandler(async (req, res) => {
+  res.json(ok(await apiDev.listWebhooksAdmin({
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 20),
+  })));
+}));
+admin.get("/api/settings", asyncHandler(async (_req, res) => {
+  res.json(ok(await apiDev.getApiSettings()));
+}));
+admin.put("/api/settings", asyncHandler(async (req, res) => {
+  res.json(ok(await settings.updateSettings("api", req.body.value ?? req.body, req.user!, clientIp(req)), "API settings saved"));
 }));
 
 router.use("/admin", admin);

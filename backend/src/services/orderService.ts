@@ -7,6 +7,7 @@ import { getSmmAdapter } from "../providers/smm/index.js";
 import { decryptSecret } from "../utils.js";
 import { summarizeRefill } from "./refillService.js";
 import { getSettings } from "./settingsService.js";
+import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
 import type { PoolClient } from "pg";
 
@@ -22,7 +23,13 @@ const orderSelect = `
   (SELECT h.created_at FROM order_status_history h WHERE h.order_id = o.id AND h.to_status IN ('completed','partial') ORDER BY h.created_at DESC LIMIT 1) AS completed_at
 `;
 
-export async function quoteOrder(productId: string, quantity: number, user?: AuthUser | null, storeSlug?: string) {
+export async function quoteOrder(
+  productId: string,
+  quantity: number,
+  user?: AuthUser | null,
+  storeSlug?: string,
+  options?: { viaApi?: boolean }
+) {
   const product = await queryOne<Record<string, unknown>>(
     `SELECT p.*, pl.name AS platform_name FROM products p
      JOIN platforms pl ON pl.id = p.platform_id
@@ -30,15 +37,33 @@ export async function quoteOrder(productId: string, quantity: number, user?: Aut
     [productId]
   );
   if (!product) throw new AppError("Product not found or inactive", 404);
-  if (quantity < Number(product.min_quantity) || quantity > Number(product.max_quantity)) {
-    throw new AppError(`Quantity must be between ${product.min_quantity} and ${product.max_quantity}`);
+
+  if (options?.viaApi && !product.api_available) {
+    throw new AppError("This service is not available through the API", 403, "service_unavailable");
+  }
+
+  const minQty = options?.viaApi && Number(product.api_min_quantity) > 0
+    ? Number(product.api_min_quantity)
+    : Number(product.min_quantity);
+  const maxQty = options?.viaApi && Number(product.api_max_quantity) > 0
+    ? Number(product.api_max_quantity)
+    : Number(product.max_quantity);
+  if (quantity < minQty || quantity > maxQty) {
+    throw new AppError(`Quantity must be between ${minQty} and ${maxQty}`);
   }
 
   let unit = Number(product.price_per_1000);
   let resellerId: string | null = null;
   let resellerCost = unit;
 
-  if (storeSlug) {
+  if (options?.viaApi) {
+    const apiPrice = Number(product.api_price_per_1000);
+    if (Number.isFinite(apiPrice) && apiPrice > 0) {
+      unit = apiPrice;
+    } else if (user?.role === "reseller") {
+      unit = Number(product.reseller_price_per_1000 ?? product.price_per_1000);
+    }
+  } else if (storeSlug) {
     const store = await queryOne<Record<string, unknown>>(
       `SELECT r.*, rp.selling_price FROM resellers r
        LEFT JOIN reseller_products rp ON rp.reseller_id = r.id AND rp.product_id = $2
@@ -77,14 +102,18 @@ export async function placeOrder(input: {
   quantity: number;
   target: string;
   storeSlug?: string;
+  viaApi?: boolean;
+  apiKeyId?: string;
 }) {
   const target = input.target.trim();
   if (!/^https?:\/\//i.test(target) && !target.startsWith("@") && target.length < 3) {
     throw new AppError("Enter a valid profile, post URL, or username");
   }
 
-  return withTransaction(async (client) => {
-    const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug);
+  const created = await withTransaction(async (client) => {
+    const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug, {
+      viaApi: input.viaApi,
+    });
     const wallet = await queryOne<{ id: string; balance: string }>(
       `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
       [input.user.id],
@@ -109,8 +138,8 @@ export async function placeOrder(input: {
     const order = await queryOne(
       `INSERT INTO orders (
         public_id, user_id, product_id, reseller_id, quantity, target,
-        charge, cost, profit, reseller_profit, status, provider_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11)
+        charge, cost, profit, reseller_profit, status, provider_id, source, api_key_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13)
       RETURNING *`,
       [
         publicId,
@@ -124,6 +153,8 @@ export async function placeOrder(input: {
         quote.resellerId ? platformProfit : quote.profit,
         resellerProfit,
         quote.product.provider_id,
+        input.viaApi ? "api" : "dashboard",
+        input.apiKeyId ?? null,
       ],
       client
     );
@@ -197,6 +228,11 @@ export async function placeOrder(input: {
 
     return getOrderById(order!.id, client);
   });
+
+  if (input.viaApi && created?.id) {
+    enqueueOrderWebhook(String(created.id), "order.created").catch((err) => console.error("API webhook enqueue failed", err));
+  }
+  return created;
 }
 
 export async function listOrders(opts: {
@@ -211,6 +247,7 @@ export async function listOrders(opts: {
   resellerOnly?: boolean;
   providerId?: string;
   refill?: string;
+  source?: string;
 }) {
   const { page, limit, offset } = parsePagination(opts as Record<string, unknown>);
   const params: unknown[] = [];
@@ -269,6 +306,10 @@ export async function listOrders(opts: {
   if (opts.refill && ["requested", "processing", "failed", "completed", "expired"].includes(opts.refill)) {
     params.push(opts.refill);
     where.push(`(SELECT rf.status::text FROM refills rf WHERE rf.order_id = o.id ORDER BY rf.created_at DESC LIMIT 1) = $${params.length}`);
+  }
+  if (opts.source) {
+    params.push(opts.source);
+    where.push(`o.source = $${params.length}`);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -399,6 +440,10 @@ export async function updateOrderStatus(input: {
       details: { from: result.from, to: input.status, note: input.note },
       ip: input.ip,
     });
+    const event = webhookEventForStatus(input.status);
+    if (event) {
+      enqueueOrderWebhook(input.id, event).catch((err) => console.error("API webhook enqueue failed", err));
+    }
     if (input.status === "completed" || input.status === "partial") {
       const product = await queryOne<{ name: string; refill_supported: boolean; refill_days: number }>(
         `SELECT name, refill_supported, refill_days FROM products WHERE id = $1`,
@@ -423,6 +468,59 @@ export async function updateOrderStatus(input: {
 
 export async function refundOrder(id: string, actor: AuthUser, note?: string, ip?: string) {
   return updateOrderStatus({ id, status: "refunded", note, actor, ip });
+}
+
+export async function cancelApiOrder(idOrPublic: string, user: AuthUser, ip?: string) {
+  const current = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM orders WHERE id::text = $1 OR public_id = $1`,
+    [idOrPublic]
+  );
+  if (!current) throw new AppError("Order not found", 404);
+  if (user.role !== "admin" && current.user_id !== user.id) throw new AppError("Order not found", 404);
+
+  const status = String(current.status);
+  if (["completed", "partial", "refunded", "cancelled", "failed"].includes(status)) {
+    throw new AppError("This order can no longer be cancelled", 400, "not_cancellable");
+  }
+  if (status !== "pending" && current.provider_order_id) {
+    throw new AppError("This order is already with the provider and cannot be cancelled through the API", 400, "not_cancellable");
+  }
+
+  await withTransaction(async (client) => {
+    const locked = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+      [current.id],
+      client
+    );
+    if (!locked) throw new AppError("Order not found", 404);
+    const from = String(locked.status);
+    if (["completed", "partial", "refunded", "cancelled", "failed"].includes(from)) {
+      throw new AppError("This order can no longer be cancelled", 400, "not_cancellable");
+    }
+    await refundOrderInternal(locked, user, client, "Cancelled through API");
+    await query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [locked.id], client);
+    await query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, note, changed_by)
+       VALUES ($1,'refunded','cancelled','Cancelled through API',$2)`,
+      [locked.id, user.id],
+      client
+    );
+  });
+  enqueueOrderWebhook(String(current.id), "order.cancelled").catch((err) => console.error("API webhook enqueue failed", err));
+  return getOrder(String(current.id), user);
+}
+
+function webhookEventForStatus(status: string) {
+  const map: Record<string, string> = {
+    processing: "order.processing",
+    in_progress: "order.processing",
+    completed: "order.completed",
+    partial: "order.partial",
+    failed: "order.failed",
+    refunded: "order.refunded",
+    cancelled: "order.cancelled",
+  };
+  return map[status] || null;
 }
 
 async function refundOrderInternal(
@@ -495,6 +593,7 @@ export async function retryOrder(id: string, actor: AuthUser, ip?: string) {
     [id, order.status, `Submitted to provider (${result.providerOrderId})`, actor.id]
   );
   await writeAudit({ actor, action: "order.retry", targetType: "order", targetId: id, ip });
+  enqueueOrderWebhook(id, "order.processing").catch((err) => console.error("API webhook enqueue failed", err));
   return getOrder(id, actor);
 }
 

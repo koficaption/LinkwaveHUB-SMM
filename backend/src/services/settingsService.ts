@@ -52,6 +52,15 @@ const defaults: Record<string, unknown> = {
     upgradeNote:
       "Pay the reseller / child panel fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller.",
   },
+  api: {
+    enabled: true,
+    defaultRateLimit: 100,
+    resellerRateLimit: 500,
+    premiumRateLimit: 2000,
+    requireHttpsWebhooks: true,
+    maxKeysPerDeveloper: 10,
+    maxWebhooksPerDeveloper: 5,
+  },
   mail: {
     enabled: true,
     host: "",

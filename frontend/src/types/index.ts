@@ -87,6 +87,9 @@ export type Product = {
   provider_refill_supported?: boolean;
   reseller_available?: boolean;
   api_available?: boolean;
+  api_price_per_1000?: number | string | null;
+  api_min_quantity?: number | null;
+  api_max_quantity?: number | null;
 };
 
 export type RefillSummary = {

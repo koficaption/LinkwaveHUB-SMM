@@ -7,12 +7,14 @@ import path from "node:path";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { router } from "./routes/index.js";
+import { v1Router } from "./routes/v1.js";
 import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
 import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
 import { isAllowedWebHost } from "./utils.js";
 import { syncRefillStatuses } from "./services/refillService.js";
+import { syncWebhookDeliveries } from "./services/apiWebhookService.js";
 
 const app = express();
 
@@ -33,7 +35,17 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
 }));
-app.use(cors({ origin: corsOrigin, credentials: true }));
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1")) {
+    return cors({
+      origin: true,
+      credentials: false,
+      allowedHeaders: ["Authorization", "API-Key", "Content-Type", "Accept", "X-Request-Id"],
+      exposedHeaders: ["X-Request-Id", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+    })(req, res, next);
+  }
+  return cors({ origin: corsOrigin, credentials: true })(req, res, next);
+});
 app.post(
   "/api/payments/webhooks/korapay",
   express.raw({ type: "application/json" }),
@@ -46,10 +58,15 @@ app.post(
 );
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
-app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }));
+const dashboardLimit = rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false });
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1")) return next();
+  return dashboardLimit(req, res, next);
+});
 
 fs.mkdirSync(config.uploadDir, { recursive: true });
 app.use("/uploads", express.static(config.uploadDir));
+app.use("/api/v1", v1Router);
 app.use("/api", router);
 
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
@@ -63,6 +80,9 @@ async function start() {
   });
   setInterval(() => {
     syncRefillStatuses().catch((err) => console.error("Refill status sync failed", err));
+  }, 60_000);
+  setInterval(() => {
+    syncWebhookDeliveries().catch((err) => console.error("Webhook delivery sync failed", err));
   }, 60_000);
 }
 

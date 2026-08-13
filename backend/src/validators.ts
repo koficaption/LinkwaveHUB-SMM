@@ -91,6 +91,74 @@ export const productSchema = z.object({
   providerRefillSupported: z.boolean().optional(),
   resellerAvailable: z.boolean().optional(),
   apiAvailable: z.boolean().optional(),
+  apiPricePer1000: z.number().nonnegative().optional().nullable(),
+  apiMinQuantity: z.number().int().positive().optional().nullable(),
+  apiMaxQuantity: z.number().int().positive().optional().nullable(),
+});
+
+export const API_SCOPES = [
+  "services:read",
+  "orders:create",
+  "orders:read",
+  "orders:cancel",
+  "balance:read",
+] as const;
+
+export const apiApplySchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().email(),
+  website: optionalText(300),
+  companyName: optionalText(160),
+  websiteUrl: optionalText(300),
+  intendedUsage: z.string().trim().min(8).max(2000),
+  expectedMonthlyRequests: z.number().int().positive().max(100_000_000).optional(),
+});
+
+export const apiKeyCreateSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  permissions: z.array(z.enum(API_SCOPES)).optional(),
+  allowedIps: z.array(z.string().trim().max(64)).max(50).optional(),
+});
+
+export const apiKeyUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+  permissions: z.array(z.enum(API_SCOPES)).optional(),
+  allowedIps: z.array(z.string().trim().max(64)).max(50).optional(),
+});
+
+export const apiWebhookSchema = z.object({
+  url: z.string().trim().url().max(500),
+  description: optionalText(200),
+  events: z.array(z.string().min(3).max(80)).min(1).optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export const apiDeveloperSettingsSchema = z.object({
+  allowedIps: z.array(z.string().trim().max(64)).max(50).optional(),
+});
+
+export const apiV1OrderSchema = z.object({
+  service: z.string().uuid().optional(),
+  service_id: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  quantity: z.coerce.number().int().positive(),
+  target: z.string().min(3).max(500).optional(),
+  link: z.string().min(3).max(500).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.service && !value.service_id && !value.productId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "service is required", path: ["service"] });
+  }
+  if (!value.target && !value.link) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "target is required", path: ["target"] });
+  }
+});
+
+export const apiAdminDeveloperPatchSchema = z.object({
+  plan: z.enum(["free", "reseller", "premium"]).optional(),
+  rateLimitPerMinute: z.number().int().positive().max(20000).optional(),
+  adminNote: optionalText(2000),
+  allowedIps: z.array(z.string().trim().max(64)).max(50).optional(),
 });
 
 export const orderSchema = z.object({

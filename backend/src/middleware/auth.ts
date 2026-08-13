@@ -11,10 +11,33 @@ export type AuthUser = {
   status: "active" | "suspended" | "pending";
 };
 
+export type ApiDeveloperContext = {
+  id: string;
+  user_id: string;
+  status: "pending" | "approved" | "rejected" | "suspended";
+  plan: "free" | "reseller" | "premium";
+  rate_limit_per_minute: number;
+  allowed_ips: string[];
+};
+
+export type ApiKeyContext = {
+  id: string;
+  developer_id: string;
+  name: string;
+  key_prefix: string;
+  status: "active" | "revoked" | "disabled";
+  permissions: string[];
+  allowed_ips: string[];
+};
+
 declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
+      apiDeveloper?: ApiDeveloperContext;
+      apiKey?: ApiKeyContext;
+      apiRequestId?: string;
+      apiPermission?: string;
     }
   }
 }

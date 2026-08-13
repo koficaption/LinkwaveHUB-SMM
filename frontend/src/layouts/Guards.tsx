@@ -70,6 +70,7 @@ export function AdminLayout() {
             { to: "/admin/users", label: "Users", icon: <Users className="h-5 w-5" /> },
             { to: "/admin/resellers", label: "Resellers", icon: <Store className="h-5 w-5" /> },
             { to: "/admin/affiliates", label: "Affiliates", icon: <Handshake className="h-5 w-5" /> },
+            { to: "/admin/api", label: "API Management", icon: <Code2 className="h-5 w-5" /> },
           ],
         },
         {
