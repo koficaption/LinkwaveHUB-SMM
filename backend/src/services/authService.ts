@@ -7,7 +7,7 @@ import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `
-  id, email, full_name, phone, role, status, avatar_url, last_login_at, created_at
+  id, email, full_name, phone, whatsapp_number, role, status, avatar_url, last_login_at, created_at
 `;
 
 export async function registerUser(input: {
@@ -15,6 +15,7 @@ export async function registerUser(input: {
   email: string;
   password: string;
   phone?: string;
+  whatsappNumber?: string;
   asReseller?: boolean;
   storeName?: string;
   referralCode?: string;
@@ -27,10 +28,10 @@ export async function registerUser(input: {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
     const user = await queryOne(
-      `INSERT INTO users (email, password_hash, full_name, phone, role, status, referral_code)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6)
+      `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, role, status, referral_code)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
        RETURNING ${publicUser}`,
-      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, role, newReferralCode()],
+      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, input.whatsappNumber ?? null, role, newReferralCode()],
       client
     );
     if (!user) throw new AppError("Unable to create account", 500);
@@ -126,10 +127,10 @@ export async function getMe(userId: string) {
   return { user, wallet, reseller, resellerApplication };
 }
 
-export async function updateProfile(userId: string, input: { fullName: string; phone?: string | null }) {
+export async function updateProfile(userId: string, input: { fullName: string; phone?: string | null; whatsappNumber?: string | null }) {
   const user = await queryOne(
-    `UPDATE users SET full_name = $2, phone = $3 WHERE id = $1 RETURNING ${publicUser}`,
-    [userId, input.fullName, input.phone ?? null]
+    `UPDATE users SET full_name = $2, phone = $3, whatsapp_number = $4 WHERE id = $1 RETURNING ${publicUser}`,
+    [userId, input.fullName, input.phone ?? null, input.whatsappNumber ?? null]
   );
   return user;
 }

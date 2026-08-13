@@ -6,7 +6,7 @@ import { signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
 import { newReferralCode } from "./affiliateService.js";
 
-const publicUser = `id, email, full_name, phone, role, status, avatar_url, last_login_at, created_at`;
+const publicUser = `id, email, full_name, phone, whatsapp_number, role, status, avatar_url, last_login_at, created_at`;
 
 export function googleEnabled() {
   return Boolean(config.googleClientId);

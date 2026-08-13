@@ -5,7 +5,7 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
-const publicUser = `id, email, full_name, phone, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at`;
+const publicUser = `id, email, full_name, phone, whatsapp_number, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at`;
 
 export async function listUsers(opts: { search?: string; role?: string; status?: string; page?: number; limit?: number }) {
   const p = parsePagination(opts as Record<string, unknown>);

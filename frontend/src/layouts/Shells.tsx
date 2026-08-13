@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui";
 import { money } from "@/api/client";
-import { ContactLinks, HelpBar, usePublicSettings } from "@/components/ContactLinks";
+import { ContactLinks, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const publicLinks = [
@@ -68,12 +68,10 @@ export function PublicLayout() {
           <div>
             <BrandLogo className="mb-3 h-9" />
             <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "Linkwave SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
-            {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
           </div>
           <ContactLinks />
         </div>
       </footer>
-      <HelpBar />
     </div>
   );
 }
@@ -132,7 +130,6 @@ export function AppShell({
           <Outlet />
         </main>
       </div>
-      <HelpBar />
     </div>
   );
 }

@@ -5,6 +5,7 @@ export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(72),
   phone: z.string().max(30).optional(),
+  whatsappNumber: z.string().max(30).optional(),
   asReseller: z.boolean().optional(),
   storeName: z.string().min(2).max(80).optional(),
   referralCode: z.string().max(40).optional(),
@@ -23,6 +24,7 @@ export const changePasswordSchema = z.object({
 export const profileSchema = z.object({
   fullName: z.string().min(2).max(120),
   phone: z.string().max(30).optional().nullable(),
+  whatsappNumber: z.string().max(30).optional().nullable(),
 });
 
 export const platformSchema = z.object({

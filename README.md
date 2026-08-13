@@ -27,7 +27,7 @@ These logins are **sample rows in your own database**, created on first boot so 
 
 | Role     | Email                         | Password       |
 |----------|-------------------------------|----------------|
-| Admin    | admin@linkwavehub.com         | Admin@12345    |
+| Admin    | owussamuel18@gmail.com        | Admin@12345    |
 | Reseller | reseller@linkwavehub.com      | Reseller@12345 |
 | Customer | customer@linkwavehub.com      | Customer@12345 |
 
@@ -109,7 +109,7 @@ LIVE_DATABASE_URL='postgresql://postgres.xxxx:PASSWORD@aws-0-REGION.pooler.supab
 ```
 
 4. Put that same URI in `.env` as `DATABASE_URL`. **Do not change `ENCRYPTION_KEY`** if you copied provider API keys.
-5. Restart the API. Admin login stays `admin@linkwavehub.com` / `Admin@12345` if demo users were copied.
+5. Restart the API. Admin login is `owussamuel18@gmail.com` / `Admin@12345` if demo users were copied.
 
 The Express API is the only client that talks to Postgres. The React app never uses the anon key, so provider secrets and wallet ledgers stay server-side. Public tables have RLS enabled so the Supabase Data API cannot read them.
 

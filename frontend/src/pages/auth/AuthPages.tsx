@@ -17,6 +17,7 @@ const registerSchema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(8, "Use at least 8 characters"),
   phone: z.string().optional(),
+  whatsappNumber: z.string().optional(),
   asReseller: z.boolean().optional(),
   storeName: z.string().optional(),
 });
@@ -72,7 +73,7 @@ export function RegisterPage() {
   const invitedBy = storedReferralCode();
   const publicSettings = useQuery({ queryKey: ["public-settings"], queryFn: () => api<{ resellers?: { upgradeEnabled?: boolean; upgradeFee?: number } }>("/settings/public") });
   const paidUpgrade = publicSettings.data?.resellers?.upgradeEnabled !== false;
-  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", storeName: "" } });
+  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", storeName: "" } });
   return (
     <AuthCard title="Create your account" subtitle="Start growing in minutes">
       {invitedBy && (
@@ -96,6 +97,7 @@ export function RegisterPage() {
         <Field label="Full name" error={form.formState.errors.fullName?.message}><Input {...form.register("fullName")} /></Field>
         <Field label="Email" error={form.formState.errors.email?.message}><Input type="email" autoComplete="email" {...form.register("email")} /></Field>
         <Field label="Phone"><Input {...form.register("phone")} /></Field>
+        <Field label="WhatsApp number"><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></Field>
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
@@ -260,7 +262,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 function DemoAccounts({ onFill }: { onFill: (email: string, password: string) => void }) {
   const accounts = [
-    ["Admin", "admin@linkwavehub.com", "Admin@12345"],
+    ["Admin", "owussamuel18@gmail.com", "Admin@12345"],
     ["Reseller", "reseller@linkwavehub.com", "Reseller@12345"],
     ["Customer", "customer@linkwavehub.com", "Customer@12345"],
   ] as const;

@@ -19,7 +19,7 @@ export async function seed() {
 
   const admin = await queryOne<{ id: string }>(
     `INSERT INTO users (email, password_hash, full_name, phone, role, status, email_verified, referral_code)
-     VALUES ('admin@linkwavehub.com', $1, 'Demo Admin', '+233201111111', 'admin', 'active', TRUE, 'LWHADMIN01') RETURNING id`,
+     VALUES ('owussamuel18@gmail.com', $1, 'Samuel Owu', '+233201111111', 'admin', 'active', TRUE, 'LWHADMIN01') RETURNING id`,
     [adminHash]
   );
   const resellerUser = await queryOne<{ id: string }>(
@@ -322,7 +322,7 @@ export async function seed() {
   );
 
   console.log("Seed complete");
-  console.log("  Admin     admin@linkwavehub.com / Admin@12345");
+  console.log("  Admin     owussamuel18@gmail.com / Admin@12345");
   console.log("  Reseller  reseller@linkwavehub.com / Reseller@12345");
   console.log("  Customer  customer@linkwavehub.com / Customer@12345");
 }

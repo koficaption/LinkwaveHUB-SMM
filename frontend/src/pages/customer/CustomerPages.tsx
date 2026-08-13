@@ -250,7 +250,7 @@ export function WalletPage() {
 
 export function ProfilePage() {
   const { me, refresh } = useAuth();
-  const form = useForm({ defaultValues: { fullName: me?.user.full_name ?? "", phone: me?.user.phone ?? "" } });
+  const form = useForm({ defaultValues: { fullName: me?.user.full_name ?? "", phone: me?.user.phone ?? "", whatsappNumber: me?.user.whatsapp_number ?? "" } });
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
@@ -264,6 +264,7 @@ export function ProfilePage() {
         })}>
           <label className="block"><span className="label">Full name</span><Input {...form.register("fullName")} /></label>
           <label className="block"><span className="label">Phone</span><Input {...form.register("phone")} /></label>
+          <label className="block"><span className="label">WhatsApp number</span><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></label>
           <Button>Save</Button>
         </form>
       </Card>
@@ -314,7 +315,7 @@ export function SupportPage() {
       <Card className="mt-4">
         <p className="text-sm font-semibold">Customer service</p>
         <p className="mt-1 text-sm text-slate-500">Call, WhatsApp, or join a community using the links set by the admin.</p>
-        <ContactLinks className="mt-3" />
+        <ContactLinks className="mt-3" tone="light" />
       </Card>
       <Card className="mt-4">
         {!tickets.data?.length && <EmptyState title="No tickets" body="Create a ticket if you need help with an order or deposit." />}

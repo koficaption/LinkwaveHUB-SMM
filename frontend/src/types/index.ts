@@ -5,6 +5,7 @@ export type User = {
   email: string;
   full_name: string;
   phone?: string | null;
+  whatsapp_number?: string | null;
   role: Role;
   status: string;
   avatar_url?: string | null;
