@@ -140,11 +140,15 @@ export async function importProviderPackages(
       providerRefill: boolean;
     }[] = [];
     for (const service of services) {
-      if (!/[a-z0-9]/i.test(String(service.name || ""))) continue;
+      const serviceId = String(service.service ?? "").trim();
+      if (!serviceId) continue;
+      const rawName = String(service.name || "").trim();
+      const displayName = (publicProductName(rawName) || rawName || `${service.category || "Service"} ${serviceId}`).slice(0, 180);
+      if (!displayName) continue;
       const panelCategory = String(service.category || "General").slice(0, 80);
-      const platform = detectPlatform(panelCategory, service.name);
+      const platform = detectPlatform(panelCategory, `${rawName} ${displayName}`);
       const platformId = await ensurePlatform(platform);
-      const serviceCategory = detectServiceCategory(panelCategory, String(service.name));
+      const serviceCategory = detectServiceCategory(panelCategory, `${rawName} ${displayName}`);
       const categoryId = await ensureCategory(serviceCategory.name);
       const linkKey = `${platformId}:${categoryId}`;
       if (!linked.has(linkKey)) {
@@ -162,9 +166,8 @@ export async function importProviderPackages(
       const reseller = money4(Math.max(cost * (1 + resellerMarkup / 100), cost));
       let minQty = Math.max(1, Number(service.min ?? 1) || 1);
       let maxQty = Math.max(minQty, Number(service.max ?? minQty) || minQty);
-      const serviceId = String(service.service);
       const providerRefill = parsePanelFlag(service.refill);
-      const hint = parseRefillHint(String(service.name), "", providerRefill);
+      const hint = parseRefillHint(`${rawName} ${displayName}`, "", providerRefill);
       const refill = hint.supported;
       const features = [
         service.type ? String(service.type) : "",
@@ -174,7 +177,7 @@ export async function importProviderPackages(
       rows.push({
         platformId,
         categoryId,
-        name: publicProductName(String(service.name)).slice(0, 180),
+        name: displayName,
         slug: `p-${String(provider.id).replace(/-/g, "").slice(0, 8)}-${serviceId}`.toLowerCase(),
         description: null,
         minQty,
@@ -182,7 +185,7 @@ export async function importProviderPackages(
         price,
         cost,
         reseller,
-        delivery: /instant|fast/i.test(service.name) ? "instant" : "gradual",
+        delivery: /instant|fast/i.test(`${rawName} ${displayName}`) ? "instant" : "gradual",
         serviceId,
         features: JSON.stringify(features),
         refill,
@@ -190,6 +193,11 @@ export async function importProviderPackages(
         providerRefill,
       });
     }
+
+    const unique = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) unique.set(row.serviceId, row);
+    rows.length = 0;
+    rows.push(...unique.values());
 
     const batchSize = 400;
     let upserted = 0;

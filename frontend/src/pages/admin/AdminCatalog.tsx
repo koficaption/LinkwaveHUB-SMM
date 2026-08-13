@@ -425,18 +425,19 @@ export function AdminProviders() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Provider prices</h1>
-          <p className="text-sm text-slate-500">See what the panel charges, add your percent, then import. You will see the profit before you save.</p>
+          <p className="text-sm text-slate-500">ResellerSMM is the live panel. Import all of its packages into the catalog, then customers can buy them.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add provider</Button>
       </div>
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Name","API URL","Balance","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Name","API URL","Packages","Balance","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {(list.data ?? []).map((row) => (
               <tr key={String(row.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2 font-medium">{String(row.name)}{row.has_api_key ? <span className="ml-2 text-xs text-emerald-600">key saved</span> : <span className="ml-2 text-xs text-amber-600">no key</span>}</td>
                 <td className="p-2 text-xs">{String(row.api_url || "—")}</td>
+                <td className="p-2 whitespace-nowrap">{Number(row.active_product_count ?? row.product_count ?? 0).toLocaleString()}</td>
                 <td className="p-2">{row.balance != null ? String(row.balance) : "—"} {String(row.currency || "")}</td>
                 <td className="p-2"><Badge className={statusTone[String(row.status)]}>{String(row.status)}</Badge></td>
                 <td className="p-2 space-x-2">
@@ -449,6 +450,18 @@ export function AdminProviders() {
                     } catch (e) { toast.error(e instanceof ApiError ? e.message : "Balance check failed"); }
                   }}>Test</button>
                   <button className="font-semibold text-brand-700" onClick={() => { setPercent(null); setSearch(""); setSvcPage(1); setServicesFor(String(row.id)); }}>See prices</button>
+                  <button className="font-semibold text-brand-700" onClick={() => importWithPercent(String(row.id), markup)}>Import all packages</button>
+                  {(list.data ?? []).length > 1 && (
+                    <button className="font-semibold text-rose-600" onClick={async () => {
+                      if (!window.confirm(`Remove ${String(row.name)}? Its catalog items will be disabled.`)) return;
+                      try {
+                        await api(`/admin/providers/${row.id}`, { method: "DELETE" });
+                        toast.success("Provider removed");
+                        qc.invalidateQueries({ queryKey: ["/admin/providers"] });
+                        qc.invalidateQueries({ queryKey: ["admin-products"] });
+                      } catch (e) { toast.error(e instanceof ApiError ? e.message : "Could not delete provider"); }
+                    }}>Delete</button>
+                  )}
                 </td>
               </tr>
             ))}

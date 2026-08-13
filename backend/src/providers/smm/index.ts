@@ -143,7 +143,7 @@ export const genericHttpAdapter: SmmProviderAdapter = {
   },
   async listServices(credentials) {
     requireLiveCredentials(credentials);
-    const json = await panelRequest<SmmService[] | { error?: string }>(credentials, { action: "services" });
+    const json = await panelRequest<SmmService[] | { error?: string }>(credentials, { action: "services" }, 120_000);
     if (!Array.isArray(json)) {
       throw new Error((json as { error?: string }).error || "Provider did not return a service list");
     }

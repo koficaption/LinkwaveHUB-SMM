@@ -1,5 +1,5 @@
 import { pool, query, queryOne } from "../db.js";
-import { hashPassword, encryptSecret, makeSlug } from "../utils.js";
+import { hashPassword, makeSlug } from "../utils.js";
 import { config } from "../config.js";
 
 export async function seedIfEmpty() {
@@ -71,14 +71,9 @@ export async function seed() {
   );
 
   const provider = await queryOne<{ id: string }>(
-    `INSERT INTO providers (name, slug, api_url, api_key_encrypted, adapter, status, balance, currency, notes)
-     VALUES ('Sample provider (not live)', 'linkwave-panel', 'https://resellersmm.com/api/v2', $1, 'mock', 'active', 0, 'USD', 'Placeholder. Connect the live resellersmm.com v2 API later from Admin → Providers.')
-     RETURNING id`,
-    [encryptSecret("demo-provider-key-not-for-frontend")]
-  );
-  await query(
-    `INSERT INTO providers (name, slug, api_url, adapter, status, balance, currency)
-     VALUES ('Backup SMM', 'backup-smm', 'https://backup.example.com/api', 'generic_http', 'inactive', 0, 'USD')`
+    `INSERT INTO providers (name, slug, api_url, adapter, status, balance, currency, notes)
+     VALUES ('ResellersMM', 'resellersmm', 'https://resellersmm.com/api/v2', 'generic_http', 'active', 0, 'USD', 'Paste the live resellersmm.com API key in Admin → Providers, then import packages.')
+     RETURNING id`
   );
 
   const platforms = [

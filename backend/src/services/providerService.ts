@@ -18,13 +18,21 @@ function publicProvider(row: Record<string, unknown>) {
     balance: row.balance,
     currency: row.currency,
     notes: row.notes,
+    product_count: Number(row.product_count ?? 0),
+    active_product_count: Number(row.active_product_count ?? 0),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
 }
 
 export async function listProviders() {
-  const rows = await query(`SELECT * FROM providers ORDER BY name`);
+  const rows = await query(`
+    SELECT p.*,
+      (SELECT COUNT(*) FROM products pr WHERE pr.provider_id = p.id) AS product_count,
+      (SELECT COUNT(*) FROM products pr WHERE pr.provider_id = p.id AND pr.status = 'active') AS active_product_count
+    FROM providers p
+    ORDER BY name
+  `);
   return rows.map(publicProvider);
 }
 
@@ -78,9 +86,19 @@ export async function updateProvider(id: string, input: Record<string, unknown>,
 }
 
 export async function deleteProvider(id: string, actor: AuthUser, ip?: string) {
+  const current = await queryOne(`SELECT id, name FROM providers WHERE id = $1`, [id]);
+  if (!current) throw new AppError("Provider not found", 404);
+  const remaining = await queryOne<{ count: string }>(`SELECT COUNT(*) FROM providers`);
+  if (Number(remaining?.count ?? 0) <= 1) {
+    throw new AppError("Keep the live ResellerSMM provider. Add another provider before deleting this one.", 400);
+  }
+  await query(
+    `UPDATE products SET status = 'inactive', updated_at = NOW() WHERE provider_id = $1 AND status = 'active'`,
+    [id]
+  );
   await query(`UPDATE products SET provider_id = NULL WHERE provider_id = $1`, [id]);
   await query(`DELETE FROM providers WHERE id = $1`, [id]);
-  await writeAudit({ actor, action: "provider.delete", targetType: "provider", targetId: id, ip });
+  await writeAudit({ actor, action: "provider.delete", targetType: "provider", targetId: id, details: { name: current.name }, ip });
 }
 
 export async function refreshProviderBalance(id: string) {
