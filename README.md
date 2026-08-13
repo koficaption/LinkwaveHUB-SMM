@@ -94,22 +94,22 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 
 The login and register pages show **Continue with Google**. A client ID is enough for the popup flow.
 
-## Supabase
+## Supabase / live database
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run the files in `supabase/migrations/` in filename order.
-3. In **Project Settings → Database**, copy the **URI** (use the pooled connection on port `6543` for the API).
-4. Set in `.env`:
+The Cloud Agent uses **local Postgres** until you attach a hosted project.
 
+1. Create a free project at [supabase.com/dashboard](https://supabase.com/dashboard).
+2. Open **Project Settings → Database** and copy the **URI** (include the password). Session pooler (port `5432`) is best for this API; transaction pooler (`6543`) also works.
+3. From the repo, copy local data up (catalog, users, wallets, settings):
+
+```bash
+LIVE_DATABASE_URL='postgresql://postgres.xxxx:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres' npm run db:go-live
 ```
-DATABASE_URL=postgresql://postgres.xxxx:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
 
-5. Start the API once so it can seed demo data (`seedIfEmpty` only runs when `users` is empty).
+4. Put that same URI in `.env` as `DATABASE_URL`. **Do not change `ENCRYPTION_KEY`** if you copied provider API keys.
+5. Restart the API. Admin login stays `admin@linkwavehub.com` / `Admin@12345` if demo users were copied.
 
-The Express API is the only client that talks to Postgres. The React app never uses the anon key, so provider secrets and wallet ledgers stay server-side.
+The Express API is the only client that talks to Postgres. The React app never uses the anon key, so provider secrets and wallet ledgers stay server-side. Public tables have RLS enabled so the Supabase Data API cannot read them.
 
 ## Adding a new service (no code)
 
