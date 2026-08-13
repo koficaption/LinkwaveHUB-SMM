@@ -192,6 +192,7 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
         <div className="sm:col-span-2"><dt className="text-slate-500">Target</dt><dd className="break-all font-medium">{o.target}</dd></div>
         <div><dt className="text-slate-500">Provider</dt><dd className="font-medium">{o.provider_name || "—"}</dd></div>
         <div><dt className="text-slate-500">Provider order</dt><dd className="font-mono text-xs">{o.provider_order_id || "—"}</dd></div>
+        {o.admin_note ? <div className="sm:col-span-2"><dt className="text-slate-500">Provider note</dt><dd className="break-words font-medium text-rose-600">{o.admin_note}</dd></div> : null}
         <div><dt className="text-slate-500">Created</dt><dd className="font-medium">{formatDate(o.created_at)}</dd></div>
         <div><dt className="text-slate-500">Updated</dt><dd className="font-medium">{formatDate(o.updated_at)}</dd></div>
       </dl>
@@ -231,7 +232,8 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
         <Textarea placeholder="Admin note" value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={async () => { await api(`/admin/orders/${order.id}/status`, { method: "PATCH", body: JSON.stringify({ status, note }) }); toast.success("Status saved"); onChanged(); }}>Change status</Button>
-          <Button variant="outline" onClick={() => act(`/admin/orders/${order.id}/retry`)}>Retry</Button>
+          <Button variant="outline" onClick={() => act(`/admin/orders/${order.id}/retry`)}>Send to provider</Button>
+          <Button variant="outline" onClick={() => act(`/admin/orders/${order.id}/sync`)}>Refresh status</Button>
           <Button variant="danger" onClick={() => act(`/admin/orders/${order.id}/refund`, { note })}>Refund</Button>
         </div>
       </div>
@@ -729,12 +731,56 @@ export function AdminSettings() {
         </div>
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
+      <OrdersSettingsCard data={settings.data?.orders} onSave={(value) => save("orders", value)} />
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
       <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
       <NotificationSettingsCard data={settings.data?.notifications} onSave={(value) => save("notifications", value)} />
     </div>
+  );
+}
+
+function OrdersSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    autoProcessing: String(source.autoProcessing !== false),
+    maxPendingPerUser: String(source.maxPendingPerUser ?? 20),
+    refundWindowHours: String(source.refundWindowHours ?? 48),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Orders</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        After a customer pays from their wallet, send the order to the SMM panel you connected in Providers. If the panel rejects it, the order stays pending so you can send it again — the wallet is not refunded automatically.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="label">Send paid orders to the provider automatically</span>
+          <Select value={values.autoProcessing} onChange={(e) => setForm({ ...values, autoProcessing: e.target.value })}>
+            <option value="true">On</option>
+            <option value="false">Off — admin sends manually</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Refund window (hours)</span>
+          <Input type="number" min="0" value={values.refundWindowHours} onChange={(e) => setForm({ ...values, refundWindowHours: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        autoProcessing: values.autoProcessing === "true",
+        maxPendingPerUser: Number(values.maxPendingPerUser || 20),
+        refundWindowHours: Number(values.refundWindowHours || 48),
+      })}>Save order settings</Button>
+    </Card>
   );
 }
 

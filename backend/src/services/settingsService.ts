@@ -23,7 +23,7 @@ const defaults: Record<string, unknown> = {
     autoApproveMock: true,
   },
   orders: {
-    autoProcessing: false,
+    autoProcessing: true,
     maxPendingPerUser: 20,
     refundWindowHours: 48,
   },

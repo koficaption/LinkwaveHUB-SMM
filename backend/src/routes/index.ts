@@ -403,6 +403,9 @@ admin.post("/orders/:id/refund", asyncHandler(async (req, res) => {
 admin.post("/orders/:id/retry", asyncHandler(async (req, res) => {
   res.json(ok(await orders.retryOrder(req.params.id, req.user!, clientIp(req)), "Order submitted to provider"));
 }));
+admin.post("/orders/:id/sync", asyncHandler(async (req, res) => {
+  res.json(ok(await orders.refreshOrderFromProvider(req.params.id, req.user!), "Status refreshed from provider"));
+}));
 admin.post("/orders/:id/refill", asyncHandler(async (req, res) => {
   res.status(201).json(ok(await refills.requestRefill(req.params.id, req.user!, clientIp(req), req.body?.note), "Refill requested"));
 }));

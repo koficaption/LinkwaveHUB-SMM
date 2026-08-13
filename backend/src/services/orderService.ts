@@ -1,10 +1,9 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { calcCharge, like, parsePagination, publicOrderId } from "../utils.js";
+import { calcCharge, decryptSecret, like, parsePagination, publicOrderId } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
-import { getSmmAdapter } from "../providers/smm/index.js";
-import { decryptSecret } from "../utils.js";
+import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
 import { publicProductName } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
@@ -230,10 +229,26 @@ export async function placeOrder(input: {
     return getOrderById(order!.id, client);
   });
 
+  if (created?.id && (await shouldAutoSendOrders())) {
+    try {
+      await submitOrderToProvider(String(created.id), input.user);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Provider rejected the order";
+      await recordProviderSubmitFailure(String(created.id), created.status, input.user.id, message);
+      await notify({
+        userId: null,
+        title: "Order not sent to provider",
+        body: `Order ${created.public_id} was paid but the panel request failed: ${message}`,
+        type: "order",
+        metadata: { orderId: created.id, publicId: created.public_id },
+      });
+    }
+  }
+
   if (input.viaApi && created?.id) {
     enqueueOrderWebhook(String(created.id), "order.created").catch((err) => console.error("API webhook enqueue failed", err));
   }
-  return created;
+  return created?.id ? getOrderById(String(created.id)) : created;
 }
 
 export async function listOrders(opts: {
@@ -565,27 +580,92 @@ async function refundOrderInternal(
 }
 
 export async function retryOrder(id: string, actor: AuthUser, ip?: string) {
-  const order = await queryOne<Record<string, unknown>>(
-    `SELECT o.*, p.provider_service_id, pr.adapter, pr.api_url, pr.api_key_encrypted
+  await submitOrderToProvider(id, actor, ip);
+  return getOrder(id, actor);
+}
+
+export async function refreshOrderFromProvider(id: string, actor: AuthUser) {
+  const updated = await syncOrderFromProvider(id);
+  if (!updated) throw new AppError("This order has no live provider order to refresh");
+  return getOrder(id, actor);
+}
+
+async function shouldAutoSendOrders() {
+  const settings = await getSettings();
+  const orders = (settings.orders ?? {}) as { autoProcessing?: boolean };
+  return orders.autoProcessing !== false;
+}
+
+async function loadOrderForProvider(id: string) {
+  return queryOne<Record<string, unknown>>(
+    `SELECT o.*, p.provider_service_id, p.provider_id AS product_provider_id,
+            pr.adapter, pr.api_url, pr.api_key_encrypted, pr.status AS provider_status
      FROM orders o
      JOIN products p ON p.id = o.product_id
      LEFT JOIN providers pr ON pr.id = COALESCE(o.provider_id, p.provider_id)
      WHERE o.id = $1`,
     [id]
   );
+}
+
+function decryptProviderKey(encrypted: unknown): string | undefined {
+  if (!encrypted) return undefined;
+  try {
+    const key = decryptSecret(String(encrypted));
+    return key.trim() ? key : undefined;
+  } catch {
+    throw new AppError(
+      "Could not decrypt the provider API key. Confirm ENCRYPTION_KEY matches the key used when the panel was saved.",
+      500
+    );
+  }
+}
+
+function livePanelAdapter(order: Record<string, unknown>, apiKey: string | undefined) {
+  const hasLiveCreds = Boolean(order.api_url && apiKey);
+  if (!hasLiveCreds) {
+    throw new AppError("This provider has no API URL or key. Add them in Admin → Providers.");
+  }
+  return adapterForLiveProvider(order.adapter, true);
+}
+
+async function submitOrderToProvider(id: string, actor: AuthUser, ip?: string) {
+  const order = await loadOrderForProvider(id);
   if (!order) throw new AppError("Order not found", 404);
-  const adapter = getSmmAdapter(String(order.adapter || "mock"));
-  const apiKey = order.api_key_encrypted ? decryptSecret(String(order.api_key_encrypted)) : undefined;
-  const result = await adapter.createOrder(
-    {
-      serviceId: String(order.provider_service_id || "0"),
-      link: String(order.target),
-      quantity: Number(order.quantity),
-    },
-    { apiUrl: order.api_url as string | undefined, apiKey }
-  );
+
+  const existingId = order.provider_order_id ? String(order.provider_order_id) : "";
+  const alreadyLive = Boolean(existingId) && !isMockProviderOrderId(existingId);
+  const status = String(order.status);
+  if (alreadyLive && !["pending", "failed"].includes(status)) {
+    throw new AppError("This order was already submitted to the provider. Refresh status instead of sending it again.");
+  }
+  if (!order.provider_service_id) {
+    throw new AppError("This product has no provider service ID. Re-import the catalog or set the panel service ID.");
+  }
+
+  const apiKey = decryptProviderKey(order.api_key_encrypted);
+  const adapter = livePanelAdapter(order, apiKey);
+
+  let result;
+  try {
+    result = await adapter.createOrder(
+      {
+        serviceId: String(order.provider_service_id),
+        link: String(order.target),
+        quantity: Number(order.quantity),
+      },
+      { apiUrl: order.api_url as string | undefined, apiKey }
+    );
+  } catch (err) {
+    throw new AppError(err instanceof Error ? err.message : "Provider rejected the order", 502);
+  }
+
+  if (!result.providerOrderId || isMockProviderOrderId(result.providerOrderId)) {
+    throw new AppError("Provider did not return a live order ID");
+  }
+
   await query(
-    `UPDATE orders SET provider_order_id = $2, status = 'processing' WHERE id = $1`,
+    `UPDATE orders SET provider_order_id = $2, status = 'processing', admin_note = NULL, updated_at = NOW() WHERE id = $1`,
     [id, result.providerOrderId]
   );
   await query(
@@ -595,7 +675,62 @@ export async function retryOrder(id: string, actor: AuthUser, ip?: string) {
   );
   await writeAudit({ actor, action: "order.retry", targetType: "order", targetId: id, ip });
   enqueueOrderWebhook(id, "order.processing").catch((err) => console.error("API webhook enqueue failed", err));
-  return getOrder(id, actor);
+}
+
+async function recordProviderSubmitFailure(
+  id: string,
+  fromStatus: unknown,
+  actorId: string,
+  message: string
+) {
+  await query(
+    `UPDATE orders SET admin_note = $2, updated_at = NOW() WHERE id = $1 AND status = 'pending'`,
+    [id, message]
+  );
+  await query(
+    `INSERT INTO order_status_history (order_id, from_status, to_status, note, changed_by)
+     VALUES ($1,$2,'pending',$3,$4)`,
+    [id, fromStatus ?? "pending", `Provider submit failed: ${message}`, actorId]
+  );
+}
+
+async function syncOrderFromProvider(id: string) {
+  const order = await loadOrderForProvider(id);
+  if (!order) return false;
+  const providerOrderId = order.provider_order_id ? String(order.provider_order_id) : "";
+  if (!providerOrderId || isMockProviderOrderId(providerOrderId)) return false;
+  const localStatus = String(order.status);
+  if (["refunded", "cancelled"].includes(localStatus)) return false;
+
+  const apiKey = decryptProviderKey(order.api_key_encrypted);
+  const adapter = livePanelAdapter(order, apiKey);
+  const result = await adapter.getStatus(providerOrderId, {
+    apiUrl: order.api_url as string | undefined,
+    apiKey,
+  });
+  const nextStatus = mapPanelOrderStatus(result.status);
+  const startCount = Number.isFinite(result.startCount) ? result.startCount : null;
+  const remains = Number.isFinite(result.remains) ? result.remains : null;
+
+  await query(
+    `UPDATE orders SET start_count = COALESCE($2, start_count), remains = COALESCE($3, remains), updated_at = NOW() WHERE id = $1`,
+    [id, startCount, remains]
+  );
+
+  if (!nextStatus || nextStatus === localStatus) return true;
+  if (localStatus === "completed" && nextStatus !== "partial") return true;
+
+  await query(`UPDATE orders SET status = $2, updated_at = NOW() WHERE id = $1`, [id, nextStatus]);
+  await query(
+    `INSERT INTO order_status_history (order_id, from_status, to_status, note)
+     VALUES ($1,$2,$3,$4)`,
+    [id, localStatus, nextStatus, `Provider status: ${result.status}`]
+  );
+  const event = webhookEventForStatus(nextStatus);
+  if (event) {
+    enqueueOrderWebhook(id, event).catch((err) => console.error("API webhook enqueue failed", err));
+  }
+  return true;
 }
 
 function withRefill(order: Record<string, unknown>) {
@@ -609,6 +744,7 @@ function sanitizeOrder(row: Record<string, unknown>, admin = false) {
     delete order.cost;
     delete order.profit;
     delete order.provider_order_id;
+    delete order.admin_note;
   }
   return order;
 }

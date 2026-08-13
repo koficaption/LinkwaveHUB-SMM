@@ -3,7 +3,7 @@ import { AppError } from "../errors.js";
 import { decryptSecret, like, parsePagination, publicRefillId } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
-import { getSmmAdapter } from "../providers/smm/index.js";
+import { adapterForLiveProvider } from "../providers/smm/index.js";
 import { parseRefillHint } from "./refillParse.js";
 import type { AuthUser } from "../middleware/auth.js";
 
@@ -277,10 +277,10 @@ export async function requestRefill(
   let errorMessage: string | null = null;
   let adminNote = note ?? null;
   const providerSupports = Boolean(order.provider_refill_supported) && Boolean(order.provider_order_id);
-  const adapter = getSmmAdapter(String(order.adapter || "mock"));
+  const apiKey = order.api_key_encrypted ? decryptSecret(String(order.api_key_encrypted)) : undefined;
+  const adapter = adapterForLiveProvider(order.adapter, Boolean(order.api_url && apiKey));
 
   if (providerSupports && adapter.requestRefill) {
-    const apiKey = order.api_key_encrypted ? decryptSecret(String(order.api_key_encrypted)) : undefined;
     try {
       const result = await adapter.requestRefill(String(order.provider_order_id), {
         apiUrl: order.api_url as string | undefined,
@@ -379,9 +379,9 @@ export async function syncRefillStatuses() {
   );
   let updated = 0;
   for (const row of pending) {
-    const adapter = getSmmAdapter(String(row.adapter || "mock"));
-    if (!adapter.getRefillStatus) continue;
     const apiKey = row.api_key_encrypted ? decryptSecret(String(row.api_key_encrypted)) : undefined;
+    const adapter = adapterForLiveProvider(row.adapter, Boolean(row.api_url && apiKey));
+    if (!adapter.getRefillStatus) continue;
     try {
       const result = await adapter.getRefillStatus(String(row.provider_refill_id), {
         apiUrl: row.api_url as string | undefined,

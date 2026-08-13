@@ -227,7 +227,7 @@ export async function seed() {
     `INSERT INTO settings (key, value) VALUES
      ('general', '{"siteName":"LinkBoost Growth SMM","tagline":"Grow Your Social Presence With Powerful Social Media Services","supportEmail":"support@linkboostgrowth.com","contactPhone":"+233 00 000 0000","address":"Accra, Ghana","developer":"OB CodeLab","currency":"GHS","logoUrl":"","faviconUrl":""}'),
      ('payments', '{"autoApproveMock":true}'),
-     ('orders', '{"autoProcessing":false,"maxPendingPerUser":20,"refundWindowHours":48}'),
+     ('orders', '{"autoProcessing":true,"maxPendingPerUser":20,"refundWindowHours":48}'),
      ('pricing', '{"customerMarkupPercent":0,"resellerMarkupPercent":15,"minimumProfitPer1000":0.5}'),
      ('notifications', '{"emailEnabled":false,"orderNotifications":true,"depositNotifications":true}'),
      ('affiliates', '{"enabled":true,"commissionPercent":7,"minimumPayout":10,"lifetime":true}'),

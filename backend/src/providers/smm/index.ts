@@ -80,41 +80,40 @@ export const mockSmmAdapter: SmmProviderAdapter = {
 
 /**
  * Generic HTTP SMM panel adapter (PerfectPanel / resellersmm.com /api/v2).
- * Live provider keys will be added later from Admin → Providers. Do not hard-code keys here.
+ * Live provider keys are stored encrypted in Admin → Providers. Never fall back to mock
+ * when a live panel is configured — that looks successful locally and never hits the provider.
  */
 export const genericHttpAdapter: SmmProviderAdapter = {
   name: "generic_http",
   async createOrder(input, credentials) {
-    if (!credentials.apiUrl || !credentials.apiKey) {
-      return mockSmmAdapter.createOrder(input, credentials);
+    requireLiveCredentials(credentials);
+    if (!input.serviceId || input.serviceId === "0") {
+      throw new Error("This product has no provider service ID. Re-import the catalog or set the panel service ID.");
     }
-    const body = new URLSearchParams({
-      key: credentials.apiKey,
+    const json = await panelRequest<{ order?: string | number; error?: string }>(credentials, {
       action: "add",
       service: input.serviceId,
       link: input.link,
       quantity: String(input.quantity),
     });
-    const response = await fetch(credentials.apiUrl, { method: "POST", body });
-    const json = (await response.json()) as { order?: string | number; error?: string };
-    if (json.error) throw new Error(json.error);
+    if (json.error) throw new Error(String(json.error));
+    if (json.order == null || String(json.order).trim() === "") {
+      throw new Error("Provider did not return an order ID");
+    }
     return { providerOrderId: String(json.order), status: "pending", raw: json };
   },
   async getStatus(providerOrderId, credentials) {
-    if (!credentials.apiUrl || !credentials.apiKey) {
-      return mockSmmAdapter.getStatus(providerOrderId, credentials);
-    }
-    const body = new URLSearchParams({
-      key: credentials.apiKey,
-      action: "status",
-      order: providerOrderId,
-    });
-    const response = await fetch(credentials.apiUrl, { method: "POST", body });
-    const json = (await response.json()) as {
+    requireLiveCredentials(credentials);
+    const json = await panelRequest<{
       status?: string;
       start_count?: string;
       remains?: string;
-    };
+      error?: string;
+    }>(credentials, {
+      action: "status",
+      order: providerOrderId,
+    });
+    if (json.error) throw new Error(String(json.error));
     return {
       status: (json.status || "pending").toLowerCase().replace(/\s+/g, "_"),
       startCount: json.start_count ? Number(json.start_count) : undefined,
@@ -123,13 +122,13 @@ export const genericHttpAdapter: SmmProviderAdapter = {
     };
   },
   async getBalance(credentials) {
-    if (!credentials.apiUrl || !credentials.apiKey) return 0;
+    requireLiveCredentials(credentials);
     const json = await panelRequest<{ balance?: string; error?: string }>(credentials, { action: "balance" });
-    if (json.error) throw new Error(json.error);
+    if (json.error) throw new Error(String(json.error));
     return Number(json.balance ?? 0);
   },
   async listServices(credentials) {
-    if (!credentials.apiUrl || !credentials.apiKey) return mockSmmAdapter.listServices(credentials);
+    requireLiveCredentials(credentials);
     const json = await panelRequest<SmmService[] | { error?: string }>(credentials, { action: "services" });
     if (!Array.isArray(json)) {
       throw new Error((json as { error?: string }).error || "Provider did not return a service list");
@@ -179,10 +178,37 @@ export const genericHttpAdapter: SmmProviderAdapter = {
   },
 };
 
+function requireLiveCredentials(credentials: { apiUrl?: string; apiKey?: string }) {
+  if (!credentials.apiUrl || !String(credentials.apiUrl).trim()) {
+    throw new Error("Provider API URL is missing. Add it in Admin → Providers.");
+  }
+  if (!credentials.apiKey || !String(credentials.apiKey).trim()) {
+    throw new Error("Provider API key is missing. Add it in Admin → Providers.");
+  }
+}
+
 async function panelRequest<T>(credentials: { apiUrl?: string; apiKey?: string }, extra: Record<string, string>): Promise<T> {
-  const body = new URLSearchParams({ key: credentials.apiKey || "", ...extra });
-  const response = await fetch(String(credentials.apiUrl), { method: "POST", body });
-  return (await response.json()) as T;
+  requireLiveCredentials(credentials);
+  const body = new URLSearchParams({ key: credentials.apiKey as string, ...extra });
+  let response: Response;
+  try {
+    response = await fetch(String(credentials.apiUrl), {
+      method: "POST",
+      body,
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "network error";
+    throw new Error(`Could not reach the provider API (${message})`);
+  }
+  const text = await response.text();
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`Provider returned a non-JSON response (HTTP ${response.status}). Check the panel API URL.`);
+  }
+  return json as T;
 }
 
 const smmAdapters: Record<string, SmmProviderAdapter> = {
@@ -191,7 +217,32 @@ const smmAdapters: Record<string, SmmProviderAdapter> = {
 };
 
 export function getSmmAdapter(name: string): SmmProviderAdapter {
-  return smmAdapters[name] ?? mockSmmAdapter;
+  if (smmAdapters[name]) return smmAdapters[name];
+  if (!name || name === "mock") return mockSmmAdapter;
+  return genericHttpAdapter;
+}
+
+export function adapterForLiveProvider(adapterName: unknown, hasLiveCredentials: boolean): SmmProviderAdapter {
+  const name = String(adapterName || "");
+  if (hasLiveCredentials && (!name || name === "mock")) return genericHttpAdapter;
+  return getSmmAdapter(name || (hasLiveCredentials ? "generic_http" : "mock"));
+}
+
+export function isMockProviderOrderId(id: unknown): boolean {
+  return typeof id === "string" && id.startsWith("MOCK-");
+}
+
+/** Map PerfectPanel / clone statuses onto local order_status values. */
+export function mapPanelOrderStatus(status: string): string | null {
+  const s = status.toLowerCase().replace(/[\s-]+/g, "_");
+  if (["completed", "complete", "success", "ok"].includes(s)) return "completed";
+  if (s === "partial") return "partial";
+  if (["in_progress", "inprogress"].includes(s)) return "in_progress";
+  if (["processing", "process"].includes(s)) return "processing";
+  if (["pending", "awaiting"].includes(s)) return "processing";
+  if (["canceled", "cancelled"].includes(s)) return "cancelled";
+  if (["failed", "error", "rejected"].includes(s)) return "failed";
+  return null;
 }
 
 export function registerSmmAdapter(name: string, adapter: SmmProviderAdapter) {

@@ -2,7 +2,7 @@ import { query, queryOne } from "../db.js";
 import { AppError } from "../errors.js";
 import { encryptSecret, uniqueSlug } from "../utils.js";
 import { writeAudit } from "./auditService.js";
-import { getSmmAdapter } from "../providers/smm/index.js";
+import { adapterForLiveProvider } from "../providers/smm/index.js";
 import { decryptSecret } from "../utils.js";
 import type { AuthUser } from "../middleware/auth.js";
 
@@ -107,8 +107,8 @@ export async function listProviderServices(id: string) {
 async function providerCredentials(id: string) {
   const row = await queryOne<Record<string, unknown>>(`SELECT * FROM providers WHERE id = $1`, [id]);
   if (!row) throw new AppError("Provider not found", 404);
-  const adapter = getSmmAdapter(String(row.adapter || "mock"));
   const apiKey = row.api_key_encrypted ? decryptSecret(String(row.api_key_encrypted)) : undefined;
+  const adapter = adapterForLiveProvider(row.adapter, Boolean(row.api_url && apiKey));
   return {
     row,
     adapter,
