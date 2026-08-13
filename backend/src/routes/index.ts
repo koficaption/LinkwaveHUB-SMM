@@ -134,11 +134,14 @@ router.post("/auth/reset-password", authLimit, validate(resetPasswordSchema), as
   await auth.resetPasswordWithToken(req.body.token, req.body.password);
   res.json(ok(null, "Password updated. You can sign in now."));
 }));
-router.get("/auth/google/config", (_req, res) => {
+router.get("/auth/google/config", (req, res) => {
+  const origin = publicOriginFromRequest(req);
   res.json(ok({
     enabled: googleAuth.googleEnabled(),
     clientId: config.googleClientId || null,
     redirectEnabled: Boolean(config.googleClientId && config.googleClientSecret),
+    origin,
+    redirectUri: googleCallbackUri(req),
   }));
 });
 router.get("/auth/google/start", authLimit, (req, res) => {

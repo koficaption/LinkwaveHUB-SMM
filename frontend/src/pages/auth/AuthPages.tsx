@@ -274,10 +274,18 @@ function GoogleSignIn() {
   const navigate = useNavigate();
   const config = useQuery({
     queryKey: ["google-config"],
-    queryFn: () => api<{ enabled: boolean; clientId: string | null; redirectEnabled: boolean }>("/auth/google/config"),
+    queryFn: () => api<{
+      enabled: boolean;
+      clientId: string | null;
+      redirectEnabled: boolean;
+      origin?: string;
+      redirectUri?: string;
+    }>("/auth/google/config"),
   });
   const [busy, setBusy] = useState(false);
   const enabled = Boolean(config.data?.enabled && config.data.clientId);
+  const redirectUri = config.data?.redirectUri || `${window.location.origin}/api/auth/google/callback`;
+  const jsOrigin = config.data?.origin || window.location.origin;
 
   useEffect(() => {
     if (!enabled || document.getElementById("google-gsi")) return;
@@ -288,39 +296,71 @@ function GoogleSignIn() {
     document.head.appendChild(script);
   }, [enabled]);
 
-  const finish = async (payload: { accessToken?: string; credential?: string }) => {
+  const finish = async (payload: { accessToken?: string; credential?: string; code?: string }) => {
     const me = await loginWithGoogle(payload);
     toast.success("Logged in with Google");
     navigate(me.user.role === "admin" ? "/admin" : "/app");
   };
 
   const onClick = async () => {
-    const oauth2 = window.google?.accounts?.oauth2;
-    if (oauth2 && config.data?.clientId) {
-      setBusy(true);
-      oauth2.initTokenClient({
-        client_id: config.data.clientId,
-        scope: "openid email profile",
-        callback: async (response) => {
-          try {
-            if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
-              throw new Error("Google sign-in was cancelled");
+    if (!config.data?.clientId) return;
+    setBusy(true);
+    try {
+      const oauth2 = await waitForGoogleOauth();
+      if (oauth2?.initCodeClient) {
+        oauth2.initCodeClient({
+          client_id: config.data.clientId,
+          scope: "openid email profile",
+          ux_mode: "popup",
+          callback: async (response) => {
+            try {
+              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
+                throw new Error("Google sign-in was cancelled");
+              }
+              if (response.error || !response.code) {
+                throw new Error(consoleHint(jsOrigin, redirectUri));
+              }
+              await finish({ code: response.code });
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
+            } finally {
+              setBusy(false);
             }
-            if (response.error || !response.access_token) {
-              window.location.assign(`${window.location.origin}/api/auth/google/start`);
-              return;
+          },
+        }).requestCode();
+        return;
+      }
+      if (oauth2?.initTokenClient) {
+        oauth2.initTokenClient({
+          client_id: config.data.clientId,
+          scope: "openid email profile",
+          callback: async (response) => {
+            try {
+              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
+                throw new Error("Google sign-in was cancelled");
+              }
+              if (response.error || !response.access_token) {
+                throw new Error(consoleHint(jsOrigin, redirectUri));
+              }
+              await finish({ accessToken: response.access_token });
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
+            } finally {
+              setBusy(false);
             }
-            await finish({ accessToken: response.access_token });
-          } catch (e) {
-            toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
-          } finally {
-            setBusy(false);
-          }
-        },
-      }).requestAccessToken();
-      return;
+          },
+        }).requestAccessToken();
+        return;
+      }
+      if (config.data.redirectEnabled) {
+        window.location.assign(`${window.location.origin}/api/auth/google/start`);
+        return;
+      }
+      throw new Error(consoleHint(jsOrigin, redirectUri));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Google sign-in failed");
+      setBusy(false);
     }
-    window.location.assign(`${window.location.origin}/api/auth/google/start`);
   };
 
   return (
@@ -337,6 +377,29 @@ function GoogleSignIn() {
       <Divider />
     </>
   );
+}
+
+function consoleHint(origin: string, redirectUri: string) {
+  return `Google blocked this site. In Google Cloud Console add JavaScript origin ${origin} and redirect URI ${redirectUri}`;
+}
+
+function waitForGoogleOauth() {
+  return new Promise<NonNullable<NonNullable<Window["google"]>["accounts"]["oauth2"]> | null>((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      const oauth2 = window.google?.accounts?.oauth2;
+      if (oauth2) {
+        resolve(oauth2);
+        return;
+      }
+      if (Date.now() - started > 2500) {
+        resolve(null);
+        return;
+      }
+      window.setTimeout(tick, 50);
+    };
+    tick();
+  });
 }
 
 function GoogleMark() {
@@ -397,6 +460,12 @@ declare global {
             scope: string;
             callback: (res: { access_token?: string; error?: string }) => void;
           }) => { requestAccessToken: () => void };
+          initCodeClient?: (config: {
+            client_id: string;
+            scope: string;
+            ux_mode?: "popup" | "redirect";
+            callback: (res: { code?: string; error?: string }) => void;
+          }) => { requestCode: () => void };
         };
       };
     };
