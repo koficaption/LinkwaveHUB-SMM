@@ -146,7 +146,7 @@ async function upsertGoogleUser(profile: GoogleProfile) {
   if (result.created) {
     await notify({
       userId: result.user.id,
-      title: "Welcome to LinkWaveHub",
+      title: "Welcome to LinkBoost Growth",
       body: "You signed in with Google. Add funds to your wallet to start placing orders.",
       type: "account",
     });

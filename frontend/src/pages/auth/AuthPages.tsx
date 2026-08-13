@@ -36,7 +36,7 @@ export function LoginPage() {
   }, [params]);
 
   return (
-    <AuthCard title="Welcome back" subtitle="Sign in to Linkwave SMM">
+    <AuthCard title="Welcome back" subtitle="Sign in to LinkBoost Growth SMM">
       <GoogleSignIn />
       <form
         className="space-y-4"

@@ -2,7 +2,7 @@
   "name": "linkwavehub-smm",
   "private": true,
   "version": "1.0.0",
-  "description": "LinkWaveHub SMM — social media boosting platform by OB CodeLab",
+  "description": "LinkBoost Growth SMM — social media boosting platform by OB CodeLab",
   "scripts": {
     "dev": "concurrently -n api,web -c teal,cyan \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:api": "npm run dev --prefix backend",

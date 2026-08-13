@@ -12,7 +12,7 @@ export async function seedIfEmpty() {
 }
 
 export async function seed() {
-  console.log("Seeding LinkWaveHub demo data...");
+  console.log("Seeding LinkBoost Growth demo data...");
   const adminHash = await hashPassword("Admin@12345");
   const resellerHash = await hashPassword("Reseller@12345");
   const customerHash = await hashPassword("Customer@12345");
@@ -225,7 +225,7 @@ export async function seed() {
 
   await query(
     `INSERT INTO settings (key, value) VALUES
-     ('general', '{"siteName":"LinkWaveHub SMM","tagline":"Grow Your Social Presence With Powerful Social Media Services","supportEmail":"support@linkwavehub.com","contactPhone":"+233 00 000 0000","address":"Accra, Ghana","developer":"OB CodeLab","currency":"GHS","logoUrl":"","faviconUrl":""}'),
+     ('general', '{"siteName":"LinkBoost Growth SMM","tagline":"Grow Your Social Presence With Powerful Social Media Services","supportEmail":"support@linkboostgrowth.com","contactPhone":"+233 00 000 0000","address":"Accra, Ghana","developer":"OB CodeLab","currency":"GHS","logoUrl":"","faviconUrl":""}'),
      ('payments', '{"autoApproveMock":true}'),
      ('orders', '{"autoProcessing":false,"maxPendingPerUser":20,"refundWindowHours":48}'),
      ('pricing', '{"customerMarkupPercent":0,"resellerMarkupPercent":15,"minimumProfitPer1000":0.5}'),
@@ -308,7 +308,7 @@ export async function seed() {
 
   await query(
     `INSERT INTO notifications (user_id, title, body, type) VALUES
-     ($1, 'Welcome to LinkWaveHub', 'Your customer account is ready. Add funds and place your first order.', 'account'),
+     ($1, 'Welcome to LinkBoost Growth', 'Your customer account is ready. Add funds and place your first order.', 'account'),
      ($2, 'Reseller approved', 'Demo Storefront is live. Share your storefront link with clients.', 'reseller'),
      (NULL, 'New order', 'A customer placed LWH-SEED-1000.', 'order')`,
     [customer!.id, resellerUser!.id]

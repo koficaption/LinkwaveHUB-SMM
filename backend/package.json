@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "LinkWaveHub SMM API — developed by OB CodeLab",
+  "description": "LinkBoost Growth SMM API — developed by OB CodeLab",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

@@ -1,4 +1,4 @@
-# LinkWaveHub SMM
+# LinkBoost Growth SMM
 
 A production-style social media boosting platform by **OB CodeLab**. Customers buy followers, likes, views and other services from a **database-driven catalog**. Administrators add platforms, categories and products from the dashboard — the storefront updates without frontend code changes.
 

@@ -1,5 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import { money } from "@/api/client";
+import { BRAND_SHORT } from "@/brand";
 import { Skeleton } from "@/components/ui";
 import { cn } from "@/utils/cn";
 
@@ -44,7 +45,7 @@ export function WelcomeCard({ name, verified, loading }: { name: string; verifie
           {verified && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" aria-label="Verified" />}
         </span>
       }
-      subtitle="Welcome To Linkwave SMM"
+      subtitle={`Welcome To ${BRAND_SHORT}`}
     />
   );
 }

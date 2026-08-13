@@ -5,7 +5,7 @@ import { encryptSecret, looksEncrypted } from "../utils.js";
 
 const defaults: Record<string, unknown> = {
   general: {
-    siteName: "Linkwave SMM",
+    siteName: "LinkBoost Growth SMM",
     tagline: "Grow Your Social Presence With Powerful Social Media Services",
     supportEmail: "support@linkwavehub.com",
     contactPhone: "+233 00 000 0000",
@@ -57,7 +57,7 @@ const defaults: Record<string, unknown> = {
     port: 587,
     user: "",
     pass: "",
-    from: "Linkwave SMM <support@linkwavehub.com>",
+    from: "LinkBoost Growth SMM <support@linkboostgrowth.com>",
   },
 };
 
@@ -71,7 +71,11 @@ function mergeSetting(key: string, stored: unknown) {
     typeof stored === "object" &&
     !Array.isArray(stored)
   ) {
-    return { ...(fallback as Record<string, unknown>), ...(stored as Record<string, unknown>) };
+    const merged = { ...(fallback as Record<string, unknown>), ...(stored as Record<string, unknown>) };
+    if (key === "general" && /linkwave/i.test(String(merged.siteName ?? ""))) {
+      merged.siteName = "LinkBoost Growth SMM";
+    }
+    return merged;
   }
   return stored ?? fallback;
 }

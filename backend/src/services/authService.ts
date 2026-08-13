@@ -62,7 +62,7 @@ export async function registerUser(input: {
 
   await notify({
     userId: result.user.id,
-    title: "Welcome to LinkWaveHub",
+    title: "Welcome to LinkBoost Growth",
     body: "Your account is ready. Add funds to your wallet to start placing orders.",
     type: "account",
   });
@@ -180,7 +180,7 @@ export async function requestPasswordReset(input: { email: string; origin?: stri
   const origin = (input.origin || config.frontendUrl).replace(/\/$/, "");
   const resetUrl = `${origin}/reset-password?token=${encodeURIComponent(token)}`;
   const settings = await getPublicSettings();
-  const siteName = String(settings.siteName || "Linkwave SMM");
+  const siteName = String(settings.siteName || "LinkBoost Growth SMM");
   const mail = passwordResetEmail({ name: user.full_name, resetUrl, siteName });
 
   let emailSent = false;

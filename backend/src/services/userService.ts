@@ -96,7 +96,7 @@ export async function updateUser(id: string, input: Record<string, unknown>, act
   );
   if (!user) throw new AppError("User not found", 404);
   if (input.status === "suspended") {
-    await notify({ userId: id, title: "Account suspended", body: "Your LinkWaveHub account has been suspended.", type: "account" });
+    await notify({ userId: id, title: "Account suspended", body: "Your LinkBoost Growth account has been suspended.", type: "account" });
     await writeAudit({ actor, action: "user.suspend", targetType: "user", targetId: id, ip });
   } else if (input.status === "active") {
     await writeAudit({ actor, action: "user.activate", targetType: "user", targetId: id, ip });

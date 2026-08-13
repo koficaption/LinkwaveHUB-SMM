@@ -67,7 +67,7 @@ export function PublicLayout() {
         <div className="container-page flex flex-col gap-4 text-sm text-muted sm:flex-row sm:items-start sm:justify-between">
           <div>
             <BrandLogo className="mb-3 h-9" />
-            <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "Linkwave SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
+            <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "LinkBoost Growth SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
             {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
           </div>
         </div>

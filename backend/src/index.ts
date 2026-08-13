@@ -58,7 +58,7 @@ async function start() {
   await migrate();
   await seedIfEmpty();
   app.listen(config.port, () => {
-    console.log(`LinkWaveHub API listening on http://localhost:${config.port}`);
+    console.log(`LinkBoost Growth API listening on http://localhost:${config.port}`);
   });
 }
 

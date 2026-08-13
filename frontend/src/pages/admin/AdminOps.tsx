@@ -596,7 +596,7 @@ function MailSettingsCard({
     port: String(source.port ?? 587),
     user: String(source.user ?? ""),
     pass: "",
-    from: String(source.from ?? "Linkwave SMM <support@linkwavehub.com>"),
+    from: String(source.from ?? "LinkBoost Growth SMM <support@linkboostgrowth.com>"),
   };
   return (
     <Card>
@@ -622,7 +622,7 @@ function MailSettingsCard({
         </label>
         <label className="block">
           <span className="label">From address</span>
-          <Input placeholder="Linkwave SMM <you@gmail.com>" value={values.from} onChange={(e) => setForm({ ...values, from: e.target.value })} />
+          <Input placeholder="LinkBoost Growth SMM <you@gmail.com>" value={values.from} onChange={(e) => setForm({ ...values, from: e.target.value })} />
         </label>
         <label className="block">
           <span className="label">SMTP username</span>

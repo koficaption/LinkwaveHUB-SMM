@@ -38,7 +38,7 @@ export function CustomerLayout() {
       { to: "/app/reseller/pricing", label: "Pricing", icon: <Wallet className="h-5 w-5" /> },
     );
   }
-  return <AppShell title="Linkwave SMM" items={items} home="/app" />;
+  return <AppShell title="LinkBoost Growth SMM" items={items} home="/app" />;
 }
 
 export function AdminLayout() {

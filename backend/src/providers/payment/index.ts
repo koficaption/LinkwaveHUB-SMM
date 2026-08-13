@@ -67,14 +67,14 @@ export const korapayAdapter: PaymentAdapter = {
       headers: {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
-        "User-Agent": "LinkwaveSMM/1.0",
+        "User-Agent": "LinkBoostGrowth/1.0",
       },
       body: JSON.stringify({
         amount: Number(input.amount.toFixed(2)),
         currency: input.currency || "GHS",
         reference: input.reference,
         redirect_url: input.callbackUrl || undefined,
-        narration: `Linkwave SMM ${input.amount.toFixed(2)} ${input.currency || "GHS"}`,
+        narration: `LinkBoost Growth SMM ${input.amount.toFixed(2)} ${input.currency || "GHS"}`,
         channels: ["card", "bank_transfer", "mobile_money"],
         default_channel: "card",
         customer: {
@@ -104,7 +104,7 @@ export const korapayAdapter: PaymentAdapter = {
     if (!secret) return { success: false, reference };
     const response = await fetch(
       `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${secret}`, "User-Agent": "LinkwaveSMM/1.0" } }
+      { headers: { Authorization: `Bearer ${secret}`, "User-Agent": "LinkBoostGrowth/1.0" } }
     );
     const json = (await response.json()) as {
       status: boolean;

@@ -63,7 +63,7 @@ function setAuthCookie(res: import("express").Response, token: string, req?: imp
 
 export const router = Router();
 
-router.get("/health", (_req, res) => res.json(ok({ status: "ok", service: "LinkWaveHub API" })));
+router.get("/health", (_req, res) => res.json(ok({ status: "ok", service: "LinkBoost Growth API" })));
 router.get("/settings/public", asyncHandler(async (_req, res) => {
   res.json(ok(await settings.getPublicSettings()));
 }));
@@ -530,7 +530,7 @@ admin.put("/settings/:key", asyncHandler(async (req, res) => {
 }));
 admin.post("/settings/mail/test", asyncHandler(async (req, res) => {
   const to = typeof req.body?.to === "string" && req.body.to.includes("@") ? req.body.to : req.user!.email;
-  const siteName = String(((await settings.getSettings()).general as Record<string, unknown>).siteName || "Linkwave SMM");
+  const siteName = String(((await settings.getSettings()).general as Record<string, unknown>).siteName || "LinkBoost Growth SMM");
   const result = await sendMail({
     to,
     subject: `${siteName} test email`,
