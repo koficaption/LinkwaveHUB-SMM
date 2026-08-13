@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { router } from "./routes/index.js";
 import { v1Router } from "./routes/v1.js";
@@ -69,7 +70,7 @@ app.use("/uploads", express.static(config.uploadDir));
 app.use("/api/v1", v1Router);
 app.use("/api", router);
 
-const frontendDist = path.resolve(__dirname, "../../frontend/dist");
+const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../frontend/dist");
 if (fs.existsSync(path.join(frontendDist, "index.html"))) {
   app.use(express.static(frontendDist, { index: false }));
   app.get("*", (req, res, next) => {
