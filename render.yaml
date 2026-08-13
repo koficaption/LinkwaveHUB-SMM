@@ -23,7 +23,7 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://linkboost-growth.onrender.com
       - key: KORAPAY_PUBLIC_KEY
         sync: false
       - key: KORAPAY_SECRET_KEY

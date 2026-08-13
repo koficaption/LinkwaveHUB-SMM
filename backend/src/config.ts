@@ -27,12 +27,15 @@ export function isLocalHttpUrl(value: string) {
   }
 }
 
+const LIVE_SITE_URL = "https://linkboost-growth.onrender.com";
+
 function configuredPublicUrl() {
   const frontend = stripSlash(process.env.FRONTEND_URL ?? "");
   const render = stripSlash(process.env.RENDER_EXTERNAL_URL ?? "");
   if (process.env.NODE_ENV === "production") {
     if (frontend && !isLocalHttpUrl(frontend)) return frontend;
     if (render && !isLocalHttpUrl(render)) return render;
+    return LIVE_SITE_URL;
   }
   return frontend || "http://localhost:5173";
 }

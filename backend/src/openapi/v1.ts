@@ -1,6 +1,6 @@
 const API_SCOPES = ["services:read", "orders:create", "orders:read", "orders:cancel", "balance:read"];
 
-export function openApiV1(origin = "https://api.linkboostgrowth.com") {
+export function openApiV1(origin = "https://linkboost-growth.onrender.com") {
   return {
     openapi: "3.0.3",
     info: {
