@@ -42,28 +42,32 @@ async function main() {
 
   console.log("2/2 Copying local data (users, catalog, wallets, settings) to live…");
   await new Promise<void>((resolve, reject) => {
-    const dump = spawn(
-      "pg_dump",
+    const copy = spawn(
+      "bash",
       [
-        localUrl,
-        "--data-only",
-        "--no-owner",
-        "--no-acl",
-        "--disable-triggers",
-        "--exclude-table=schema_migrations",
+        "-lc",
+        `set -o pipefail
+         {
+           printf '%s\\n' "BEGIN;" "SET session_replication_role = replica;" \\
+             "TRUNCATE TABLE affiliate_commissions, audit_logs, notifications, order_items, order_status_history, orders, payments, reseller_products, reseller_applications, support_messages, support_tickets, wallet_transactions, wallets, products, platform_categories, categories, platforms, payment_methods, providers, resellers, users, settings RESTART IDENTITY CASCADE;"
+           pg_dump "$LOCAL_URL" --data-only --no-owner --no-acl --exclude-table=schema_migrations
+           printf '%s\\n' "COMMIT;"
+         } | psql "$LIVE_URL" -v ON_ERROR_STOP=1 -q`,
       ],
-      { stdio: ["ignore", "pipe", "inherit"] }
+      {
+        env: {
+          ...process.env,
+          LOCAL_URL: localUrl,
+          LIVE_URL: liveUrl,
+          PGSSLMODE: "require",
+        },
+        stdio: "inherit",
+      }
     );
-    const restore = spawn("psql", [liveUrl, "-v", "ON_ERROR_STOP=1", "-q"], {
-      env: { ...process.env, PGSSLMODE: "require" },
-      stdio: ["pipe", "inherit", "inherit"],
-    });
-    dump.stdout.pipe(restore.stdin);
-    dump.on("error", reject);
-    restore.on("error", reject);
-    restore.on("exit", (code) => {
+    copy.on("error", reject);
+    copy.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`psql restore exited with ${code}`));
+      else reject(new Error(`data copy exited with ${code}`));
     });
   });
 
