@@ -1,9 +1,13 @@
+import crypto from "node:crypto";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
+import { config } from "../config.js";
+import { passwordResetEmail, sendMail } from "../mailer.js";
 import { hashPassword, makeSlug, signToken, uniqueSlug, verifyPassword } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
+import { getPublicSettings } from "./settingsService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `
@@ -144,6 +148,82 @@ export async function changePassword(userId: string, current: string, next: stri
   }
   const hash = await hashPassword(next);
   await query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, hash]);
+}
+
+const GENERIC_RESET_MESSAGE = "If an account exists for that email, we sent a reset link.";
+
+export async function requestPasswordReset(input: { email: string; origin?: string; ip?: string }) {
+  const email = input.email.trim().toLowerCase();
+  const user = await queryOne<{ id: string; email: string; full_name: string; status: string }>(
+    `SELECT id, email, full_name, status FROM users WHERE LOWER(email) = $1`,
+    [email]
+  );
+
+  if (!user || user.status === "suspended") {
+    return { message: GENERIC_RESET_MESSAGE };
+  }
+
+  await query(
+    `UPDATE password_reset_tokens SET used_at = NOW()
+     WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()`,
+    [user.id]
+  );
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  await query(
+    `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, requested_ip)
+     VALUES ($1, $2, NOW() + INTERVAL '1 hour', $3)`,
+    [user.id, tokenHash, input.ip ?? null]
+  );
+
+  const origin = (input.origin || config.frontendUrl).replace(/\/$/, "");
+  const resetUrl = `${origin}/reset-password?token=${encodeURIComponent(token)}`;
+  const settings = await getPublicSettings();
+  const siteName = String(settings.siteName || "Linkwave SMM");
+  const mail = passwordResetEmail({ name: user.full_name, resetUrl, siteName });
+
+  try {
+    const result = await sendMail({ to: user.email, ...mail });
+    if (!result.sent) {
+      console.info(`[password-reset] Link for ${user.email}: ${resetUrl}`);
+    }
+  } catch (error) {
+    console.error("[password-reset] Failed to send email", error);
+  }
+
+  const payload: { message: string; resetUrl?: string } = { message: GENERIC_RESET_MESSAGE };
+  if (!config.isProd) payload.resetUrl = resetUrl;
+  return payload;
+}
+
+export async function resetPasswordWithToken(token: string, password: string) {
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const row = await queryOne<{ id: string; user_id: string }>(
+    `SELECT id, user_id FROM password_reset_tokens
+     WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()`,
+    [tokenHash]
+  );
+  if (!row) throw new AppError("This reset link is invalid or has expired. Request a new one.", 400);
+
+  const hash = await hashPassword(password);
+  await withTransaction(async (client) => {
+    await query(`UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, [row.user_id, hash], client);
+    await query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`, [row.id], client);
+    await query(
+      `UPDATE password_reset_tokens SET used_at = NOW()
+       WHERE user_id = $1 AND used_at IS NULL`,
+      [row.user_id],
+      client
+    );
+  });
+
+  await notify({
+    userId: row.user_id,
+    title: "Password updated",
+    body: "Your password was changed using a reset link. If this was not you, contact support immediately.",
+    type: "account",
+  });
 }
 
 export { makeSlug };

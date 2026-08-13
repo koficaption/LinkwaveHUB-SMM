@@ -91,6 +91,27 @@ export function clientIp(req: { headers: Record<string, unknown>; ip?: string; s
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
+export function publicAppOrigin(originHeader?: string | string[]): string {
+  const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+  if (origin) {
+    try {
+      const host = new URL(origin).hostname;
+      if (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".cursor.sh") ||
+        host.endsWith(".cursorusercontent.com") ||
+        origin.replace(/\/$/, "") === config.frontendUrl.replace(/\/$/, "")
+      ) {
+        return origin.replace(/\/$/, "");
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return config.frontendUrl.replace(/\/$/, "");
+}
+
 /** Checkout providers redirect the payer's browser here after payment. Only /app/* paths are allowed. */
 export function safeCheckoutReturnUrl(candidate: string | undefined, fallbackPath: string): string {
   const path = fallbackPath.startsWith("/") ? fallbackPath : `/${fallbackPath}`;

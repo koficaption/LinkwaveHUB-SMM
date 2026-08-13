@@ -49,7 +49,7 @@ async function main() {
         `set -o pipefail
          {
            printf '%s\\n' "BEGIN;" "SET session_replication_role = replica;" \\
-             "TRUNCATE TABLE affiliate_commissions, audit_logs, notifications, order_items, order_status_history, orders, payments, reseller_products, reseller_applications, support_messages, support_tickets, wallet_transactions, wallets, products, platform_categories, categories, platforms, payment_methods, providers, resellers, users, settings RESTART IDENTITY CASCADE;"
+             "TRUNCATE TABLE affiliate_commissions, audit_logs, notifications, order_items, order_status_history, orders, payments, reseller_products, reseller_applications, support_messages, support_tickets, wallet_transactions, wallets, products, platform_categories, categories, platforms, payment_methods, providers, resellers, password_reset_tokens, users, settings RESTART IDENTITY CASCADE;"
            pg_dump "$LOCAL_URL" --data-only --no-owner --no-acl --exclude-table=schema_migrations
            printf '%s\\n' "COMMIT;"
          } | psql "$LIVE_URL" -v ON_ERROR_STOP=1 -q`,

@@ -42,4 +42,9 @@ export const config = {
   korapayPublicKey: process.env.KORAPAY_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || "",
   korapaySecretKey: process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "",
   korapayEncryptionKey: process.env.KORAPAY_ENCRYPTION_KEY || process.env.PAYSTACK_ENCRYPTION_KEY || "",
+  smtpHost: process.env.SMTP_HOST ?? "",
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpUser: process.env.SMTP_USER ?? "",
+  smtpPass: process.env.SMTP_PASS ?? "",
+  smtpFrom: process.env.SMTP_FROM ?? process.env.MAIL_FROM ?? "",
 };

@@ -19,6 +19,8 @@ import {
   registerSchema,
   loginSchema,
   changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
   profileSchema,
   platformSchema,
   categorySchema,
@@ -41,9 +43,10 @@ import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp } from "../utils.js";
+import { clientIp, publicAppOrigin } from "../utils.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
 
 function setAuthCookie(res: import("express").Response, token: string, req?: import("express").Request) {
   const forwardedProto = typeof req?.headers["x-forwarded-proto"] === "string" ? req.headers["x-forwarded-proto"] : "";
@@ -110,6 +113,18 @@ router.post("/auth/login", authLimit, validate(loginSchema), asyncHandler(async 
   const result = await auth.loginUser(req.body.email, req.body.password, clientIp(req), req.get("user-agent") || undefined);
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in successfully"));
+}));
+router.post("/auth/forgot-password", forgotLimit, validate(forgotPasswordSchema), asyncHandler(async (req, res) => {
+  const result = await auth.requestPasswordReset({
+    email: req.body.email,
+    origin: publicAppOrigin(req.get("origin")),
+    ip: clientIp(req),
+  });
+  res.json(ok(result, result.message));
+}));
+router.post("/auth/reset-password", authLimit, validate(resetPasswordSchema), asyncHandler(async (req, res) => {
+  await auth.resetPasswordWithToken(req.body.token, req.body.password);
+  res.json(ok(null, "Password updated. You can sign in now."));
 }));
 router.get("/auth/google/config", (_req, res) => {
   res.json(ok({

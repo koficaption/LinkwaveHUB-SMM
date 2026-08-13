@@ -56,11 +56,110 @@ export function LoginPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="current-password" {...form.register("password")} />
         </Field>
+        <div className="-mt-2 text-right">
+          <Link to="/forgot-password" className="text-sm font-semibold text-brand-700">Forgot password?</Link>
+        </div>
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Signing in..." : "Login"}
         </Button>
       </form>
       <p className="mt-4 text-center text-sm">No account? <Link to="/register" className="font-semibold text-brand-700">Register</Link></p>
+    </AuthCard>
+  );
+}
+
+const forgotSchema = z.object({ email: z.string().email("Enter a valid email") });
+const resetSchema = z
+  .object({
+    password: z.string().min(8, "Use at least 8 characters"),
+    confirm: z.string().min(8, "Confirm your password"),
+  })
+  .refine((values) => values.password === values.confirm, { message: "Passwords do not match", path: ["confirm"] });
+
+export function ForgotPasswordPage() {
+  const form = useForm({ resolver: zodResolver(forgotSchema), defaultValues: { email: "" } });
+  const [sent, setSent] = useState(false);
+
+  return (
+    <AuthCard title="Forgot password" subtitle="Enter your email and we will send a reset link">
+      {sent ? (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            If an account exists for that email, we sent a reset link. Check your inbox and spam folder.
+          </p>
+          <p className="text-center text-sm">
+            <Link to="/login" className="font-semibold text-brand-700">Back to login</Link>
+          </p>
+        </div>
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={form.handleSubmit(async (values) => {
+            try {
+              await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: values.email }) });
+              setSent(true);
+              toast.success("Check your email for a reset link");
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.message : "Could not send reset email");
+            }
+          })}
+        >
+          <Field label="Email" error={form.formState.errors.email?.message}>
+            <Input type="email" autoComplete="email" {...form.register("email")} />
+          </Field>
+          <Button className="w-full" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? "Sending..." : "Send reset link"}
+          </Button>
+          <p className="text-center text-sm">
+            Remembered it? <Link to="/login" className="font-semibold text-brand-700">Login</Link>
+          </p>
+        </form>
+      )}
+    </AuthCard>
+  );
+}
+
+export function ResetPasswordPage() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const token = params.get("token") ?? "";
+  const form = useForm({ resolver: zodResolver(resetSchema), defaultValues: { password: "", confirm: "" } });
+
+  if (!token) {
+    return (
+      <AuthCard title="Reset password" subtitle="This reset link is missing">
+        <p className="text-sm text-slate-600 dark:text-slate-300">Request a new link from the forgot password page.</p>
+        <p className="mt-4 text-center text-sm">
+          <Link to="/forgot-password" className="font-semibold text-brand-700">Forgot password</Link>
+        </p>
+      </AuthCard>
+    );
+  }
+
+  return (
+    <AuthCard title="Set a new password" subtitle="Choose a password you have not used here before">
+      <form
+        className="space-y-4"
+        onSubmit={form.handleSubmit(async (values) => {
+          try {
+            await api("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password: values.password }) });
+            toast.success("Password updated. Sign in with your new password.");
+            navigate("/login", { replace: true });
+          } catch (e) {
+            toast.error(e instanceof ApiError ? e.message : "Could not reset password");
+          }
+        })}
+      >
+        <Field label="New password" error={form.formState.errors.password?.message}>
+          <PasswordInput autoComplete="new-password" {...form.register("password")} />
+        </Field>
+        <Field label="Confirm password" error={form.formState.errors.confirm?.message}>
+          <PasswordInput autoComplete="new-password" {...form.register("confirm")} />
+        </Field>
+        <Button className="w-full" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Saving..." : "Update password"}
+        </Button>
+      </form>
     </AuthCard>
   );
 }
