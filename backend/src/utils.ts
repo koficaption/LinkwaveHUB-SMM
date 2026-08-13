@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import slugify from "slugify";
-import { config } from "./config.js";
+import { config, isLocalHttpUrl } from "./config.js";
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -115,10 +115,21 @@ export function clientIp(req: { headers: Record<string, unknown>; ip?: string; s
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
+function headerValue(value: unknown): string {
+  if (Array.isArray(value)) return String(value[0] ?? "");
+  return typeof value === "string" ? value : "";
+}
+
+export function isLocalHostname(hostname: string) {
+  const host = hostname.split(":")[0].toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
 export function isAllowedWebHost(hostname: string, origin?: string): boolean {
-  if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+  if (isLocalHostname(hostname)) return true;
   if (origin && origin.replace(/\/$/, "") === config.frontendUrl.replace(/\/$/, "")) return true;
   return (
+    hostname.endsWith(".onrender.com") ||
     hostname.endsWith(".cursor.sh") ||
     hostname.endsWith(".cursorusercontent.com") ||
     hostname.endsWith(".trycloudflare.com") ||
@@ -126,6 +137,35 @@ export function isAllowedWebHost(hostname: string, origin?: string): boolean {
     hostname.endsWith(".ngrok-free.app") ||
     hostname.endsWith(".ngrok.io")
   );
+}
+
+export function publicOriginFromRequest(req: {
+  protocol?: string;
+  get?: (name: string) => string | undefined;
+  headers: Record<string, unknown>;
+}): string {
+  const forwardedHost = headerValue(req.headers["x-forwarded-host"]);
+  const host = (forwardedHost || req.get?.("host") || headerValue(req.headers.host)).split(",")[0].trim();
+  const forwardedProto = headerValue(req.headers["x-forwarded-proto"]);
+  const proto = (forwardedProto || req.protocol || "https").split(",")[0].trim();
+  if (host && !isLocalHostname(host)) {
+    const scheme = config.isProd && proto !== "https" ? "https" : proto || "https";
+    return `${scheme}://${host}`.replace(/\/$/, "");
+  }
+  return config.frontendUrl.replace(/\/$/, "");
+}
+
+export function googleCallbackUri(req: Parameters<typeof publicOriginFromRequest>[0]): string {
+  const origin = publicOriginFromRequest(req);
+  const explicit = (process.env.GOOGLE_REDIRECT_URI || "").replace(/\/$/, "");
+  if (explicit && !isLocalHttpUrl(explicit)) {
+    try {
+      if (new URL(explicit).origin === origin) return explicit;
+    } catch {
+      /* ignore */
+    }
+  }
+  return `${origin}/api/auth/google/callback`;
 }
 
 export function publicAppOrigin(originHeader?: string | string[]): string {

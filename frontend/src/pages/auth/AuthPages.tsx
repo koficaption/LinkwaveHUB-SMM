@@ -304,8 +304,12 @@ function GoogleSignIn() {
         scope: "openid email profile",
         callback: async (response) => {
           try {
+            if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
+              throw new Error("Google sign-in was cancelled");
+            }
             if (response.error || !response.access_token) {
-              throw new Error(response.error || "Google sign-in was cancelled");
+              window.location.assign(`${window.location.origin}/api/auth/google/start`);
+              return;
             }
             await finish({ accessToken: response.access_token });
           } catch (e) {
@@ -317,7 +321,7 @@ function GoogleSignIn() {
       }).requestAccessToken();
       return;
     }
-    window.location.href = "/api/auth/google/start";
+    window.location.assign(`${window.location.origin}/api/auth/google/start`);
   };
 
   return (

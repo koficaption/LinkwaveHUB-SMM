@@ -88,7 +88,7 @@ NODE_ENV=production npm start
 - **Build command:** `npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build`
 - **Start command:** `npm start --prefix backend`
 
-Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL` to the public HTTPS origin. Never put secrets in git.
+Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL` to the **public HTTPS origin** of the Render service (for example `https://your-app.onrender.com`). Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
 
 ## Demo logins
 
@@ -105,16 +105,22 @@ If the live database was created earlier and the admin password was changed, use
 ## Google sign-in
 
 1. Create an OAuth client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (Web application).
-2. Add your site origin (for example `http://localhost:5173`) under **Authorized JavaScript origins**.
-3. Add `{FRONTEND_URL}/api/auth/google/callback` under **Authorized redirect URIs**.
-4. Put the client ID (and secret, for the redirect fallback) in `.env`:
+2. Under **Authorized JavaScript origins**, add both local and live origins:
+   - `http://localhost:5173`
+   - `https://your-app.onrender.com` (your Render URL, no path)
+3. Under **Authorized redirect URIs**, add:
+   - `http://localhost:5173/api/auth/google/callback`
+   - `https://your-app.onrender.com/api/auth/google/callback`
+4. On Render, set `FRONTEND_URL=https://your-app.onrender.com`. Leave `GOOGLE_REDIRECT_URI` unset, or set it to that same live callback URL — not localhost.
+5. Put the client ID and secret in env:
 
 ```
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
+FRONTEND_URL=https://your-app.onrender.com
 ```
 
-The login and register pages show **Continue with Google**. A client ID is enough for the popup flow.
+The login and register pages show **Continue with Google**. After a successful Google login the app stays on the live site.
 
 ## Supabase / live database
 

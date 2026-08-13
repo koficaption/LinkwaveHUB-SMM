@@ -14,6 +14,39 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+function stripSlash(value: string) {
+  return value.replace(/\/$/, "");
+}
+
+export function isLocalHttpUrl(value: string) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function configuredPublicUrl() {
+  const frontend = stripSlash(process.env.FRONTEND_URL ?? "");
+  const render = stripSlash(process.env.RENDER_EXTERNAL_URL ?? "");
+  if (process.env.NODE_ENV === "production") {
+    if (frontend && !isLocalHttpUrl(frontend)) return frontend;
+    if (render && !isLocalHttpUrl(render)) return render;
+  }
+  return frontend || "http://localhost:5173";
+}
+
+function configuredGoogleRedirectUri(origin: string) {
+  const explicit = stripSlash(process.env.GOOGLE_REDIRECT_URI ?? "");
+  if (explicit && !(process.env.NODE_ENV === "production" && isLocalHttpUrl(explicit))) {
+    return explicit;
+  }
+  return `${origin}/api/auth/google/callback`;
+}
+
+const publicUrl = configuredPublicUrl();
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProd: process.env.NODE_ENV === "production",
@@ -28,7 +61,7 @@ export const config = {
     "ENCRYPTION_KEY",
     "linkwavehub-32-byte-key-change!!"
   ),
-  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
+  frontendUrl: publicUrl,
   cookieName: "lwh_token",
   currency: process.env.DEFAULT_CURRENCY ?? "GHS",
   supabaseUrl: process.env.SUPABASE_URL ?? "",
@@ -36,9 +69,7 @@ export const config = {
   uploadDir: path.resolve(__dirname, "../../uploads"),
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-  googleRedirectUri:
-    process.env.GOOGLE_REDIRECT_URI ??
-    `${process.env.FRONTEND_URL ?? "http://localhost:5173"}/api/auth/google/callback`,
+  googleRedirectUri: configuredGoogleRedirectUri(publicUrl),
   korapayPublicKey: process.env.KORAPAY_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || "",
   korapaySecretKey: process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "",
   korapayEncryptionKey: process.env.KORAPAY_ENCRYPTION_KEY || process.env.PAYSTACK_ENCRYPTION_KEY || "",

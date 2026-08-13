@@ -45,7 +45,7 @@ import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp, publicAppOrigin } from "../utils.js";
+import { clientIp, googleCallbackUri, publicAppOrigin, publicOriginFromRequest } from "../utils.js";
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
@@ -142,29 +142,32 @@ router.get("/auth/google/config", (_req, res) => {
   }));
 });
 router.get("/auth/google/start", authLimit, (req, res) => {
+  const origin = publicOriginFromRequest(req);
   if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
-    return res.redirect(`${config.frontendUrl}/login?google=unconfigured`);
+    return res.redirect(`${origin}/login?google=unconfigured`);
   }
-  const state = googleAuth.createGoogleState();
-  res.redirect(googleAuth.googleRedirectUrl(state));
+  const redirectUri = googleCallbackUri(req);
+  const state = googleAuth.createGoogleState(redirectUri);
+  res.redirect(googleAuth.googleRedirectUrl(state, redirectUri));
 });
 router.get("/auth/google/callback", asyncHandler(async (req, res) => {
+  const origin = publicOriginFromRequest(req);
   const error = typeof req.query.error === "string" ? req.query.error : "";
   if (error) {
-    return res.redirect(`${config.frontendUrl}/login?google=denied`);
+    return res.redirect(`${origin}/login?google=denied`);
   }
   const code = typeof req.query.code === "string" ? req.query.code : "";
   const state = typeof req.query.state === "string" ? req.query.state : "";
   if (!code || !state) {
-    return res.redirect(`${config.frontendUrl}/login?google=failed`);
+    return res.redirect(`${origin}/login?google=failed`);
   }
   try {
-    googleAuth.verifyGoogleState(state);
-    const result = await googleAuth.loginWithGoogleCode(code);
+    const redirectUri = googleAuth.verifyGoogleState(state);
+    const result = await googleAuth.loginWithGoogleCode(code, redirectUri);
     setAuthCookie(res, result.token, req);
-    return res.redirect(`${config.frontendUrl}/auth/callback?token=${encodeURIComponent(result.token)}`);
+    return res.redirect(`${origin}/auth/callback?token=${encodeURIComponent(result.token)}`);
   } catch {
-    return res.redirect(`${config.frontendUrl}/login?google=failed`);
+    return res.redirect(`${origin}/login?google=failed`);
   }
 }));
 router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {

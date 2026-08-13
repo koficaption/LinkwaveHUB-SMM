@@ -12,10 +12,10 @@ export function googleEnabled() {
   return Boolean(config.googleClientId);
 }
 
-export function googleRedirectUrl(state: string) {
+export function googleRedirectUrl(state: string, redirectUri = config.googleRedirectUri) {
   const params = new URLSearchParams({
     client_id: config.googleClientId,
-    redirect_uri: config.googleRedirectUri,
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: "openid email profile",
     access_type: "online",
@@ -25,13 +25,14 @@ export function googleRedirectUrl(state: string) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export function createGoogleState() {
-  return jwt.sign({ typ: "google_oauth" }, config.jwtSecret, { expiresIn: "10m" });
+export function createGoogleState(redirectUri: string) {
+  return jwt.sign({ typ: "google_oauth", redirectUri }, config.jwtSecret, { expiresIn: "10m" });
 }
 
 export function verifyGoogleState(state: string) {
-  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string };
+  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string };
   if (payload.typ !== "google_oauth") throw new AppError("Invalid Google sign-in state", 400);
+  return payload.redirectUri || config.googleRedirectUri;
 }
 
 type GoogleProfile = {
