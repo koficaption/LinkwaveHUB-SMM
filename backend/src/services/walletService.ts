@@ -184,6 +184,13 @@ function isCardAdapter(adapter: unknown) {
   return code === "korapay" || code === "paystack" || code === "card";
 }
 
+function normalizeKorapayAmount(value: unknown, expected: number) {
+  let paid = Number(value);
+  if (!Number.isFinite(paid)) return expected;
+  if (expected > 0 && paid > expected * 50) paid = paid / 100;
+  return paid;
+}
+
 export async function completeVerifiedPayment(
   reference: string,
   opts: { userId?: string; actor?: AuthUser | null; ip?: string } = {}
@@ -212,10 +219,13 @@ export async function completeVerifiedPayment(
     throw new AppError("This payment has not been confirmed yet", 400);
   }
   if (verified.amount != null) {
-    let paid = Number(verified.amount);
     const expected = Number(payment.amount);
-    if (paid > expected * 50) paid = paid / 100;
-    if (Math.abs(paid - expected) > 0.5) {
+    const paid = normalizeKorapayAmount(verified.amount, expected);
+    const raw = verified.raw && typeof verified.raw === "object" ? verified.raw as Record<string, unknown> : {};
+    const charged = normalizeKorapayAmount(raw.amount_charged ?? raw.amount, expected);
+    const matchesWallet = Math.abs(paid - expected) <= 0.5;
+    const includesFees = charged + 0.01 >= expected && charged <= expected * 1.25 + 10;
+    if (!matchesWallet && !includesFees) {
       throw new AppError("Paid amount does not match this invoice", 400);
     }
   }

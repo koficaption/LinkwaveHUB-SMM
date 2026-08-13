@@ -326,7 +326,7 @@ export function WalletPage() {
           </Select>
           {isCardMethod(selected?.adapter) && (
             <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              You will be redirected to Korapay to pay by card (or mobile money). Your wallet updates as soon as Korapay confirms.
+              You will be redirected to Korapay to pay by card (or mobile money). Korapay adds its processing fee and tax on checkout. The amount you enter is what is credited to your wallet after they confirm.
             </p>
           )}
           {selected?.adapter === "manual" && (
@@ -605,7 +605,7 @@ export function BecomeResellerPage() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Become a reseller / child panel</h1>
-        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Mobile Money still waits for admin confirmation.</p>
+        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on their checkout. Mobile Money still waits for admin confirmation.</p>
       </div>
       <Card>
         <p className="text-sm text-slate-500">Upgrade fee</p>
@@ -651,7 +651,7 @@ export function BecomeResellerPage() {
             </label>
             {cardCheckout && (
               <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                You will be redirected to Korapay. After a successful card payment, your dashboard switches to reseller automatically.
+                You will be redirected to Korapay. Their processing fee and tax are added on checkout. After a successful payment, your dashboard switches to reseller automatically.
               </p>
             )}
             {selected?.adapter === "manual" && (

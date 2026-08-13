@@ -77,6 +77,7 @@ export const korapayAdapter: PaymentAdapter = {
         narration: `LinkBoost Growth SMM ${input.amount.toFixed(2)} ${input.currency || "GHS"}`,
         channels: ["card", "bank_transfer", "mobile_money"],
         default_channel: "card",
+        merchant_bears_cost: false,
         customer: {
           email: input.email,
           name: input.customerName || input.email.split("@")[0],
@@ -87,7 +88,7 @@ export const korapayAdapter: PaymentAdapter = {
     const json = (await response.json()) as {
       status: boolean;
       message: string;
-      data?: { checkout_url?: string; reference?: string };
+      data?: { checkout_url?: string; reference?: string; fee?: number | string; vat?: number | string };
     };
     if (!json.status || !json.data?.checkout_url) {
       throw new AppError(json.message || "Korapay initialization failed", 400);
@@ -96,7 +97,7 @@ export const korapayAdapter: PaymentAdapter = {
       reference: json.data.reference || input.reference,
       checkoutUrl: json.data.checkout_url,
       providerRef: json.data.reference || input.reference,
-      instructions: "Complete payment on the Korapay checkout page. Your wallet updates after Korapay confirms.",
+      instructions: `Complete payment on Korapay. Their processing fee and tax are added on checkout. Your wallet is credited with GHS ${input.amount.toFixed(2)}.`,
     };
   },
   async verify(reference: string, cfg?: Record<string, unknown>): Promise<PaymentVerifyResult> {
@@ -108,7 +109,14 @@ export const korapayAdapter: PaymentAdapter = {
     );
     const json = (await response.json()) as {
       status: boolean;
-      data?: { status?: string; amount?: number | string; reference?: string };
+      data?: {
+        status?: string;
+        amount?: number | string;
+        amount_charged?: number | string;
+        fee?: number | string;
+        vat?: number | string;
+        reference?: string;
+      };
     };
     const amount = json.data?.amount == null ? undefined : Number(json.data.amount);
     return {
