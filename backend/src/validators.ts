@@ -1,14 +1,23 @@
 import { z } from "zod";
 
+const blankToUndefined = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const optionalText = (max: number, min = 1) =>
+  z.preprocess(blankToUndefined, z.string().min(min).max(max).optional());
+
 export const registerSchema = z.object({
-  fullName: z.string().min(2).max(120),
-  email: z.string().email(),
+  fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email(),
   password: z.string().min(8).max(72),
-  phone: z.string().max(30).optional(),
-  whatsappNumber: z.string().max(30).optional(),
+  phone: optionalText(30),
+  whatsappNumber: optionalText(30),
   asReseller: z.boolean().optional(),
-  storeName: z.string().min(2).max(80).optional(),
-  referralCode: z.string().max(40).optional(),
+  storeName: optionalText(80, 2),
+  referralCode: optionalText(40),
 });
 
 export const loginSchema = z.object({
@@ -31,9 +40,9 @@ export const resetPasswordSchema = z.object({
 });
 
 export const profileSchema = z.object({
-  fullName: z.string().min(2).max(120),
-  phone: z.string().max(30).optional().nullable(),
-  whatsappNumber: z.string().max(30).optional().nullable(),
+  fullName: z.string().trim().min(2).max(120),
+  phone: z.preprocess(blankToUndefined, z.string().max(30).optional().nullable()),
+  whatsappNumber: z.preprocess(blankToUndefined, z.string().max(30).optional().nullable()),
 });
 
 export const platformSchema = z.object({

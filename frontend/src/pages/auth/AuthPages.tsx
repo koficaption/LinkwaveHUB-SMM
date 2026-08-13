@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Card, Input, PasswordInput } from "@/components/ui";
-import { ApiError, api } from "@/api/client";
+import { ApiError, api, errorMessage } from "@/api/client";
 import { storedReferralCode } from "@/pages/customer/AffiliatePages";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -196,11 +196,19 @@ export function RegisterPage() {
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
           try {
-            const me = await register({ ...values, asReseller: paidUpgrade ? false : asReseller, storeName: values.storeName });
+            const me = await register({
+              fullName: values.fullName.trim(),
+              email: values.email.trim(),
+              password: values.password,
+              phone: values.phone?.trim() || undefined,
+              whatsappNumber: values.whatsappNumber?.trim() || undefined,
+              asReseller: paidUpgrade ? false : asReseller,
+              storeName: values.storeName?.trim() || undefined,
+            });
             toast.success("Account created");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
           } catch (e) {
-            toast.error(e instanceof ApiError ? e.message : "Registration failed");
+            toast.error(errorMessage(e, "Registration failed"));
           }
         })}
       >
@@ -211,6 +219,7 @@ export function RegisterPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
+        <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional.</p>
         {!paidUpgrade && (
           <>
             <label className="flex items-center gap-2 text-sm">
