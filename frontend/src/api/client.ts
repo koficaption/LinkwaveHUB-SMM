@@ -49,7 +49,9 @@ export function errorMessage(error: unknown, fallback = "Request failed") {
 
 export const money = (value: number | string | null | undefined, currency = "GHS") => {
   const n = Number(value ?? 0);
-  return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const amount = n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (currency === "GHS") return `₵ ${amount}`;
+  return `${currency} ${amount}`;
 };
 
 export const formatDate = (value: string) =>

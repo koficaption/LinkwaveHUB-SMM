@@ -25,7 +25,7 @@ export function AffiliatePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-extrabold">Earn money with affiliations</h1>
+        <h1 className="page-title">Earn money with affiliations</h1>
         <p className="mt-1 text-slate-500">
           Invite friends with your personal link. You earn {a.config.commissionPercent}% for life on the funds they add to their wallet. Commission is added to your wallet and can be used to order services.
         </p>

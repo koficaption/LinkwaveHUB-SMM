@@ -18,22 +18,42 @@ html {
   * {
     @apply border-slate-200 dark:border-slate-800;
   }
+
+  body {
+    @apply bg-[#F6FAF9] text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  }
 }
 
 @layer components {
   .container-page {
     @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
   }
+
+  .container-dashboard {
+    @apply mx-auto w-full max-w-dashboard;
+  }
+
   .card {
     @apply rounded-2xl border border-slate-200/80 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900;
   }
+
   .label {
-    @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
+    @apply mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200;
   }
+
   .input {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100;
+    @apply w-full rounded-xl border border-transparent bg-brand-50 px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-muted focus:border-brand-600 focus:bg-white focus:ring-4 focus:ring-brand-600/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-400 dark:focus:bg-slate-900;
   }
+
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .page-title {
+    @apply text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-muted;
   }
 }

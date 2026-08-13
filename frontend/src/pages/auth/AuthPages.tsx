@@ -361,8 +361,8 @@ function AuthCard({ title, subtitle, children }: { title: string; subtitle: stri
     <div className="container-page flex min-h-[70vh] items-center justify-center py-16">
       <Card className="w-full max-w-md">
         <BrandLogo className="mb-5 h-12" to="/" />
-        <h1 className="text-2xl font-extrabold">{title}</h1>
-        <p className="mb-6 text-sm text-slate-500">{subtitle}</p>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1>
+        <p className="mb-6 text-sm text-muted">{subtitle}</p>
         {children}
       </Card>
     </div>

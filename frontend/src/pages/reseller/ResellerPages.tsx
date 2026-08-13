@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import type { Product } from "@/types";
-import { Button, Card, Input } from "@/components/ui";
+import { Button, Card, Input, PageHeader } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 
@@ -11,12 +11,12 @@ export function ResellerDashboard() {
   const s = stats.data?.stats;
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold">Reseller dashboard</h1>
+      <PageHeader title="Reseller dashboard" subtitle="Store orders, sales, and profit." />
       <div className="grid gap-4 md:grid-cols-4">
-        <Card><p className="text-sm text-slate-500">Orders</p><p className="text-2xl font-extrabold">{Number(s?.orders ?? 0)}</p></Card>
-        <Card><p className="text-sm text-slate-500">Sales</p><p className="text-2xl font-extrabold">{money(Number(s?.sales ?? 0))}</p></Card>
-        <Card><p className="text-sm text-slate-500">Profit</p><p className="text-2xl font-extrabold">{money(Number(s?.profit ?? 0))}</p></Card>
-        <Card><p className="text-sm text-slate-500">Today</p><p className="text-2xl font-extrabold">{Number(s?.today_orders ?? 0)}</p></Card>
+        <Card><p className="text-sm text-muted">Orders</p><p className="text-2xl font-extrabold text-brand-700">{Number(s?.orders ?? 0)}</p></Card>
+        <Card><p className="text-sm text-muted">Sales</p><p className="text-2xl font-extrabold text-brand-700">{money(Number(s?.sales ?? 0))}</p></Card>
+        <Card><p className="text-sm text-muted">Profit</p><p className="text-2xl font-extrabold text-brand-700">{money(Number(s?.profit ?? 0))}</p></Card>
+        <Card><p className="text-sm text-muted">Today</p><p className="text-2xl font-extrabold text-brand-700">{Number(s?.today_orders ?? 0)}</p></Card>
       </div>
     </div>
   );
@@ -32,7 +32,7 @@ export function ResellerStorefrontPage() {
   const link = r ? `${window.location.origin}/store/${r.store_slug}` : "";
   return (
     <Card className="max-w-xl">
-      <h1 className="text-xl font-extrabold">Storefront branding</h1>
+      <h1 className="page-title">Storefront branding</h1>
       <p className="mt-1 text-sm text-slate-500">Share this link: <a className="font-semibold text-brand-700" href={link}>{link}</a></p>
       <div className="mt-4 space-y-3">
         <label className="block"><span className="label">Store name</span><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
@@ -56,7 +56,7 @@ export function ResellerPricingPage() {
   const products = useQuery({ queryKey: ["products-all"], queryFn: () => api<{ items: Product[] }>("/products?limit=100") });
   return (
     <div>
-      <h1 className="text-2xl font-extrabold">Selling prices</h1>
+      <h1 className="page-title">Selling prices</h1>
       <p className="text-sm text-slate-500">Set a price at or above the reseller cost. Customers on your storefront see your price.</p>
       <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">

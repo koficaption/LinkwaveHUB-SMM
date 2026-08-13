@@ -4,14 +4,19 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { api, money, formatDate, ApiError } from "@/api/client";
 import type { Order, Paginated, Wallet } from "@/types";
-import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ContactLinks } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
 import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
+import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
+import { WaveDivider } from "@/components/dashboard/WaveDivider";
+import { NewsPanel } from "@/components/dashboard/NewsPanel";
+import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
+import { MobileActionButtons } from "@/components/dashboard/AccountMenu";
 
 function isCardMethod(adapter?: string) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -19,29 +24,32 @@ function isCardMethod(adapter?: string) {
 
 export function CustomerHome() {
   const { me } = useAuth();
-  const orders = useQuery({ queryKey: ["my-orders"], queryFn: () => api<Paginated<Order>>("/orders?limit=5") });
+  const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
+  const orders = useQuery({ queryKey: ["my-orders-home"], queryFn: () => api<Paginated<Order>>("/orders?limit=100") });
+  const handle = (me?.user.email.split("@")[0] || me?.user.full_name || "there").replace(/[^\w.-]/g, "");
+  const todayOrders = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return (orders.data?.items ?? []).filter((o) => new Date(o.created_at) >= start).length;
+  }, [orders.data?.items]);
+  const spent = wallet.data?.total_spent ?? me?.wallet?.total_spent ?? 0;
+  const balance = wallet.data?.available_balance ?? wallet.data?.balance ?? me?.wallet?.balance ?? 0;
+  const loading = !me || wallet.isLoading || orders.isLoading;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">Hello, {me?.user.full_name.split(" ")[0]}</h1>
-        <p className="text-slate-500">Buy a service, check your orders, or add money.</p>
+      <MobileActionButtons />
+      <div className="grid gap-4 lg:grid-cols-4">
+        <WelcomeCard name={handle} verified={me?.user.status === "active"} loading={loading} />
+        <SpentCard amount={spent} loading={loading} />
+        <OrdersCard count={todayOrders} loading={loading} />
+        <BalanceCard amount={balance} loading={loading} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card><p className="text-sm text-slate-500">Wallet</p><p className="mt-2 text-2xl font-extrabold">{money(me?.wallet?.balance)}</p><Link to="/app/wallet" className="mt-2 inline-block text-sm font-semibold text-brand-700">Add money</Link></Card>
-        <Card><p className="text-sm text-slate-500">Orders</p><p className="mt-2 text-2xl font-extrabold">{orders.data?.total ?? 0}</p><Link to="/app/orders" className="mt-2 inline-block text-sm font-semibold text-brand-700">View orders</Link></Card>
-        <Card>
-          <p className="text-sm text-slate-500">Ready to grow?</p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pick Instagram, TikTok, YouTube and more.</p>
-          <Link to="/services"><Button className="mt-3">Buy a service</Button></Link>
-        </Card>
+      <WaveDivider />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <NewOrderPanel />
+        <NewsPanel />
       </div>
-      <Card>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-bold">Latest orders</h2>
-          <Link to="/app/orders" className="text-sm font-semibold text-brand-700">View all</Link>
-        </div>
-        <OrdersTable data={orders.data?.items ?? []} loading={orders.isLoading} />
-      </Card>
     </div>
   );
 }
@@ -56,7 +64,7 @@ export function OrdersPage() {
   });
   return (
     <div>
-      <h1 className="text-2xl font-extrabold">Orders</h1>
+      <PageHeader title="Orders" subtitle="Track every boost you have placed." />
       <div className="mt-4 flex flex-wrap gap-3">
         <Input placeholder="Search order ID or target" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
         <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
@@ -120,7 +128,7 @@ function Item({ label, value }: { label: string; value: string }) {
 
 export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolean }) {
   if (loading) return <Skeleton className="h-40" />;
-  if (!data.length) return <EmptyState title="No orders yet" body="Place an order from the marketplace to see it here." action={<Link to="/services"><Button>Browse services</Button></Link>} />;
+  if (!data.length) return <EmptyState title="No orders found yet." body="Place an order from New Order or browse the catalog." action={<Link to="/app"><Button>Browse Services</Button></Link>} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
@@ -185,6 +193,9 @@ export function WalletPage() {
   const cfg = selected?.config ?? {};
   return (
     <div className="grid gap-4 lg:grid-cols-3">
+      <div className="lg:col-span-3">
+        <PageHeader title="Add Funds" subtitle="Deposit to your wallet, then place orders." />
+      </div>
       <Card><p className="text-sm text-slate-500">Current / available</p><p className="mt-2 text-3xl font-extrabold">{money(w?.available_balance ?? w?.balance)}</p></Card>
       <Card><p className="text-sm text-slate-500">Total deposits</p><p className="mt-2 text-3xl font-extrabold">{money(w?.total_deposits)}</p></Card>
       <Card><p className="text-sm text-slate-500">Total spent</p><p className="mt-2 text-3xl font-extrabold">{money(w?.total_spent)}</p></Card>
@@ -242,6 +253,9 @@ export function ProfilePage() {
   const form = useForm({ defaultValues: { fullName: me?.user.full_name ?? "", phone: me?.user.phone ?? "", whatsappNumber: me?.user.whatsapp_number ?? "" } });
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <div className="lg:col-span-2">
+        <PageHeader title="Account" subtitle="Profile, password, and child-panel upgrade." />
+      </div>
       <Card>
         <h2 className="font-bold">Profile</h2>
         <form className="mt-4 space-y-3" onSubmit={form.handleSubmit(async (v) => {
@@ -297,17 +311,14 @@ export function SupportPage() {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold">Support</h1>
-        <Button onClick={() => setOpen(true)}>New ticket</Button>
-      </div>
+      <PageHeader title="Support Tickets" subtitle="Get help with an order or deposit." actions={<Button onClick={() => setOpen(true)}>New ticket</Button>} />
       <Card className="mt-4">
         <p className="text-sm font-semibold">Customer service</p>
         <p className="mt-1 text-sm text-slate-500">Call, WhatsApp, or join a community using the links set by the admin.</p>
         <ContactLinks className="mt-3" tone="light" />
       </Card>
       <Card className="mt-4">
-        {!tickets.data?.length && <EmptyState title="No tickets" body="Create a ticket if you need help with an order or deposit." />}
+        {!tickets.data?.length && <EmptyState title="No tickets yet" body="Create a ticket if you need help with an order or deposit." />}
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {tickets.data?.map((t) => (
             <li key={String(t.id)} className="flex items-center justify-between py-3">
@@ -362,6 +373,7 @@ export function NotificationsPage() {
         <h1 className="text-xl font-extrabold">Notifications</h1>
         <Button variant="outline" onClick={async () => { await api("/notifications/read-all", { method: "POST" }); qc.invalidateQueries({ queryKey: ["notifications"] }); }}>Mark all read</Button>
       </div>
+      {!notes.data?.length && !notes.isLoading && <EmptyState title="You're all caught up." body="No notifications right now." />}
       <ul className="space-y-3">
         {notes.data?.map((n) => (
           <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
@@ -469,7 +481,7 @@ export function BecomeResellerPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-extrabold">Become a reseller / child panel</h1>
+        <h1 className="page-title">Become a reseller / child panel</h1>
         <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Mobile Money still waits for admin confirmation.</p>
       </div>
       <Card>

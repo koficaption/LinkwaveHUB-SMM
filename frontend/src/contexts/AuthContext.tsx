@@ -115,7 +115,7 @@ export function useAuth() {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(() => localStorage.getItem("lwh-theme") !== "light");
+  const [dark, setDark] = useState(() => localStorage.getItem("lwh-theme") === "dark");
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("lwh-theme", dark ? "dark" : "light");

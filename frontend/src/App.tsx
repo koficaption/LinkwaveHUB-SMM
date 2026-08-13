@@ -9,6 +9,7 @@ import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/
 import {
   CustomerHome, BecomeResellerPage, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
 } from "@/pages/customer/CustomerPages";
+import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "@/pages/reseller/ResellerPages";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
@@ -43,10 +44,13 @@ export default function App() {
               <Route element={<Guard />}>
                 <Route element={<CustomerLayout />}>
                   <Route path="/app" element={<CustomerHome />} />
+                  <Route path="/app/services" element={<ServicesPage embedded />} />
                   <Route path="/app/orders" element={<OrdersPage />} />
                   <Route path="/app/orders/:id" element={<OrderDetailPage />} />
                   <Route path="/app/wallet" element={<WalletPage />} />
                   <Route path="/app/affiliates" element={<AffiliatePage />} />
+                  <Route path="/app/api" element={<ApiAccessPage />} />
+                  <Route path="/app/loyalty" element={<LoyaltyPage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
                   <Route path="/app/become-reseller" element={<BecomeResellerPage />} />
                   <Route path="/app/support" element={<SupportPage />} />

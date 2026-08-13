@@ -11,7 +11,7 @@ import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 
-export function ServicesPage() {
+export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
   const platform = params.get("platform") || "";
   const category = params.get("category") || "";
@@ -28,7 +28,7 @@ export function ServicesPage() {
   });
 
   return (
-    <div className="container-page py-12">
+    <div className={embedded ? "" : "container-page py-12"}>
       <h1 className="text-3xl font-extrabold">Buy a service</h1>
       <p className="mt-2 text-slate-500">Pick a platform, then choose what you want to buy.</p>
       <div className="mt-6 grid gap-3 md:grid-cols-4">
