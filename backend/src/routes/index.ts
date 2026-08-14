@@ -39,6 +39,7 @@ import {
   adminBroadcastSchema,
   resellerUpgradeSchema,
   paymentVerifySchema,
+  dashboardResetSchema,
   apiAdminDeveloperPatchSchema,
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
@@ -49,6 +50,7 @@ import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin } from ".
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
+import * as platformReset from "../services/platformResetService.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
@@ -318,6 +320,16 @@ const admin = Router();
 admin.use(requireAuth, requireRole("admin"));
 
 admin.get("/overview", asyncHandler(async (_req, res) => res.json(ok(await analytics.adminOverview()))));
+const resetLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 3, standardHeaders: true, legacyHeaders: false });
+admin.post("/reset-dashboard", resetLimit, validate(dashboardResetSchema), asyncHandler(async (req, res) => {
+  const result = await platformReset.resetDashboard({
+    confirm: req.body.confirm,
+    actor: req.user!,
+    ip: clientIp(req),
+    userAgent: req.get("user-agent") || undefined,
+  });
+  res.json(ok(result, "Dashboard reset. Customers, orders, and profit are now zero."));
+}));
 admin.get("/analytics/revenue", asyncHandler(async (req, res) => {
   const range = (req.query.range as "today" | "7d" | "30d" | "12m") || "7d";
   res.json(ok(await analytics.revenueChart(range)));

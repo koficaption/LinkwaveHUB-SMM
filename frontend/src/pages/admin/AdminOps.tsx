@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, T
 import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
+import { ResetDashboardCard } from "@/pages/admin/ResetDashboardCard";
 
 export function AdminOrders() {
   const qc = useQueryClient();
@@ -757,6 +758,7 @@ export function AdminSettings() {
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
       <NotificationSettingsCard data={settings.data?.notifications} onSave={(value) => save("notifications", value)} />
+      <ResetDashboardCard />
     </div>
   );
 }
