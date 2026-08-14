@@ -766,7 +766,7 @@ function GoogleOAuthSettingsCard() {
     queryKey: ["google-config"],
     queryFn: () => api<{ origin?: string; redirectUri?: string; enabled?: boolean; redirectEnabled?: boolean; clientId?: string | null }>("/auth/google/config"),
   });
-  const redirectUri = config.data?.redirectUri || "https://linkboost-growth.onrender.com/api/auth/google/callback";
+  const redirectUri = config.data?.redirectUri || "https://linkboostgrowth.site/api/auth/google/callback";
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -781,7 +781,7 @@ function GoogleOAuthSettingsCard() {
       <p className="mt-1 text-sm text-slate-500">
         Live Google login uses a full-page redirect to this exact Authorized redirect URI on the
         {" "}<a className="font-semibold text-brand-700" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Web application OAuth client</a>
-        {" "}that matches <span className="font-mono">GOOGLE_CLIENT_ID</span>.
+        {" "}that matches <span className="font-mono">GOOGLE_CLIENT_ID</span>. Public site: <span className="font-mono">https://linkboostgrowth.site</span>.
       </p>
       {!config.data?.enabled && <p className="mt-2 text-sm text-amber-700">GOOGLE_CLIENT_ID is not set on the server yet.</p>}
       {config.data?.enabled && !config.data.redirectEnabled && (

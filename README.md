@@ -88,7 +88,7 @@ NODE_ENV=production npm start
 - **Build command:** `npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build`
 - **Start command:** `npm start --prefix backend`
 
-Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL=https://linkboost-growth.onrender.com`. Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
+Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL=https://linkboostgrowth.site`. Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
 
 ## Demo logins
 
@@ -104,13 +104,13 @@ If the live database was created earlier and the admin password was changed, use
 
 ## Google sign-in
 
-Live site: **https://linkboost-growth.onrender.com**
+Live site: **https://linkboostgrowth.site** (`www` redirects to the apex domain)
 
-Continue with Google uses a full-page OAuth redirect to this exact URI (already registered on the live Web client):
+Continue with Google uses a full-page OAuth redirect to this exact URI:
 
-`https://linkboost-growth.onrender.com/api/auth/google/callback`
+`https://linkboostgrowth.site/api/auth/google/callback`
 
-Do not use Google Identity popups (`postmessage`). On Render set `FRONTEND_URL=https://linkboost-growth.onrender.com` and leave `GOOGLE_REDIRECT_URI` unset. Never use localhost on Render.
+On Render set `FRONTEND_URL=https://linkboostgrowth.site`. Leave `GOOGLE_REDIRECT_URI` unset. Never use localhost on Render.
 
 ## Supabase / live database
 

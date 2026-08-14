@@ -27,15 +27,20 @@ export function isLocalHttpUrl(value: string) {
   }
 }
 
-export const LIVE_SITE_URL = "https://linkboost-growth.onrender.com";
+export const LIVE_SITE_URL = "https://linkboostgrowth.site";
+export const RENDER_SITE_URL = "https://linkboost-growth.onrender.com";
 export const LIVE_GOOGLE_CALLBACK = `${LIVE_SITE_URL}/api/auth/google/callback`;
+export const LIVE_HOSTS = new Set([
+  "linkboostgrowth.site",
+  "www.linkboostgrowth.site",
+  "linkboost-growth.onrender.com",
+]);
 
 function configuredPublicUrl() {
   const frontend = stripSlash(process.env.FRONTEND_URL ?? "");
-  const render = stripSlash(process.env.RENDER_EXTERNAL_URL ?? "");
   if (process.env.NODE_ENV === "production") {
-    if (frontend && !isLocalHttpUrl(frontend)) return frontend;
-    if (render && !isLocalHttpUrl(render)) return render;
+    if (frontend && !isLocalHttpUrl(frontend) && frontend.includes("linkboostgrowth.site")) return LIVE_SITE_URL;
+    if (frontend && !isLocalHttpUrl(frontend) && frontend !== RENDER_SITE_URL) return frontend;
     return LIVE_SITE_URL;
   }
   return frontend || "http://localhost:5173";

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import slugify from "slugify";
-import { config, LIVE_GOOGLE_CALLBACK, LIVE_SITE_URL, isLocalHttpUrl } from "./config.js";
+import { config, LIVE_GOOGLE_CALLBACK, LIVE_HOSTS, LIVE_SITE_URL, isLocalHttpUrl } from "./config.js";
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -126,16 +126,18 @@ export function isLocalHostname(hostname: string) {
 }
 
 export function isAllowedWebHost(hostname: string, origin?: string): boolean {
-  if (isLocalHostname(hostname)) return true;
+  const host = hostname.split(":")[0].toLowerCase();
+  if (isLocalHostname(host)) return true;
+  if (LIVE_HOSTS.has(host)) return true;
   if (origin && origin.replace(/\/$/, "") === config.frontendUrl.replace(/\/$/, "")) return true;
   return (
-    hostname.endsWith(".onrender.com") ||
-    hostname.endsWith(".cursor.sh") ||
-    hostname.endsWith(".cursorusercontent.com") ||
-    hostname.endsWith(".trycloudflare.com") ||
-    hostname.endsWith(".loca.lt") ||
-    hostname.endsWith(".ngrok-free.app") ||
-    hostname.endsWith(".ngrok.io")
+    host.endsWith(".onrender.com") ||
+    host.endsWith(".cursor.sh") ||
+    host.endsWith(".cursorusercontent.com") ||
+    host.endsWith(".trycloudflare.com") ||
+    host.endsWith(".loca.lt") ||
+    host.endsWith(".ngrok-free.app") ||
+    host.endsWith(".ngrok.io")
   );
 }
 
@@ -149,6 +151,8 @@ export function publicOriginFromRequest(req: {
   const forwardedProto = headerValue(req.headers["x-forwarded-proto"]);
   const proto = (forwardedProto || req.protocol || "https").split(",")[0].trim();
   if (host && !isLocalHostname(host)) {
+    const hostname = host.split(":")[0].toLowerCase();
+    if (config.isProd && LIVE_HOSTS.has(hostname)) return LIVE_SITE_URL;
     const scheme = config.isProd && proto !== "https" ? "https" : proto || "https";
     return `${scheme}://${host}`.replace(/\/$/, "");
   }

@@ -269,7 +269,7 @@ export function AuthCallbackPage() {
   );
 }
 
-const LIVE_GOOGLE_CALLBACK = "https://linkboost-growth.onrender.com/api/auth/google/callback";
+const LIVE_GOOGLE_CALLBACK = "https://linkboostgrowth.site/api/auth/google/callback";
 
 function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   const config = useQuery({
