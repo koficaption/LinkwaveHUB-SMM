@@ -27,7 +27,8 @@ export function isLocalHttpUrl(value: string) {
   }
 }
 
-const LIVE_SITE_URL = "https://linkboost-growth.onrender.com";
+export const LIVE_SITE_URL = "https://linkboost-growth.onrender.com";
+export const LIVE_GOOGLE_CALLBACK = `${LIVE_SITE_URL}/api/auth/google/callback`;
 
 function configuredPublicUrl() {
   const frontend = stripSlash(process.env.FRONTEND_URL ?? "");
@@ -41,10 +42,11 @@ function configuredPublicUrl() {
 }
 
 function configuredGoogleRedirectUri(origin: string) {
-  const explicit = stripSlash(process.env.GOOGLE_REDIRECT_URI ?? "");
-  if (explicit && !(process.env.NODE_ENV === "production" && isLocalHttpUrl(explicit))) {
-    return explicit;
+  if (process.env.NODE_ENV === "production") {
+    return LIVE_GOOGLE_CALLBACK;
   }
+  const explicit = stripSlash(process.env.GOOGLE_REDIRECT_URI ?? "");
+  if (explicit) return explicit;
   return `${origin}/api/auth/google/callback`;
 }
 

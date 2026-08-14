@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import slugify from "slugify";
-import { config, isLocalHttpUrl } from "./config.js";
+import { config, LIVE_GOOGLE_CALLBACK, LIVE_SITE_URL, isLocalHttpUrl } from "./config.js";
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -156,6 +156,7 @@ export function publicOriginFromRequest(req: {
 }
 
 export function googleCallbackUri(req: Parameters<typeof publicOriginFromRequest>[0]): string {
+  if (config.isProd) return LIVE_GOOGLE_CALLBACK;
   const origin = publicOriginFromRequest(req);
   const explicit = (process.env.GOOGLE_REDIRECT_URI || "").replace(/\/$/, "");
   if (explicit && !isLocalHttpUrl(explicit)) {
@@ -166,6 +167,11 @@ export function googleCallbackUri(req: Parameters<typeof publicOriginFromRequest
     }
   }
   return `${origin}/api/auth/google/callback`;
+}
+
+export function googleAppOrigin(req: Parameters<typeof publicOriginFromRequest>[0]): string {
+  if (config.isProd) return LIVE_SITE_URL;
+  return publicOriginFromRequest(req);
 }
 
 export function publicAppOrigin(originHeader?: string | string[]): string {

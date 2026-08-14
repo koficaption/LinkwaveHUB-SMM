@@ -106,16 +106,11 @@ If the live database was created earlier and the admin password was changed, use
 
 Live site: **https://linkboost-growth.onrender.com**
 
-1. Open [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) and edit the **Web application** OAuth client that matches `GOOGLE_CLIENT_ID`.
-2. **Authorized JavaScript origins** (no path, no trailing slash):
-   - `https://linkboost-growth.onrender.com`
-3. **Authorized redirect URIs** (add all of these — Google’s popup often sends `/login`, not only the API callback):
-   - `https://linkboost-growth.onrender.com`
-   - `https://linkboost-growth.onrender.com/login`
-   - `https://linkboost-growth.onrender.com/register`
-   - `https://linkboost-growth.onrender.com/api/auth/google/callback`
-4. On Render set `FRONTEND_URL=https://linkboost-growth.onrender.com`. Leave `GOOGLE_REDIRECT_URI` unset, or set it to `https://linkboost-growth.onrender.com/api/auth/google/callback`. Never use localhost on Render.
-5. Save in Google Console, wait about a minute, then try Continue with Google again. The login page can copy these URLs if Google still blocks the request.
+Continue with Google uses a full-page OAuth redirect to this exact URI (already registered on the live Web client):
+
+`https://linkboost-growth.onrender.com/api/auth/google/callback`
+
+Do not use Google Identity popups (`postmessage`). On Render set `FRONTEND_URL=https://linkboost-growth.onrender.com` and leave `GOOGLE_REDIRECT_URI` unset. Never use localhost on Render.
 
 ## Supabase / live database
 

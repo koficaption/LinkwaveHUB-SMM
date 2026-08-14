@@ -83,9 +83,15 @@ app.use("/api", router);
 
 const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../frontend/dist");
 if (fs.existsSync(path.join(frontendDist, "index.html"))) {
-  app.use(express.static(frontendDist, { index: false }));
+  app.use(express.static(frontendDist, {
+    index: false,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store");
+    },
+  }));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    res.setHeader("Cache-Control", "no-store");
     res.sendFile(path.join(frontendDist, "index.html"));
   });
 }

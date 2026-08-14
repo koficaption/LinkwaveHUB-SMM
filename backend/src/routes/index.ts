@@ -45,7 +45,7 @@ import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp, googleCallbackUri, publicAppOrigin, publicOriginFromRequest } from "../utils.js";
+import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin } from "../utils.js";
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
@@ -135,7 +135,7 @@ router.post("/auth/reset-password", authLimit, validate(resetPasswordSchema), as
   res.json(ok(null, "Password updated. You can sign in now."));
 }));
 router.get("/auth/google/config", (req, res) => {
-  const origin = publicOriginFromRequest(req);
+  const origin = googleAppOrigin(req);
   res.json(ok({
     enabled: googleAuth.googleEnabled(),
     clientId: config.googleClientId || null,
@@ -145,7 +145,7 @@ router.get("/auth/google/config", (req, res) => {
   }));
 });
 router.get("/auth/google/start", authLimit, (req, res) => {
-  const origin = publicOriginFromRequest(req);
+  const origin = googleAppOrigin(req);
   if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
     return res.redirect(`${origin}/login?google=unconfigured`);
   }
@@ -154,7 +154,7 @@ router.get("/auth/google/start", authLimit, (req, res) => {
   res.redirect(googleAuth.googleRedirectUrl(state, redirectUri));
 });
 router.get("/auth/google/callback", asyncHandler(async (req, res) => {
-  const origin = publicOriginFromRequest(req);
+  const origin = googleAppOrigin(req);
   const error = typeof req.query.error === "string" ? req.query.error : "";
   if (error) {
     return res.redirect(`${origin}/login?google=denied`);

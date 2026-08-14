@@ -764,18 +764,9 @@ export function AdminSettings() {
 function GoogleOAuthSettingsCard() {
   const config = useQuery({
     queryKey: ["google-config"],
-    queryFn: () => api<{ origin?: string; redirectUri?: string; enabled?: boolean; clientId?: string | null }>("/auth/google/config"),
+    queryFn: () => api<{ origin?: string; redirectUri?: string; enabled?: boolean; redirectEnabled?: boolean; clientId?: string | null }>("/auth/google/config"),
   });
-  const origin = (config.data?.origin || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
-  const redirectUri = config.data?.redirectUri || `${origin}/api/auth/google/callback`;
-  const origins = [...new Set([origin, "https://linkboost-growth.onrender.com", "http://localhost:5173"].filter(Boolean))];
-  const uris = [...new Set(origins.flatMap((base) => [
-    base,
-    `${base}/login`,
-    `${base}/register`,
-    `${base}/api/auth/google/callback`,
-    redirectUri,
-  ]))];
+  const redirectUri = config.data?.redirectUri || "https://linkboost-growth.onrender.com/api/auth/google/callback";
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -788,25 +779,19 @@ function GoogleOAuthSettingsCard() {
     <Card>
       <h2 className="font-bold">Google sign-in</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Google error <span className="font-mono">redirect_uri_mismatch</span> means these URLs are missing from
-        {" "}<a className="font-semibold text-brand-700" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console → Credentials</a>
-        {" "}on the same Web client as <span className="font-mono">GOOGLE_CLIENT_ID</span>. Save, wait about a minute, then try again.
+        Live Google login uses a full-page redirect to this exact Authorized redirect URI on the
+        {" "}<a className="font-semibold text-brand-700" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Web application OAuth client</a>
+        {" "}that matches <span className="font-mono">GOOGLE_CLIENT_ID</span>.
       </p>
       {!config.data?.enabled && <p className="mt-2 text-sm text-amber-700">GOOGLE_CLIENT_ID is not set on the server yet.</p>}
-      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized JavaScript origins</p>
-      {origins.map((value) => (
-        <div key={value} className="mt-1 flex items-center gap-2">
-          <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{value}</code>
-          <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(value)}>Copy</button>
-        </div>
-      ))}
-      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized redirect URIs</p>
-      {uris.map((uri) => (
-        <div key={uri} className="mt-1 flex items-center gap-2">
-          <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{uri}</code>
-          <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(uri)}>Copy</button>
-        </div>
-      ))}
+      {config.data?.enabled && !config.data.redirectEnabled && (
+        <p className="mt-2 text-sm text-amber-700">GOOGLE_CLIENT_SECRET is missing, so Continue with Google cannot start.</p>
+      )}
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized redirect URI</p>
+      <div className="mt-1 flex items-center gap-2">
+        <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{redirectUri}</code>
+        <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(redirectUri)}>Copy</button>
+      </div>
     </Card>
   );
 }
