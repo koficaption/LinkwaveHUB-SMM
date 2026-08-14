@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -269,9 +269,31 @@ export function AuthCallbackPage() {
   );
 }
 
+const LIVE_SITE = "https://linkboost-growth.onrender.com";
+
+function googleJsOrigins(origin: string) {
+  return [...new Set([
+    origin.replace(/\/$/, ""),
+    LIVE_SITE,
+    "http://localhost:5173",
+  ].filter(Boolean))];
+}
+
+function googleRedirectUris(origin: string, redirectUri?: string) {
+  const bases = googleJsOrigins(origin);
+  const uris = bases.flatMap((base) => [
+    base,
+    `${base}/login`,
+    `${base}/register`,
+    `${base}/api/auth/google/callback`,
+  ]);
+  if (redirectUri) uris.unshift(redirectUri);
+  return [...new Set(uris)];
+}
 function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const buttonHost = useRef<HTMLDivElement>(null);
   const config = useQuery({
     queryKey: ["google-config"],
     queryFn: () => api<{
@@ -283,116 +305,89 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
     }>("/auth/google/config"),
   });
   const [busy, setBusy] = useState(false);
-  const [showHelp, setShowHelp] = useState(forceHelp);
+  const [showHelp, setShowHelp] = useState(true);
   const enabled = Boolean(config.data?.enabled && config.data.clientId);
   const origin = (config.data?.origin || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
   const redirectUri = config.data?.redirectUri || `${origin}/api/auth/google/callback`;
+  const clientId = config.data?.clientId;
 
-  const finish = async (payload: { accessToken?: string; credential?: string; code?: string }) => {
-    const me = await loginWithGoogle(payload);
-    toast.success("Logged in with Google");
-    navigate(me.user.role === "admin" ? "/admin" : "/app");
-  };
+  useEffect(() => {
+    if (forceHelp) setShowHelp(true);
+  }, [forceHelp]);
 
-  const onClick = async () => {
-    if (!config.data?.clientId) return;
-    setBusy(true);
-    setShowHelp(false);
-    try {
-      const oauth2 = await waitForGoogleOauth(8000);
-      if (oauth2?.initTokenClient) {
-        oauth2.initTokenClient({
-          client_id: config.data.clientId,
-          scope: "openid email profile",
-          callback: async (response) => {
-            try {
-              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
-                throw new Error("Google sign-in was cancelled");
-              }
-              if (response.error || !response.access_token) {
-                setShowHelp(true);
-                throw new Error(consoleHint(origin, redirectUri));
-              }
-              await finish({ accessToken: response.access_token });
-            } catch (e) {
-              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
-            } finally {
-              setBusy(false);
-            }
-          },
-        }).requestAccessToken();
-        return;
-      }
-      if (oauth2?.initCodeClient) {
-        oauth2.initCodeClient({
-          client_id: config.data.clientId,
-          scope: "openid email profile",
-          ux_mode: "popup",
-          callback: async (response) => {
-            try {
-              if (response.error === "popup_closed_by_user" || response.error === "access_denied") {
-                throw new Error("Google sign-in was cancelled");
-              }
-              if (response.error || !response.code) {
-                setShowHelp(true);
-                throw new Error(consoleHint(origin, redirectUri));
-              }
-              await finish({ code: response.code });
-            } catch (e) {
-              toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Google sign-in failed");
-            } finally {
-              setBusy(false);
-            }
-          },
-        }).requestCode();
-        return;
-      }
-      setShowHelp(true);
-      throw new Error(consoleHint(origin, redirectUri));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Google sign-in failed");
-      setShowHelp(true);
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    if (!clientId || !buttonHost.current) return;
+    let cancelled = false;
+    const mount = () => {
+      const gis = window.google?.accounts?.id;
+      const el = buttonHost.current;
+      if (!gis || !el || cancelled) return false;
+      el.innerHTML = "";
+      gis.initialize({
+        client_id: clientId,
+        ux_mode: "popup",
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        callback: async (response) => {
+          if (!response.credential) {
+            setShowHelp(true);
+            toast.error("Google did not return a sign-in token. Add the JavaScript origin below in Cloud Console.");
+            return;
+          }
+          setBusy(true);
+          try {
+            const me = await loginWithGoogle({ credential: response.credential });
+            toast.success("Logged in with Google");
+            navigate(me.user.role === "admin" ? "/admin" : "/app");
+          } catch (e) {
+            setShowHelp(true);
+            toast.error(e instanceof ApiError ? e.message : "Google sign-in failed");
+          } finally {
+            setBusy(false);
+          }
+        },
+      });
+      gis.renderButton(el, {
+        theme: "outline",
+        size: "large",
+        type: "standard",
+        text: "continue_with",
+        shape: "pill",
+        width: Math.max(280, Math.min(400, el.clientWidth || 384)),
+        logo_alignment: "left",
+      });
+      return true;
+    };
+    if (mount()) return;
+    const timer = window.setInterval(() => {
+      if (mount()) window.clearInterval(timer);
+    }, 50);
+    const stop = window.setTimeout(() => {
+      window.clearInterval(timer);
+      if (!cancelled) setShowHelp(true);
+    }, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
+  }, [clientId, loginWithGoogle, navigate]);
 
   if (!enabled && !config.isLoading) return null;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy || config.isLoading || !enabled}
-        className="btn w-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
-      >
-        <GoogleMark />
-        {busy ? "Connecting..." : "Continue with Google"}
-      </button>
-      {showHelp ? (
-        <GoogleConsoleHelp origin={origin} redirectUri={redirectUri} />
-      ) : (
-        <button type="button" className="mt-2 text-xs font-semibold text-slate-500" onClick={() => setShowHelp(true)}>
-          Google sign-in still blocked?
-        </button>
-      )}
+      <div ref={buttonHost} className="flex min-h-10 w-full justify-center [&>div]:w-full" />
+      {busy && <p className="mt-2 text-center text-sm text-slate-500">Signing in…</p>}
+      {config.isLoading && <p className="text-center text-sm text-slate-500">Loading Google sign-in…</p>}
+      {showHelp && <GoogleConsoleHelp origin={origin} redirectUri={redirectUri} />}
       <Divider />
     </>
   );
 }
 
-function googleRedirectUris(origin: string, redirectUri: string) {
-  const base = origin.replace(/\/$/, "");
-  return [...new Set([
-    redirectUri,
-    `${base}/api/auth/google/callback`,
-    `${base}/login`,
-    `${base}/register`,
-    base,
-  ])];
-}
-
 function GoogleConsoleHelp({ origin, redirectUri }: { origin: string; redirectUri: string }) {
+  const origins = googleJsOrigins(origin);
   const uris = googleRedirectUris(origin, redirectUri);
   const copy = async (value: string) => {
     try {
@@ -404,9 +399,9 @@ function GoogleConsoleHelp({ origin, redirectUri }: { origin: string; redirectUr
   };
   return (
     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-500/10 dark:text-amber-100">
-      <p className="font-semibold">Google still blocked this site. Paste these into Google Cloud Console → Credentials → your Web client, then wait a minute.</p>
+      <p className="font-semibold">Google is blocking this site until these URLs are on the Web client in Cloud Console. Use the same client as GOOGLE_CLIENT_ID. Save, wait one minute, then refresh.</p>
       <p className="mt-2 text-xs font-semibold uppercase tracking-wide">Authorized JavaScript origins</p>
-      <CopyRow value={origin} onCopy={() => copy(origin)} />
+      {origins.map((value) => <CopyRow key={value} value={value} onCopy={() => copy(value)} />)}
       <p className="mt-2 text-xs font-semibold uppercase tracking-wide">Authorized redirect URIs</p>
       {uris.map((uri) => <CopyRow key={uri} value={uri} onCopy={() => copy(uri)} />)}
     </div>
@@ -419,40 +414,6 @@ function CopyRow({ value, onCopy }: { value: string; onCopy: () => void }) {
       <code className="flex-1 break-all rounded-lg bg-white/80 px-2 py-1 font-mono text-xs dark:bg-slate-950/60">{value}</code>
       <button type="button" className="shrink-0 text-xs font-semibold text-brand-700" onClick={onCopy}>Copy</button>
     </div>
-  );
-}
-
-function consoleHint(origin: string, redirectUri: string) {
-  return `Google blocked this site. In Google Cloud Console add JavaScript origin ${origin} and redirect URI ${redirectUri}`;
-}
-
-function waitForGoogleOauth(timeoutMs = 8000) {
-  return new Promise<NonNullable<NonNullable<Window["google"]>["accounts"]["oauth2"]> | null>((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      const oauth2 = window.google?.accounts?.oauth2;
-      if (oauth2) {
-        resolve(oauth2);
-        return;
-      }
-      if (Date.now() - started > timeoutMs) {
-        resolve(null);
-        return;
-      }
-      window.setTimeout(tick, 50);
-    };
-    tick();
-  });
-}
-
-function GoogleMark() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-    </svg>
   );
 }
 
@@ -494,7 +455,23 @@ declare global {
     google?: {
       accounts: {
         id: {
-          initialize: (config: { client_id: string; callback: (res: { credential: string }) => void }) => void;
+          initialize: (config: {
+            client_id: string;
+            callback: (res: { credential?: string }) => void;
+            ux_mode?: "popup" | "redirect";
+            auto_select?: boolean;
+            cancel_on_tap_outside?: boolean;
+            use_fedcm_for_prompt?: boolean;
+          }) => void;
+          renderButton: (parent: HTMLElement, options: {
+            theme?: "outline" | "filled_blue" | "filled_black";
+            size?: "large" | "medium" | "small";
+            type?: "standard" | "icon";
+            text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+            shape?: "rectangular" | "pill" | "circle" | "square";
+            width?: number;
+            logo_alignment?: "left" | "center";
+          }) => void;
           prompt: (cb?: (n: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean; isDismissedMoment: () => boolean }) => void) => void;
         };
         oauth2: {

@@ -768,7 +768,14 @@ function GoogleOAuthSettingsCard() {
   });
   const origin = (config.data?.origin || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
   const redirectUri = config.data?.redirectUri || `${origin}/api/auth/google/callback`;
-  const uris = [...new Set([redirectUri, `${origin}/api/auth/google/callback`, `${origin}/login`, `${origin}/register`, origin])];
+  const origins = [...new Set([origin, "https://linkboost-growth.onrender.com", "http://localhost:5173"].filter(Boolean))];
+  const uris = [...new Set(origins.flatMap((base) => [
+    base,
+    `${base}/login`,
+    `${base}/register`,
+    `${base}/api/auth/google/callback`,
+    redirectUri,
+  ]))];
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -787,10 +794,12 @@ function GoogleOAuthSettingsCard() {
       </p>
       {!config.data?.enabled && <p className="mt-2 text-sm text-amber-700">GOOGLE_CLIENT_ID is not set on the server yet.</p>}
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized JavaScript origins</p>
-      <div className="mt-1 flex items-center gap-2">
-        <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{origin}</code>
-        <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(origin)}>Copy</button>
-      </div>
+      {origins.map((value) => (
+        <div key={value} className="mt-1 flex items-center gap-2">
+          <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{value}</code>
+          <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(value)}>Copy</button>
+        </div>
+      ))}
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Authorized redirect URIs</p>
       {uris.map((uri) => (
         <div key={uri} className="mt-1 flex items-center gap-2">
