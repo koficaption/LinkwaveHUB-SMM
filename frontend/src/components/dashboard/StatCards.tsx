@@ -20,20 +20,45 @@ export function StatCard({
   className?: string;
   delay?: string;
 }) {
+  const card = useRef<HTMLDivElement>(null);
+
+  function tilt(event: React.PointerEvent<HTMLDivElement>) {
+    const el = card.current;
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const box = el.getBoundingClientRect();
+    const x = (event.clientX - box.left) / box.width;
+    const y = (event.clientY - box.top) / box.height;
+    el.style.setProperty("--rx", `${((0.5 - y) * 14).toFixed(2)}deg`);
+    el.style.setProperty("--ry", `${((x - 0.5) * 18).toFixed(2)}deg`);
+    el.style.setProperty("--gx", `${(x * 100).toFixed(1)}%`);
+    el.style.setProperty("--gy", `${(y * 100).toFixed(1)}%`);
+  }
+
+  function flatten() {
+    const el = card.current;
+    if (!el) return;
+    el.style.setProperty("--rx", "0deg");
+    el.style.setProperty("--ry", "0deg");
+  }
+
   if (loading) return <Skeleton className="h-[108px] w-full rounded-2xl" />;
   return (
-    <div
-      className={cn("stat-card card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}
-      style={{ ["--stat-delay" as string]: delay }}
-    >
-      <div className="stat-icon-frame flex h-[72px] w-[72px] shrink-0 items-center justify-center">
-        <div className="stat-icon-art">{icon}</div>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
-          {title}
+    <div className="stat-3d-scene" style={{ ["--stat-delay" as string]: delay }}>
+      <div
+        ref={card}
+        onPointerMove={tilt}
+        onPointerLeave={flatten}
+        className={cn("stat-card card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}
+      >
+        <div className="stat-icon-frame flex h-[72px] w-[72px] shrink-0 items-center justify-center">
+          <div className="stat-icon-art">{icon}</div>
         </div>
-        <p className="mt-1 text-sm text-muted">{subtitle}</p>
+        <div className="stat-card-copy min-w-0 flex-1">
+          <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
+            {title}
+          </div>
+          <p className="mt-1 text-sm text-muted">{subtitle}</p>
+        </div>
       </div>
     </div>
   );
