@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import type { Category, LoyaltyMe, Paginated, Platform, Product } from "@/types";
 import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
-import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productCancel } from "@/utils/cancel";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
+import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -48,25 +47,6 @@ export function NewOrderPanel() {
     enabled: me?.user.role === "customer" && !me.panel,
   });
 
-  const categoryOptions = useMemo(() => {
-    const plats = [...(platforms.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-    const cats = [...(categories.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-    const options: { key: string; category: Category; platform: Platform; count: number }[] = [];
-    for (const platform of plats) {
-      for (const category of cats) {
-        if (isProviderCategory(category.name)) continue;
-        const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
-        if (!linkedIds.includes(platform.id)) continue;
-        const count = Number(category.platform_counts?.[platform.id] ?? category.product_count ?? 0);
-        if (category.platform_counts && count <= 0) continue;
-        options.push({ key: `${platform.id}:${category.id}`, category, platform, count });
-      }
-    }
-    return options;
-  }, [categories.data, platforms.data]);
-
-  const selectedKey = platformId && categoryId ? `${platformId}:${categoryId}` : "";
-  const selectedCategory = categoryOptions.find((c) => c.key === selectedKey);
   const visibleProducts = [...(products.data?.items ?? [])]
     .filter((p) => {
       if (platformId && p.platform_id !== platformId) return false;
@@ -113,70 +93,44 @@ export function NewOrderPanel() {
 
   return (
     <section className="card p-5 sm:p-6">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-brand-700" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
-          className="h-12 pl-12 text-base"
-          aria-label="Search services"
-        />
-      </div>
+      <ServiceCatalogFilters
+        search={search}
+        platform={platformId}
+        category={categoryId}
+        platforms={platforms.data ?? []}
+        categories={categories.data ?? []}
+        useIds
+        showCounts
+        onSearchChange={setSearch}
+        onPlatform={(value) => {
+          setPlatformId(value);
+          setCategoryId("");
+          setProductId("");
+        }}
+        onCategory={(value) => {
+          setCategoryId(value);
+          setProductId("");
+        }}
+      />
 
-      <label className="mt-5 block">
-        <span className="label">Category</span>
-        <div className="relative">
-          {selectedCategory?.platform && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-              <PlatformIcon name={selectedCategory.platform.icon} color={selectedCategory.platform.color} className="h-5 w-5" />
-            </span>
-          )}
-          <select
-            className={`input h-12 ${selectedCategory?.platform ? "pl-11" : ""}`}
-            value={selectedKey}
-            onChange={(e) => {
-              const [nextPlatform, nextCategory] = e.target.value.split(":");
-              setPlatformId(nextPlatform || "");
-              setCategoryId(nextCategory || "");
-              setProductId("");
-            }}
+      <label className="mt-3 block">
+        <span className="sr-only">Services</span>
+        {products.isLoading ? (
+          <Skeleton className="h-12 rounded-3xl" />
+        ) : (
+          <FilterSelect
+            value={productId}
+            onChange={setProductId}
+            label="Services"
+            disabled={!canLoadServices}
           >
-            <option value="">Select a category</option>
-            {categoryOptions.map(({ key, category, platform, count }) => (
-              <option key={key} value={key}>
-                {platform.name} · {publicCategoryName(category.name)}{count ? ` (${count.toLocaleString()})` : ""}
+            <option value="">{canLoadServices ? "Select a service" : "Select a platform and category"}</option>
+            {visibleProducts.map((p) => (
+              <option key={p.id} value={p.id}>
+                {serviceLabel(p)}
               </option>
             ))}
-          </select>
-        </div>
-      </label>
-
-      <label className="mt-4 block">
-        <span className="label">Services</span>
-        {products.isLoading ? (
-          <Skeleton className="h-12" />
-        ) : (
-          <div className="relative">
-            {selected && (
-              <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-brand-800 px-2.5 py-0.5 text-[11px] font-bold text-white">
-                {selected.provider_service_id || selected.id.slice(0, 8)}
-              </span>
-            )}
-            <select
-              className={`input h-12 ${selected ? "pl-[4.75rem]" : ""}`}
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              disabled={!canLoadServices}
-            >
-              <option value="">{canLoadServices ? "Select a service" : "Select a category first"}</option>
-              {visibleProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {serviceLabel(p)}
-                </option>
-              ))}
-            </select>
-          </div>
+          </FilterSelect>
         )}
         {!products.isLoading && canLoadServices && visibleProducts.length > 0 && (
           <p className="mt-2 text-sm text-muted">

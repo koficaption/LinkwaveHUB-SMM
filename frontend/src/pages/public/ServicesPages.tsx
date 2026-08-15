@@ -7,16 +7,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import type { Category, Platform, Product } from "@/types";
-import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, Input, Pagination, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productRefill } from "@/utils/refill";
 import { productCancel } from "@/utils/cancel";
-import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { publicCategoryName, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
+import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -44,21 +45,24 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
     <div className={embedded ? "" : "container-page py-12"}>
       <h1 className="page-title">Services</h1>
       <p className="page-subtitle">Search the catalog. Refill is shown only when that service supports it.</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => set("q", e.target.value)} />
-        <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
-          <option value="">All platforms</option>
-          {platforms.data?.filter((p) => Number(p.product_count ?? 1) > 0).map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
-        </Select>
-        <Select value={category} onChange={(e) => set("category", e.target.value)}>
-          <option value="">All categories</option>
-          {categories.data?.filter((c) => !isProviderCategory(c.name) && Number(c.product_count ?? 1) > 0).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
-        </Select>
-        <Select value={refill} onChange={(e) => set("refill", e.target.value)}>
-          <option value="">Refill: All</option>
-          <option value="yes">Refill supported</option>
-          <option value="no">No refill</option>
-        </Select>
+      <div className="mt-5 max-w-md">
+        <ServiceCatalogFilters
+          search={search}
+          platform={platform}
+          category={category}
+          platforms={platforms.data ?? []}
+          categories={categories.data ?? []}
+          onSearchCommit={(value) => set("q", value)}
+          onPlatform={(value) => setParams({ platform: value, category: "", q: search, refill, page: "1" })}
+          onCategory={(value) => set("category", value)}
+        />
+        <div className="mt-3">
+          <FilterSelect value={refill} onChange={(value) => set("refill", value)} label="Refill filter">
+            <option value="">Refill: All</option>
+            <option value="yes">Refill supported</option>
+            <option value="no">No refill</option>
+          </FilterSelect>
+        </div>
       </div>
 
       <div className="mt-6 space-y-3 lg:hidden">
@@ -264,16 +268,17 @@ export function StorefrontPage() {
         )}
       </div>
 
-      <div className="mt-8 grid gap-3 md:grid-cols-3">
-        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => set("q", e.target.value)} />
-        <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
-          <option value="">All platforms</option>
-          {platforms.data?.filter((p) => Number(p.product_count ?? 1) > 0).map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
-        </Select>
-        <Select value={category} onChange={(e) => set("category", e.target.value)}>
-          <option value="">All categories</option>
-          {categories.data?.filter((c) => !isProviderCategory(c.name) && Number(c.product_count ?? 1) > 0).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
-        </Select>
+      <div className="mt-8 max-w-md">
+        <ServiceCatalogFilters
+          search={search}
+          platform={platform}
+          category={category}
+          platforms={platforms.data ?? []}
+          categories={categories.data ?? []}
+          onSearchCommit={(value) => set("q", value)}
+          onPlatform={(value) => setParams({ platform: value, category: "", q: search, page: "1" })}
+          onCategory={(value) => set("category", value)}
+        />
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-3">
