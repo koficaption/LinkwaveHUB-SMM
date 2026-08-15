@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { money } from "@/api/client";
 import { BRAND_SHORT } from "@/brand";
@@ -20,46 +20,20 @@ export function StatCard({
   className?: string;
   delay?: string;
 }) {
-  const card = useRef<HTMLDivElement>(null);
-
-  function tilt(event: React.PointerEvent<HTMLDivElement>) {
-    const el = card.current;
-    if (!el) return;
-    const box = el.getBoundingClientRect();
-    const x = (event.clientX - box.left) / box.width;
-    const y = (event.clientY - box.top) / box.height;
-    el.style.setProperty("--rx", `${((0.5 - y) * 16).toFixed(2)}deg`);
-    el.style.setProperty("--ry", `${((x - 0.5) * 18).toFixed(2)}deg`);
-    el.style.setProperty("--gx", `${(x * 100).toFixed(1)}%`);
-    el.style.setProperty("--gy", `${(y * 100).toFixed(1)}%`);
-  }
-
-  function flatten() {
-    const el = card.current;
-    if (!el) return;
-    el.style.setProperty("--rx", "0deg");
-    el.style.setProperty("--ry", "0deg");
-  }
-
   if (loading) return <Skeleton className="h-[108px] w-full rounded-2xl" />;
   return (
-    <div className="stat-8d-float" style={{ animationDelay: delay }}>
-      <div
-        ref={card}
-        onPointerMove={tilt}
-        onPointerLeave={flatten}
-        className={cn("stat-8d-card card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}
-      >
-        <div className="stat-8d-icon flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/60">
-          {icon}
+    <div
+      className={cn("stat-card card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}
+      style={{ ["--stat-delay" as string]: delay }}
+    >
+      <div className="stat-icon-frame flex h-[72px] w-[72px] shrink-0 items-center justify-center">
+        <div className="stat-icon-art">{icon}</div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
+          {title}
         </div>
-        <div className="h-14 w-px shrink-0 bg-brand-600/80" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
-            {title}
-          </div>
-          <p className="mt-1 text-sm text-muted">{subtitle}</p>
-        </div>
+        <p className="mt-1 text-sm text-muted">{subtitle}</p>
       </div>
     </div>
   );
@@ -83,7 +57,15 @@ export function WelcomeCard({ name, verified, loading }: { name: string; verifie
 }
 
 export function SpentCard({ amount, loading }: { amount: number | string | null | undefined; loading?: boolean }) {
-  return <StatCard loading={loading} icon={<CoinsIllustration />} title={money(amount)} subtitle="You've Spent" delay="0.35s" />;
+  return (
+    <StatCard
+      loading={loading}
+      icon={<CoinsIllustration />}
+      title={<CountUp value={Number(amount ?? 0)} format={money} />}
+      subtitle="You've Spent"
+      delay="0.4s"
+    />
+  );
 }
 
 export function OrdersCard({ count, loading }: { count: number; loading?: boolean }) {
@@ -91,24 +73,82 @@ export function OrdersCard({ count, loading }: { count: number; loading?: boolea
     <StatCard
       loading={loading}
       icon={<CartIllustration />}
-      title={count.toLocaleString()}
+      title={<CountUp value={count} format={(n) => Math.round(n).toLocaleString()} />}
       subtitle="Orders (Today)"
-      delay="0.7s"
+      delay="0.8s"
     />
   );
 }
 
 export function BalanceCard({ amount, loading }: { amount: number | string | null | undefined; loading?: boolean }) {
-  return <StatCard loading={loading} icon={<WalletIllustration />} title={money(amount)} subtitle="Your Balance" delay="1.05s" />;
+  return (
+    <StatCard
+      loading={loading}
+      icon={<WalletIllustration />}
+      title={<CountUp value={Number(amount ?? 0)} format={money} />}
+      subtitle="Your Balance"
+      delay="1.2s"
+    />
+  );
+}
+
+function CountUp({
+  value,
+  format,
+  duration = 900,
+}: {
+  value: number;
+  format: (n: number) => React.ReactNode;
+  duration?: number;
+}) {
+  const fromRef = useRef(0);
+  const [shown, setShown] = useState(0);
+
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setShown(value);
+      fromRef.current = value;
+      return;
+    }
+    const from = fromRef.current;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      setShown(from + (value - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = value;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+
+  return <>{format(shown)}</>;
 }
 
 function AvatarIllustration() {
   return (
     <svg viewBox="0 0 72 72" className="h-14 w-14" aria-hidden>
-      <circle cx="36" cy="36" r="36" fill="#D4EBE6" />
-      <circle cx="36" cy="28" r="12" fill="#F8D7B0" />
-      <path d="M18 62c2-14 10-22 18-22s16 8 18 22" fill="#087F68" />
-      <path d="M24 24c4-8 20-8 24 0 0 0-6-4-12-4s-12 4-12 4z" fill="#1F2937" />
+      <defs>
+        <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#F3C7A0" />
+          <stop offset="100%" stopColor="#E0A070" />
+        </linearGradient>
+        <linearGradient id="hoodie" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#1FA37F" />
+          <stop offset="100%" stopColor="#087F68" />
+        </linearGradient>
+      </defs>
+      <path d="M16 68c2-16 10-24 20-24s18 8 20 24" fill="url(#hoodie)" />
+      <path d="M28 48c4 6 12 6 16 0-2 8-14 8-16 0z" fill="#0A5F50" />
+      <circle cx="36" cy="30" r="13" fill="url(#skin)" />
+      <path d="M24 28c2-12 22-14 25-2-6-6-18-4-25 2z" fill="#2A2118" />
+      <path d="M22 32c1-8 8-12 14-12 2 0 4 .4 6 1-8-1-16 3-20 11z" fill="#1A140F" />
+      <circle cx="31" cy="31" r="1.6" fill="#2A2118" />
+      <circle cx="41" cy="31" r="1.6" fill="#2A2118" />
+      <path d="M33 37c2 2 4 2 6 0" stroke="#C4845C" strokeWidth="1.4" fill="none" strokeLinecap="round" />
     </svg>
   );
 }
@@ -116,12 +156,22 @@ function AvatarIllustration() {
 function CoinsIllustration() {
   return (
     <svg viewBox="0 0 72 72" className="h-14 w-14" aria-hidden>
-      <circle cx="36" cy="36" r="36" fill="#FEF3C7" />
-      <ellipse cx="30" cy="42" rx="14" ry="10" fill="#F59E0B" />
-      <ellipse cx="30" cy="38" rx="14" ry="10" fill="#FBBF24" />
-      <ellipse cx="44" cy="34" rx="12" ry="9" fill="#D97706" />
-      <ellipse cx="44" cy="30" rx="12" ry="9" fill="#F59E0B" />
-      <path d="M18 48c8 8 28 10 40 2" stroke="#F8D7B0" strokeWidth="6" fill="none" strokeLinecap="round" />
+      <defs>
+        <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FDE68A" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+        <linearGradient id="hand" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#F3C7A0" />
+          <stop offset="100%" stopColor="#D4956A" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="28" cy="24" rx="10" ry="10" fill="url(#gold)" />
+      <ellipse cx="44" cy="18" rx="9" ry="9" fill="#F59E0B" />
+      <ellipse cx="50" cy="30" rx="8" ry="8" fill="#FBBF24" />
+      <text x="24" y="28" fontSize="9" fontWeight="700" fill="#92400E">₵</text>
+      <path d="M14 44c8 2 12-6 20-4 6 2 8 8 18 8 0 8-10 16-28 16-12 0-18-8-16-16 2-4 4-5 6-4z" fill="url(#hand)" />
+      <path d="M18 46c4 1 7-2 11-1" stroke="#E8B894" strokeWidth="3" fill="none" strokeLinecap="round" />
     </svg>
   );
 }
@@ -129,13 +179,17 @@ function CoinsIllustration() {
 function CartIllustration() {
   return (
     <svg viewBox="0 0 72 72" className="h-14 w-14" aria-hidden>
-      <circle cx="36" cy="36" r="36" fill="#FEE2E2" />
-      <path d="M16 22h8l6 28h26" stroke="#B91C1C" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <rect x="28" y="26" width="28" height="18" rx="3" fill="#EF4444" />
-      <rect x="32" y="20" width="8" height="10" rx="1" fill="#F59E0B" />
-      <rect x="42" y="18" width="10" height="12" rx="1" fill="#FBBF24" />
-      <circle cx="34" cy="54" r="4" fill="#111827" />
-      <circle cx="50" cy="54" r="4" fill="#111827" />
+      <path d="M12 18h10l8 32h28" stroke="#B91C1C" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="26" y="28" width="14" height="16" rx="2" fill="#D97706" />
+      <rect x="28" y="24" width="10" height="6" rx="1" fill="#FBBF24" />
+      <rect x="42" y="26" width="16" height="18" rx="2" fill="#F59E0B" />
+      <rect x="45" y="22" width="10" height="6" rx="1" fill="#FDE68A" />
+      <path d="M30 28h8v16h-8z" fill="#B45309" opacity=".25" />
+      <path d="M46 26h10v18h-10z" fill="#B45309" opacity=".2" />
+      <circle cx="36" cy="56" r="5" fill="#111827" />
+      <circle cx="52" cy="56" r="5" fill="#111827" />
+      <circle cx="36" cy="56" r="2" fill="#6B7280" />
+      <circle cx="52" cy="56" r="2" fill="#6B7280" />
     </svg>
   );
 }
@@ -143,11 +197,13 @@ function CartIllustration() {
 function WalletIllustration() {
   return (
     <svg viewBox="0 0 72 72" className="h-14 w-14" aria-hidden>
-      <circle cx="36" cy="36" r="36" fill="#FFEDD5" />
-      <rect x="16" y="24" width="40" height="28" rx="6" fill="#F97316" />
-      <rect x="16" y="24" width="40" height="10" rx="5" fill="#EA580C" />
-      <rect x="40" y="34" width="16" height="12" rx="3" fill="#FECACA" />
-      <circle cx="48" cy="40" r="2.5" fill="#B91C1C" />
+      <rect x="22" y="14" width="28" height="16" rx="2" fill="#22C55E" transform="rotate(-12 36 22)" />
+      <rect x="26" y="18" width="28" height="14" rx="2" fill="#16A34A" transform="rotate(-6 40 25)" />
+      <rect x="14" y="28" width="46" height="30" rx="7" fill="#F59E0B" />
+      <rect x="14" y="28" width="46" height="12" rx="6" fill="#D97706" />
+      <rect x="42" y="38" width="18" height="14" rx="4" fill="#FECACA" />
+      <rect x="44" y="40" width="14" height="10" rx="2" fill="#EF4444" />
+      <circle cx="51" cy="45" r="2.2" fill="#FEE2E2" />
     </svg>
   );
 }
