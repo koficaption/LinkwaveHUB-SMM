@@ -9,6 +9,7 @@ export type HelpDetails = {
   supportEmail?: string | null;
   contactPhone?: string | null;
   whatsappNumber?: string | null;
+  whatsappChannelUrl?: string | null;
   channels?: ChannelLink[];
 };
 
@@ -27,6 +28,26 @@ function digits(value?: string | null) {
 function waLink(value?: string | null) {
   const n = digits(value);
   return n ? `https://wa.me/${n}` : undefined;
+}
+
+function isWhatsAppChannelUrl(url?: string | null) {
+  const value = String(url ?? "").trim();
+  if (!value) return false;
+  return /whatsapp\.com\/channel\//i.test(value) || /whatsapp:\/\/channel/i.test(value);
+}
+
+function isWhatsAppChannel(channel: ChannelLink) {
+  const blob = `${channel.kind || ""} ${channel.name} ${channel.url}`.toLowerCase();
+  if (isWhatsAppChannelUrl(channel.url)) return true;
+  return /whatsapp/.test(blob) && /channel/.test(blob) && !/telegram|t\.me/.test(blob);
+}
+
+export function whatsappChannelHref(s?: HelpDetails | PublicSettings | null) {
+  const direct = String(s?.whatsappChannelUrl ?? "").trim();
+  if (direct) return direct;
+  const listed = (s?.channels ?? []).find(isWhatsAppChannel);
+  if (listed?.url?.trim()) return listed.url.trim();
+  return undefined;
 }
 
 function isGroup(channel: ChannelLink) {
@@ -78,6 +99,15 @@ function helpItems(s?: HelpDetails | PublicSettings | null) {
       href: whatsapp,
       label: "WhatsApp",
       detail: s?.whatsappNumber || undefined,
+      icon: <MessageCircle className="h-4 w-4" />,
+    });
+  }
+
+  const whatsappChannel = whatsappChannelHref(s);
+  if (whatsappChannel) {
+    push({
+      href: whatsappChannel,
+      label: "WhatsApp Channel",
       icon: <MessageCircle className="h-4 w-4" />,
     });
   }

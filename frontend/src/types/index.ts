@@ -250,6 +250,7 @@ export type PublicSettings = {
   supportEmail?: string;
   contactPhone?: string;
   whatsappNumber?: string;
+  whatsappChannelUrl?: string;
   developer?: string;
   currency?: string;
   logoUrl?: string;

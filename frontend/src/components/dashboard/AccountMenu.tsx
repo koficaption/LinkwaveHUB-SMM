@@ -2,18 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, ChevronDown, LogOut, MessageCircle, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePublicSettings } from "@/components/ContactLinks";
+import { usePublicSettings, whatsappChannelHref } from "@/components/ContactLinks";
 import { useDisplayCurrency } from "@/contexts/CurrencyContext";
 import { cn } from "@/utils/cn";
-
-function digits(value?: string | null) {
-  return (value || "").replace(/\D/g, "");
-}
-
-function waLink(value?: string | null) {
-  const n = digits(value);
-  return n ? `https://wa.me/${n}` : undefined;
-}
 
 export function AccountMenu() {
   const { me, logout } = useAuth();
@@ -209,23 +200,22 @@ export function CurrencyButton() {
 }
 
 export function MobileActionButtons() {
-  const { me } = useAuth();
   const settings = usePublicSettings();
-  const channel = settings.data?.channels?.find((c) => /whatsapp|channel|telegram/i.test(`${c.kind} ${c.name}`))
-    ?? settings.data?.channels?.[0];
-  const whatsapp = waLink(me?.panel?.whatsapp_number) || waLink(settings.data?.whatsappNumber) || channel?.url;
+  const channelUrl = whatsappChannelHref(settings.data);
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:hidden">
-      <a
-        href={whatsapp || "/app/support"}
-        target={whatsapp ? "_blank" : undefined}
-        rel="noreferrer"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#25D366] px-3 text-sm font-bold text-white shadow-sm"
-      >
-        <MessageCircle className="h-5 w-5" />
-        WhatsApp Channel
-      </a>
+    <div className={cn("grid gap-3 lg:hidden", channelUrl ? "grid-cols-2" : "grid-cols-1")}>
+      {channelUrl && (
+        <a
+          href={channelUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#25D366] px-3 text-sm font-bold text-white shadow-sm"
+        >
+          <MessageCircle className="h-5 w-5" />
+          WhatsApp Channel
+        </a>
+      )}
       <Link
         to="/app/wallet"
         className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-brand-600 px-3 text-sm font-bold text-white shadow-sm"

@@ -754,6 +754,7 @@ export function AdminSettings() {
     supportEmail: String(g.supportEmail ?? ""),
     contactPhone: String(g.contactPhone ?? ""),
     whatsappNumber: String(g.whatsappNumber ?? ""),
+    whatsappChannelUrl: String(g.whatsappChannelUrl ?? ""),
     address: String(g.address ?? ""),
     developer: String(g.developer ?? ""),
     currency: String(g.currency ?? "GHS"),
@@ -775,6 +776,15 @@ export function AdminSettings() {
           <label className="block"><span className="label">Support email</span><Input value={form.supportEmail} onChange={(e) => setGeneral({ ...form, supportEmail: e.target.value })} /></label>
           <label className="block"><span className="label">Customer service number</span><Input placeholder="+233 24 000 0000" value={form.contactPhone} onChange={(e) => setGeneral({ ...form, contactPhone: e.target.value })} /></label>
           <label className="block"><span className="label">WhatsApp number</span><Input placeholder="233240000000" value={form.whatsappNumber} onChange={(e) => setGeneral({ ...form, whatsappNumber: e.target.value })} /></label>
+          <label className="block md:col-span-2">
+            <span className="label">WhatsApp Channel URL</span>
+            <Input
+              placeholder="https://www.whatsapp.com/channel/..."
+              value={form.whatsappChannelUrl}
+              onChange={(e) => setGeneral({ ...form, whatsappChannelUrl: e.target.value })}
+            />
+            <span className="mt-1 block text-xs text-slate-500">This is the follow-channel invite link for the green WhatsApp Channel button on mobile. It is not the support ticket page.</span>
+          </label>
           <label className="block"><span className="label">Address</span><Input value={form.address} onChange={(e) => setGeneral({ ...form, address: e.target.value })} /></label>
         </div>
         <Button className="mt-4" onClick={() => save("general", { ...g, ...form })}>Save contact details</Button>
