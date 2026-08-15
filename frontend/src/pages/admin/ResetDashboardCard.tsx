@@ -29,7 +29,7 @@ export function ResetDashboardCard() {
       <h2 className="font-bold text-rose-700 dark:text-rose-300">Reset dashboard</h2>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
         This makes the dashboard look new: zero customers, resellers, orders, deposits, revenue, and profit.
-        Your admin login, product catalog, ResellerSMM provider, payment methods, and settings stay.
+        Your admin login, product catalog, ResellerSMM provider, payment methods, and settings stay. Admin accounts are never deleted.
       </p>
       <p className="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">This cannot be undone.</p>
       <label className="mt-3 block">

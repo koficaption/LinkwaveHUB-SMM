@@ -12,6 +12,7 @@ import { v1Router } from "./routes/v1.js";
 import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
+import { ensurePrimaryAdmin } from "./services/platformResetService.js";
 import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
 import { isAllowedWebHost, captureReferralFromRequest } from "./utils.js";
 import { syncRefillStatuses } from "./services/refillService.js";
@@ -111,6 +112,7 @@ app.use(errorHandler);
 async function start() {
   await migrate();
   await seedIfEmpty();
+  await ensurePrimaryAdmin();
   app.listen(config.port, "0.0.0.0", () => {
     console.log(`LinkBoost Growth API listening on http://0.0.0.0:${config.port}`);
   });

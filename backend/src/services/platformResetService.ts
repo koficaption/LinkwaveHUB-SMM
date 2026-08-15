@@ -4,6 +4,7 @@ import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 export const RESET_CONFIRM_PHRASE = "RESET DASHBOARD";
+export const PRIMARY_ADMIN_EMAIL = "owussamuel18@gmail.com";
 
 const TRANSACTIONAL_TABLES = [
   "api_webhook_deliveries",
@@ -43,6 +44,27 @@ async function existingTables(client: Parameters<typeof query>[2], names: string
   return names.filter((name) => found.has(name));
 }
 
+export async function ensurePrimaryAdmin() {
+  const admin = await queryOne<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
+  if (admin) return;
+  const restored = await queryOne<{ email: string }>(
+    `UPDATE users
+     SET role = 'admin', status = 'active', email_verified = TRUE, updated_at = NOW()
+     WHERE LOWER(email) = $1
+     RETURNING email`,
+    [PRIMARY_ADMIN_EMAIL]
+  );
+  if (restored) {
+    console.log(`Restored admin role for ${restored.email}`);
+    await query(
+      `INSERT INTO wallets (user_id, balance)
+       SELECT id, 0 FROM users WHERE LOWER(email) = $1
+       ON CONFLICT (user_id) DO NOTHING`,
+      [PRIMARY_ADMIN_EMAIL]
+    );
+  }
+}
+
 export async function resetDashboard(input: {
   confirm: string;
   actor: AuthUser;
@@ -80,19 +102,9 @@ export async function resetDashboard(input: {
       throw new AppError("Reset aborted: your admin account was not found", 500);
     }
 
-    const tables = await existingTables(client, TRANSACTIONAL_TABLES);
-    if (tables.length) {
-      await client.query(`TRUNCATE TABLE ${tables.map((name) => `"${name}"`).join(", ")} RESTART IDENTITY CASCADE`);
-    }
+    await client.query(`UPDATE users SET panel_reseller_id = NULL WHERE panel_reseller_id IS NOT NULL`);
+    await client.query(`UPDATE users SET referred_by_id = NULL WHERE referred_by_id IS NOT NULL`);
 
-    const columns = await query<{ column_name: string }>(
-      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'referred_by_id'`,
-      [],
-      client
-    );
-    if (columns.length) {
-      await client.query(`UPDATE users SET referred_by_id = NULL WHERE referred_by_id IS NOT NULL`);
-    }
     const removed = await queryOne<{ count: string }>(
       `WITH deleted AS (
          DELETE FROM users WHERE role <> 'admin' RETURNING id
@@ -102,6 +114,22 @@ export async function resetDashboard(input: {
       client
     );
 
+    // Never TRUNCATE ... CASCADE here. users.panel_reseller_id references resellers, so
+    // TRUNCATE resellers CASCADE also wipes the users table — including admins.
+    const tables = await existingTables(client, TRANSACTIONAL_TABLES);
+    for (const table of tables) {
+      await client.query(`DELETE FROM "${table}"`);
+    }
+
+    const kept = await query<{ id: string; email: string }>(
+      `SELECT id, email FROM users WHERE role = 'admin'`,
+      [],
+      client
+    );
+    if (!kept.length) {
+      throw new AppError("Reset aborted: admin accounts would have been removed", 500);
+    }
+
     await client.query(
       `INSERT INTO wallets (user_id, balance)
        SELECT id, 0 FROM users WHERE role = 'admin'
@@ -109,7 +137,7 @@ export async function resetDashboard(input: {
     );
 
     return {
-      keptAdmins: admins.map((admin) => admin.email),
+      keptAdmins: kept.map((admin) => admin.email),
       removedUsers: Number(removed?.count ?? 0),
     };
   });
