@@ -20,7 +20,9 @@ const registerSchema = z.object({
   password: z.string().min(8, "Use at least 8 characters"),
   phone: z.string().optional(),
   whatsappNumber: z.string().optional(),
-  gender: z.enum(["male", "female"], { errorMap: () => ({ message: "Select male or female" }) }),
+  gender: z.string().refine((value): value is "male" | "female" => value === "male" || value === "female", {
+    message: "Select male or female",
+  }),
   asReseller: z.boolean().optional(),
   storeName: z.string().optional(),
 });
@@ -201,7 +203,7 @@ export function RegisterPage() {
   const storeSlug = params.get("store") || registerStoreSlugFromPage();
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
-  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", gender: undefined as "male" | "female" | undefined, storeName: "" } });
+  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", gender: "", storeName: "" } });
   return (
     <AuthCard
       title={store.data ? `Join ${store.data.store_name}` : "Create your account"}
@@ -247,7 +249,7 @@ export function RegisterPage() {
         <Field label="Phone"><Input {...form.register("phone")} /></Field>
         <Field label="WhatsApp number"><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></Field>
         <Field label="Gender" error={form.formState.errors.gender?.message}>
-          <Select {...form.register("gender")}>
+          <Select {...form.register("gender")} value={form.watch("gender")} onChange={(e) => form.setValue("gender", e.target.value, { shouldValidate: true, shouldDirty: true })}>
             <option value="">Select</option>
             <option value="male">Male</option>
             <option value="female">Female</option>

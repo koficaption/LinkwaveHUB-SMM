@@ -48,13 +48,17 @@ export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HT
   }
 );
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn("input", props.className)} {...props} />;
-}
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, ...props }, ref) {
+    return <select ref={ref} className={cn("input", className)} {...props} />;
+  }
+);
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn("input min-h-28", props.className)} {...props} />;
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea({ className, ...props }, ref) {
+    return <textarea ref={ref} className={cn("input min-h-28", className)} {...props} />;
+  }
+);
 
 export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
   return (

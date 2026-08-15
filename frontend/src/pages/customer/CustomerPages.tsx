@@ -418,7 +418,7 @@ export function ProfilePage() {
       whatsappNumber: me.user.whatsapp_number ?? "",
       gender: me.user.gender ?? "",
     });
-  }, [form, me?.user]);
+  }, [form, me?.user.id, me?.user.full_name, me?.user.phone, me?.user.whatsapp_number, me?.user.gender]);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2">
@@ -428,7 +428,11 @@ export function ProfilePage() {
         <h2 className="font-bold">Profile</h2>
         <form className="mt-4 space-y-3" onSubmit={form.handleSubmit(async (v) => {
           try {
-            await api("/auth/profile", { method: "PATCH", body: JSON.stringify({ ...v, gender: v.gender || undefined }) });
+            if (v.gender !== "male" && v.gender !== "female") {
+              toast.error("Select male or female");
+              return;
+            }
+            await api("/auth/profile", { method: "PATCH", body: JSON.stringify({ ...v, gender: v.gender }) });
             await refresh();
             toast.success("Profile updated");
           } catch (e) { toast.error(e instanceof ApiError ? e.message : "Update failed"); }
@@ -438,7 +442,11 @@ export function ProfilePage() {
           <label className="block"><span className="label">WhatsApp number</span><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></label>
           <label className="block">
             <span className="label">Gender</span>
-            <Select {...form.register("gender")}>
+            <Select
+              {...form.register("gender")}
+              value={form.watch("gender")}
+              onChange={(e) => form.setValue("gender", e.target.value, { shouldDirty: true })}
+            >
               <option value="">Select</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
