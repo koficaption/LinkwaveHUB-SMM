@@ -754,6 +754,7 @@ export function AdminSettings() {
       <OrdersSettingsCard data={settings.data?.orders} onSave={(value) => save("orders", value)} />
       <KorapayFeesSettingsCard data={settings.data?.payments} onSave={(value) => save("payments", value)} />
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
+      <LoyaltySettingsCard data={settings.data?.loyalty} onSave={(value) => save("loyalty", value)} />
       <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
@@ -1013,6 +1014,94 @@ function AffiliateSettingsCard({
         minimumPayout: Number(values.minimumPayout),
         lifetime: true,
       })}>Save affiliates</Button>
+    </Card>
+  );
+}
+
+function LoyaltySettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const qc = useQueryClient();
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    newSpendGhs: String(source.newSpendGhs ?? 1000),
+    frequentSpendGhs: String(source.frequentSpendGhs ?? 5000),
+    vipSpendGhs: String(source.vipSpendGhs ?? 10000),
+    frequentDiscountPercent: String(source.frequentDiscountPercent ?? 2),
+    vipDiscountPercent: String(source.vipDiscountPercent ?? 10),
+    lotteryUsd: String(source.lotteryUsd ?? 100),
+  };
+  const lastLottery = source.lastLottery as { name?: string; email?: string; amount?: number; lotteryUsd?: number; drawnAt?: string } | null;
+  const draw = useMutation({
+    mutationFn: () => api<{ name: string; email: string; amount: number; lotteryUsd: number }>("/admin/loyalty/lottery", { method: "POST" }),
+    onSuccess: (winner) => {
+      toast.success(`${winner.name} won $${winner.lotteryUsd}`);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not draw the lottery"),
+  });
+  return (
+    <Card>
+      <h2 className="font-bold">Customer loyalty</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Tiers are based on lifetime order spend. Discounts apply to customer catalog prices only. VIP members get a one-time free child panel and can enter the $100 monthly lottery.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <label className="block">
+          <span className="label">New Member spend (GHS)</span>
+          <Input type="number" min="0" value={values.newSpendGhs} onChange={(e) => setForm({ ...values, newSpendGhs: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Frequent spend (GHS)</span>
+          <Input type="number" min="0" value={values.frequentSpendGhs} onChange={(e) => setForm({ ...values, frequentSpendGhs: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">VIP spend (GHS)</span>
+          <Input type="number" min="0" value={values.vipSpendGhs} onChange={(e) => setForm({ ...values, vipSpendGhs: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Frequent discount %</span>
+          <Input type="number" min="0" value={values.frequentDiscountPercent} onChange={(e) => setForm({ ...values, frequentDiscountPercent: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">VIP discount %</span>
+          <Input type="number" min="0" value={values.vipDiscountPercent} onChange={(e) => setForm({ ...values, vipDiscountPercent: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Lottery (USD)</span>
+          <Input type="number" min="0" value={values.lotteryUsd} onChange={(e) => setForm({ ...values, lotteryUsd: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        newSpendGhs: Number(values.newSpendGhs),
+        frequentSpendGhs: Number(values.frequentSpendGhs),
+        vipSpendGhs: Number(values.vipSpendGhs),
+        frequentDiscountPercent: Number(values.frequentDiscountPercent),
+        vipDiscountPercent: Number(values.vipDiscountPercent),
+        lotteryUsd: Number(values.lotteryUsd),
+        lastLottery: source.lastLottery ?? null,
+      })}>Save loyalty</Button>
+      <div className="mt-5 rounded-xl bg-slate-50 p-4 dark:bg-slate-800">
+        <p className="text-sm font-semibold">VIP monthly lottery</p>
+        {lastLottery?.name ? (
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Last winner: {lastLottery.name} ({lastLottery.email}) · ${lastLottery.lotteryUsd ?? 100}
+            {lastLottery.amount != null ? ` / ${money(lastLottery.amount)}` : ""}
+            {lastLottery.drawnAt ? ` · ${formatDate(lastLottery.drawnAt)}` : ""}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">No draw yet. Credits a random VIP member ${values.lotteryUsd} converted to GHS.</p>
+        )}
+        <Button className="mt-3" variant="outline" disabled={draw.isPending} onClick={() => draw.mutate()}>
+          {draw.isPending ? "Drawing…" : "Draw VIP lottery"}
+        </Button>
+      </div>
     </Card>
   );
 }

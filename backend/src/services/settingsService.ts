@@ -64,6 +64,14 @@ const defaults: Record<string, unknown> = {
     maxKeysPerDeveloper: 10,
     maxWebhooksPerDeveloper: 5,
   },
+  loyalty: {
+    newSpendGhs: 1000,
+    frequentSpendGhs: 5000,
+    vipSpendGhs: 10000,
+    frequentDiscountPercent: 2,
+    vipDiscountPercent: 10,
+    lotteryUsd: 100,
+  },
   mail: {
     enabled: true,
     host: "",

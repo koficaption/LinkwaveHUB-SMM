@@ -5,6 +5,7 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { getResellerUpgradeSettings } from "./settingsService.js";
+import { getLoyaltyForUser } from "./loyaltyService.js";
 import { publicProductName } from "./catalogClassify.js";
 import { initiateDirectedPayment } from "./walletService.js";
 
@@ -180,7 +181,19 @@ export async function getUpgradeOffer(user: AuthUser) {
   const settings = await getResellerUpgradeSettings();
   const application = await getMyUpgradeApplication(user.id);
   const reseller = await queryOne(`SELECT id, status, store_name, store_slug FROM resellers WHERE user_id = $1`, [user.id]);
-  return { ...settings, application, reseller, role: user.role };
+  const vipComplimentary = user.role === "customer" && (await getLoyaltyForUser(user.id)).childPanelFree;
+  const upgradeFee = vipComplimentary ? 0 : settings.upgradeFee;
+  return {
+    ...settings,
+    upgradeFee,
+    vipComplimentary,
+    upgradeNote: vipComplimentary
+      ? "VIP loyalty includes a complimentary child panel for 1 month (one-time). Submit your store name — no upgrade fee."
+      : settings.upgradeNote,
+    application,
+    reseller,
+    role: user.role,
+  };
 }
 
 export async function getMyUpgradeApplication(userId: string) {
@@ -219,7 +232,8 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   );
   if (open) throw new AppError("You already have a pending reseller application");
 
-  const fee = Number(settings.upgradeFee);
+  const vipComplimentary = user.role === "customer" && (await getLoyaltyForUser(user.id)).childPanelFree;
+  const fee = vipComplimentary ? 0 : Number(settings.upgradeFee);
   if (fee < 0) throw new AppError("Upgrade fee is not configured");
   if (fee > 0 && !input.methodCode) throw new AppError("Choose a payment method");
 
@@ -274,7 +288,9 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
       title: "Reseller application submitted",
       body: fee > 0
         ? `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using reference ${reference}. An admin will promote you after confirming the payment.`
-        : "Your reseller application is waiting for admin approval.",
+        : vipComplimentary
+          ? "VIP complimentary child panel applied. An admin will activate your reseller dashboard."
+          : "Your reseller application is waiting for admin approval.",
       type: "reseller",
     });
     return {
@@ -383,6 +399,13 @@ export async function approveResellerApplication(id: string, actor: AuthUser | n
       [application.user_id],
       client
     );
+    if (Number(application.fee_amount) === 0) {
+      await query(
+        `UPDATE users SET loyalty_child_panel_claimed_at = NOW() WHERE id = $1 AND loyalty_child_panel_claimed_at IS NULL`,
+        [application.user_id],
+        client
+      );
+    }
     return queryOne(
       `UPDATE reseller_applications
        SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()

@@ -208,6 +208,7 @@ export async function listProducts(opts: {
   providerId?: string;
   apiAvailable?: string;
   resellerAvailable?: string;
+  loyaltyDiscountPercent?: number;
 }) {
   const params: unknown[] = [];
   const where: string[] = [];
@@ -279,14 +280,14 @@ export async function listProducts(opts: {
   );
 
   return {
-    items: items.map((p) => sanitizeProduct(p, Boolean(opts.resellerPrice), Boolean(opts.includeInactive))),
+    items: items.map((p) => sanitizeProduct(p, Boolean(opts.resellerPrice), Boolean(opts.includeInactive), opts.loyaltyDiscountPercent)),
     total: Number(countRow?.count ?? 0),
     page,
     limit,
   };
 }
 
-export async function getProduct(idOrSlug: string, opts: { admin?: boolean; reseller?: boolean } = {}) {
+export async function getProduct(idOrSlug: string, opts: { admin?: boolean; reseller?: boolean; loyaltyDiscountPercent?: number } = {}) {
   const row = await queryOne(
     `SELECT ${productSelect}
      FROM products p
@@ -300,7 +301,7 @@ export async function getProduct(idOrSlug: string, opts: { admin?: boolean; rese
   if (!opts.admin && (row.status !== "active" || !isSellableProductName(String(row.name || "")))) {
     throw new AppError("Product not found", 404);
   }
-  return sanitizeProduct(row, Boolean(opts.reseller), Boolean(opts.admin));
+  return sanitizeProduct(row, Boolean(opts.reseller), Boolean(opts.admin), opts.loyaltyDiscountPercent);
 }
 
 export async function createProduct(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
@@ -484,7 +485,7 @@ export async function bulkProductStatus(ids: string[], status: "active" | "inact
   });
 }
 
-function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin: boolean) {
+function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin: boolean, loyaltyDiscountPercent = 0) {
   const product = { ...row };
   const hint = parseRefillHint(String(product.name || ""), "", Boolean(product.refill_supported));
   if (hint.supported) {
@@ -501,11 +502,14 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     delete product.provider_id;
     delete product.provider_name;
   }
+  let display = Number(product.price_per_1000);
   if (reseller && product.reseller_price_per_1000 != null) {
-    product.display_price_per_1000 = product.reseller_price_per_1000;
-  } else {
-    product.display_price_per_1000 = product.price_per_1000;
+    display = Number(product.reseller_price_per_1000);
+  } else if (!reseller && loyaltyDiscountPercent > 0) {
+    display = Number((display * (1 - loyaltyDiscountPercent / 100)).toFixed(4));
+    product.loyalty_discount_percent = loyaltyDiscountPercent;
   }
+  product.display_price_per_1000 = display;
   return product;
 }
 

@@ -90,6 +90,7 @@ export type Product = {
   api_price_per_1000?: number | string | null;
   api_min_quantity?: number | null;
   api_max_quantity?: number | null;
+  loyalty_discount_percent?: number;
 };
 
 export type RefillSummary = {
@@ -182,6 +183,38 @@ export type ApiSuccess<T> = {
   success: true;
   message: string;
   data: T;
+};
+
+export type LoyaltyTierId = "none" | "new" | "frequent" | "vip";
+
+export type LoyaltyTier = {
+  id: LoyaltyTierId;
+  name: string;
+  minSpendGhs: number;
+  minSpendUsd: number;
+  discountPercent: number;
+  benefits: string[];
+};
+
+export type LoyaltyMe = {
+  spent: number;
+  tier: LoyaltyTierId;
+  current: LoyaltyTier;
+  next: LoyaltyTier | null;
+  remaining: number;
+  progressPercent: number;
+  discountPercent: number;
+  childPanelFree: boolean;
+  childPanelClaimed: boolean;
+  lotteryUsd: number;
+  lotteryGhs: number;
+  lastLottery: {
+    name?: string;
+    amount?: number;
+    lotteryUsd?: number;
+    drawnAt?: string;
+  } | null;
+  tiers: LoyaltyTier[];
 };
 
 export type ChannelLink = {

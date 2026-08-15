@@ -533,6 +533,7 @@ type UpgradeOffer = {
   upgradeNote: string;
   currency: string;
   role: string;
+  vipComplimentary?: boolean;
   reseller: { id: string; status: string; store_name: string; store_slug: string } | null;
   application: {
     id: string;
@@ -591,9 +592,9 @@ export function BecomeResellerPage() {
       method: "POST",
       body: JSON.stringify({
         storeName,
-        methodCode,
-        senderName: cardCheckout ? undefined : senderName,
-        senderNumber: cardCheckout ? undefined : senderNumber,
+        methodCode: Number(offer.data?.upgradeFee ?? 0) > 0 ? methodCode : undefined,
+        senderName: Number(offer.data?.upgradeFee ?? 0) > 0 && !cardCheckout ? senderName : undefined,
+        senderNumber: Number(offer.data?.upgradeFee ?? 0) > 0 && !cardCheckout ? senderNumber : undefined,
         returnUrl: checkoutReturnUrl("/app/become-reseller"),
       }),
     }),
@@ -604,7 +605,9 @@ export function BecomeResellerPage() {
         window.location.assign(url);
         return;
       }
-      toast.success(data.instructions || "Application submitted. Pay by Mobile Money, then wait for admin confirmation.");
+      toast.success(data.instructions || (Number(offer.data?.upgradeFee ?? 0) === 0
+        ? "Application submitted. An admin will activate your child panel."
+        : "Application submitted. Pay by Mobile Money, then wait for admin confirmation."));
       await qc.invalidateQueries({ queryKey: ["reseller-upgrade"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
       await qc.invalidateQueries({ queryKey: ["notifications"] });
@@ -625,10 +628,14 @@ export function BecomeResellerPage() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Become a reseller / child panel</h1>
-        <p className="mt-1 text-sm text-slate-500">Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          {data?.vipComplimentary
+            ? "VIP members receive a complimentary child panel for 1 month. Submit your store name — no upgrade fee."
+            : "Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation."}
+        </p>
       </div>
       <Card>
-        <p className="text-sm text-slate-500">Upgrade fee</p>
+        <p className="text-sm text-slate-500">{data?.vipComplimentary ? "VIP complimentary upgrade" : "Upgrade fee"}</p>
         <p className="mt-1 text-3xl font-extrabold">{money(data?.upgradeFee ?? 0, data?.currency ?? "GHS")}</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{data?.upgradeNote}</p>
       </Card>
@@ -660,49 +667,62 @@ export function BecomeResellerPage() {
       {data && !data.upgradeEnabled && <p className="text-sm text-slate-500">Reseller upgrades are turned off in admin settings.</p>}
       {data?.upgradeEnabled && !pending && me?.user.role === "customer" && (
         <Card>
-          <h2 className="font-bold">Apply and pay</h2>
+          <h2 className="font-bold">{Number(data.upgradeFee) === 0 ? "Submit application" : "Apply and pay"}</h2>
           <div className="mt-4 space-y-3">
             <label className="block"><span className="label">Store / child panel name</span><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
-            <label className="block">
-              <span className="label">Pay with</span>
-              <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
-                {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
-              </Select>
-            </label>
-            {cardCheckout && (
-              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {upgradeQuote && upgradeQuote.total > upgradeQuote.wallet ? (
-                  <dl className="space-y-1">
-                    <div className="flex justify-between gap-3"><dt>Upgrade fee</dt><dd className="font-semibold">{money(upgradeQuote.wallet, data.currency)}</dd></div>
-                    <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(upgradeQuote.fee, data.currency)}</dd></div>
-                    <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(upgradeQuote.vat, data.currency)}</dd></div>
-                    <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(upgradeQuote.total, data.currency)}</dd></div>
-                  </dl>
-                ) : (
-                  <p>You will be redirected to Korapay.</p>
-                )}
-                <p className="mt-2 text-xs">After a successful payment, your dashboard switches to reseller automatically.</p>
-              </div>
-            )}
-            {selected?.adapter === "manual" && (
-              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
-                {cfg.accountName && <p>Name: {cfg.accountName}</p>}
-                {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
-                {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
-                <p className="mt-1 text-xs">Pay {money(data.upgradeFee, data.currency)} and use the payment reference as the MoMo note.</p>
-              </div>
-            )}
-            {selected?.adapter === "manual" && (
+            {Number(data.upgradeFee) > 0 && (
               <>
-                <label className="block"><span className="label">MoMo name you will send from</span><Input value={senderName} onChange={(e) => setSenderName(e.target.value)} /></label>
-                <label className="block"><span className="label">MoMo number you will send from</span><Input value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} /></label>
+                <label className="block">
+                  <span className="label">Pay with</span>
+                  <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
+                    {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
+                  </Select>
+                </label>
+                {cardCheckout && (
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {upgradeQuote && upgradeQuote.total > upgradeQuote.wallet ? (
+                      <dl className="space-y-1">
+                        <div className="flex justify-between gap-3"><dt>Upgrade fee</dt><dd className="font-semibold">{money(upgradeQuote.wallet, data.currency)}</dd></div>
+                        <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(upgradeQuote.fee, data.currency)}</dd></div>
+                        <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(upgradeQuote.vat, data.currency)}</dd></div>
+                        <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(upgradeQuote.total, data.currency)}</dd></div>
+                      </dl>
+                    ) : (
+                      <p>You will be redirected to Korapay.</p>
+                    )}
+                    <p className="mt-2 text-xs">After a successful payment, your dashboard switches to reseller automatically.</p>
+                  </div>
+                )}
+                {selected?.adapter === "manual" && (
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
+                    {cfg.accountName && <p>Name: {cfg.accountName}</p>}
+                    {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
+                    {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
+                    <p className="mt-1 text-xs">Pay {money(data.upgradeFee, data.currency)} and use the payment reference as the MoMo note.</p>
+                  </div>
+                )}
+                {selected?.adapter === "manual" && (
+                  <>
+                    <label className="block"><span className="label">MoMo name you will send from</span><Input value={senderName} onChange={(e) => setSenderName(e.target.value)} /></label>
+                    <label className="block"><span className="label">MoMo number you will send from</span><Input value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} /></label>
+                  </>
+                )}
               </>
             )}
+            {Number(data.upgradeFee) === 0 && data.vipComplimentary && (
+              <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                VIP complimentary child panel: no payment is required. An admin still confirms the application.
+              </p>
+            )}
             <Button disabled={apply.isPending || verifying || storeName.trim().length < 2} onClick={() => apply.mutate()}>
-              {apply.isPending ? "Submitting…" : cardCheckout
-                ? `Pay ${money(upgradeQuote?.total ?? data.upgradeFee, data.currency)} with card`
-                : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
+              {apply.isPending
+                ? "Submitting…"
+                : Number(data.upgradeFee) === 0
+                  ? "Submit (VIP free)"
+                  : cardCheckout
+                    ? `Pay ${money(upgradeQuote?.total ?? data.upgradeFee, data.currency)} with card`
+                    : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
             </Button>
           </div>
         </Card>

@@ -44,6 +44,7 @@ import {
 } from "../validators.js";
 import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
+import * as loyalty from "../services/loyaltyService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
 import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest } from "../utils.js";
@@ -91,6 +92,7 @@ router.get("/categories", optionalAuth, asyncHandler(async (req, res) => {
 }));
 router.get("/products", optionalAuth, asyncHandler(async (req, res) => {
   const admin = req.user?.role === "admin";
+  const loyaltyDiscountPercent = await loyalty.customerLoyaltyDiscountPercent(req.user);
   res.json(ok(await catalog.listProducts({
     platformId: req.query.platformId as string | undefined,
     categoryId: req.query.categoryId as string | undefined,
@@ -102,12 +104,14 @@ router.get("/products", optionalAuth, asyncHandler(async (req, res) => {
     includeInactive: admin && req.query.all === "1",
     resellerPrice: req.user?.role === "reseller",
     refill: req.query.refill as string | undefined,
+    loyaltyDiscountPercent,
   })));
 }));
 router.get("/products/:id", optionalAuth, asyncHandler(async (req, res) => {
   res.json(ok(await catalog.getProduct(req.params.id, {
     admin: req.user?.role === "admin",
     reseller: req.user?.role === "reseller",
+    loyaltyDiscountPercent: await loyalty.customerLoyaltyDiscountPercent(req.user),
   })));
 }));
 router.get("/store/:slug", asyncHandler(async (req, res) => {
@@ -233,6 +237,9 @@ router.post("/affiliates/claim", requireAuth, asyncHandler(async (req, res) => {
 }));
 router.get("/affiliates/public", asyncHandler(async (_req, res) => {
   res.json(ok(await affiliates.affiliateConfig()));
+}));
+router.get("/loyalty/me", requireAuth, asyncHandler(async (req, res) => {
+  res.json(ok(await loyalty.getLoyaltyForUser(req.user!.id)));
 }));
 
 router.get("/account/reseller-upgrade", requireAuth, asyncHandler(async (req, res) => {
@@ -609,6 +616,9 @@ admin.patch("/support/:id", asyncHandler(async (req, res) => {
 
 admin.get("/affiliates", asyncHandler(async (_req, res) => {
   res.json(ok(await affiliates.listAffiliatesAdmin()));
+}));
+admin.post("/loyalty/lottery", asyncHandler(async (req, res) => {
+  res.json(ok(await loyalty.drawVipLottery(req.user!, clientIp(req)), "VIP lottery drawn"));
 }));
 
 admin.get("/notifications/counts", asyncHandler(async (_req, res) => {

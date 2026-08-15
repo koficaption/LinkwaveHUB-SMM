@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
-import type { Category, Paginated, Platform, Product } from "@/types";
+import type { Category, LoyaltyMe, Paginated, Platform, Product } from "@/types";
 import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +38,11 @@ export function NewOrderPanel() {
         `/products?limit=2000&page=1${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
       ),
     enabled: canLoadServices,
+  });
+  const loyalty = useQuery({
+    queryKey: ["loyalty-me"],
+    queryFn: () => api<LoyaltyMe>("/loyalty/me"),
+    enabled: me?.user.role === "customer",
   });
 
   const categoryOptions = useMemo(() => {
@@ -217,6 +222,11 @@ export function NewOrderPanel() {
             <p><span className="text-muted">Current Balance</span><br /><strong>{me?.wallet ? money(me.wallet.available_balance ?? me.wallet.balance) : "—"}</strong></p>
             <p><span className="text-muted">Estimated Delivery</span><br /><strong>{selected.avg_delivery_time || "—"}</strong></p>
             <p><span className="text-muted">Total</span><br /><strong className="text-lg text-brand-700">{money(total)}</strong></p>
+            {me?.user.role === "customer" && (loyalty.data?.discountPercent ?? 0) > 0 && (
+              <p className="sm:col-span-2 text-brand-800 dark:text-brand-300">
+                {loyalty.data?.current.name} {loyalty.data?.discountPercent}% off is already included in this price.
+              </p>
+            )}
           </div>
           <Button className="h-12 w-full text-base uppercase tracking-wide" disabled={mutation.isPending}>
             {mutation.isPending ? "Placing order…" : "Place order"}

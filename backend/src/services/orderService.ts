@@ -81,6 +81,9 @@ export async function quoteOrder(
     }
   } else if (user?.role === "reseller") {
     unit = Number(product.reseller_price_per_1000 ?? product.price_per_1000);
+  } else if (user?.role === "customer") {
+    const { customerLoyaltyDiscountPercent, applyLoyaltyDiscount } = await import("./loyaltyService.js");
+    unit = applyLoyaltyDiscount(unit, await customerLoyaltyDiscountPercent(user));
   }
 
   const charge = calcCharge(unit, quantity);
