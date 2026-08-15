@@ -1219,18 +1219,18 @@ function ChildPanelSettingsCard({
   onSave: (value: Record<string, unknown>) => Promise<void>;
 }) {
   const source = data ?? {};
-  const nameservers = Array.isArray(source.nameservers) ? source.nameservers.map(String) : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"];
+  const nameservers = Array.isArray(source.nameservers) ? source.nameservers.map(String) : ["dns1.cloudns.net", "dns2.cloudns.net"];
   const [form, setForm] = useState<Record<string, string> | null>(null);
   const values = form ?? {
     enabled: String(source.enabled !== false),
     monthlyPrice: String(source.monthlyPrice ?? 220),
-    ns1: String(nameservers[0] ?? "nelly.ns.cloudflare.com"),
-    ns2: String(nameservers[1] ?? "skip.ns.cloudflare.com"),
+    ns1: String(nameservers[0] ?? "dns1.cloudns.net"),
+    ns2: String(nameservers[1] ?? "dns2.cloudns.net"),
   };
   return (
     <Card>
       <h2 className="font-bold">Child panel</h2>
-      <p className="mt-1 text-sm text-slate-500">Hosted panel on the customer’s domain. Charged from wallet at the monthly price. Not a reseller storefront.</p>
+      <p className="mt-1 text-sm text-slate-500">Hosted panel on the customer’s domain. Charged from wallet at the monthly price. Nameservers are ClouDNS — customers who buy at Spaceship change nameservers there to these two hosts.</p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="block">
           <span className="label">Enabled</span>

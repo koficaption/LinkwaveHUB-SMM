@@ -58,7 +58,7 @@ const defaults: Record<string, unknown> = {
   childPanels: {
     enabled: true,
     monthlyPrice: 220,
-    nameservers: ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"],
+    nameservers: ["dns1.cloudns.net", "dns2.cloudns.net"],
     currencies: [
       { code: "USD", name: "U.S. Dollar (USD)" },
       { code: "EUR", name: "Euro (EUR)" },
@@ -170,14 +170,14 @@ export async function getChildPanelSettings() {
   const childPanels = all.childPanels as Record<string, unknown>;
   const nameservers = Array.isArray(childPanels.nameservers)
     ? childPanels.nameservers.map((item) => String(item).trim()).filter(Boolean)
-    : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"];
+    : ["dns1.cloudns.net", "dns2.cloudns.net"];
   const currencies = Array.isArray(childPanels.currencies)
     ? (childPanels.currencies as ChildPanelCurrency[]).filter((item) => item?.code && item?.name)
     : [];
   return {
     enabled: childPanels.enabled !== false,
     monthlyPrice: Number(childPanels.monthlyPrice ?? 220),
-    nameservers: nameservers.length ? nameservers : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"],
+    nameservers: nameservers.length ? nameservers : ["dns1.cloudns.net", "dns2.cloudns.net"],
     currencies: currencies.length ? currencies : [{ code: "USD", name: "U.S. Dollar (USD)" }],
     currency: String(general.currency ?? "GHS"),
   };

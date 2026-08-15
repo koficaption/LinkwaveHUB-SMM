@@ -41,7 +41,7 @@ VALUES (
   '{
     "enabled": true,
     "monthlyPrice": 220,
-    "nameservers": ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"],
+    "nameservers": ["dns1.cloudns.net", "dns2.cloudns.net"],
     "currencies": [
       {"code":"USD","name":"U.S. Dollar (USD)"},
       {"code":"EUR","name":"Euro (EUR)"},
