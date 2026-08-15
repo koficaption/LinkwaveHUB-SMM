@@ -64,11 +64,22 @@ export function StatCard({
   );
 }
 
-export function WelcomeCard({ name, verified, loading }: { name: string; verified?: boolean; loading?: boolean }) {
+export function WelcomeCard({
+  name,
+  gender,
+  verified,
+  loading,
+}: {
+  name: string;
+  gender?: string | null;
+  verified?: boolean;
+  loading?: boolean;
+}) {
+  const avatarSrc = gender === "female" ? "/dashboard/avatar-3d-female.webp" : "/dashboard/avatar-3d.webp";
   return (
     <StatCard
       loading={loading}
-      icon={<Icon3d src="/dashboard/avatar-3d.webp" cover />}
+      icon={<Icon3d src={avatarSrc} cover />}
       title={
         <span className="inline-flex items-center gap-1.5">
           <span className="truncate">{name}</span>

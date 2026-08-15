@@ -9,12 +9,16 @@ const blankToUndefined = (value: unknown) => {
 const optionalText = (max: number, min = 1) =>
   z.preprocess(blankToUndefined, z.string().min(min).max(max).optional());
 
+export const genderSchema = z.enum(["male", "female"]);
+const optionalGender = z.preprocess(blankToUndefined, genderSchema.optional());
+
 export const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email(),
   password: z.string().min(8).max(72),
   phone: optionalText(30),
   whatsappNumber: optionalText(30),
+  gender: optionalGender,
   asReseller: z.boolean().optional(),
   storeName: optionalText(80, 2),
   referralCode: optionalText(40),
@@ -45,6 +49,7 @@ export const profileSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   phone: z.preprocess(blankToUndefined, z.string().max(30).optional().nullable()),
   whatsappNumber: z.preprocess(blankToUndefined, z.string().max(30).optional().nullable()),
+  gender: optionalGender,
 });
 
 export const platformSchema = z.object({

@@ -1,11 +1,14 @@
 export type Role = "customer" | "reseller" | "admin";
 
+export type Gender = "male" | "female";
+
 export type User = {
   id: string;
   email: string;
   full_name: string;
   phone?: string | null;
   whatsapp_number?: string | null;
+  gender?: Gender | null;
   role: Role;
   status: string;
   avatar_url?: string | null;

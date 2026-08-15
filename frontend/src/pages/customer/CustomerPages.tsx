@@ -48,11 +48,23 @@ export function CustomerHome() {
         </div>
       )}
       <div className="grid gap-4 [perspective:1000px] lg:grid-cols-4">
-        <WelcomeCard name={handle} verified={me?.user.status === "active"} loading={loading} />
+        <WelcomeCard
+          name={handle}
+          gender={me?.user.gender}
+          verified={me?.user.status === "active"}
+          loading={loading}
+        />
         <SpentCard amount={spent} loading={loading} />
         <OrdersCard count={todayOrders} loading={loading} />
         <BalanceCard amount={balance} loading={loading} />
       </div>
+      {me?.user && !me.user.gender && (
+        <p className="text-sm text-slate-500">
+          Choose Male or Female in{" "}
+          <Link className="font-semibold text-brand-700" to="/app/profile">Account</Link>{" "}
+          so your welcome avatar matches you.
+        </p>
+      )}
       <WaveDivider />
       <NewOrderPanel />
     </div>
@@ -390,7 +402,23 @@ export function WalletPage() {
 
 export function ProfilePage() {
   const { me, refresh } = useAuth();
-  const form = useForm({ defaultValues: { fullName: me?.user.full_name ?? "", phone: me?.user.phone ?? "", whatsappNumber: me?.user.whatsapp_number ?? "" } });
+  const form = useForm({
+    defaultValues: {
+      fullName: me?.user.full_name ?? "",
+      phone: me?.user.phone ?? "",
+      whatsappNumber: me?.user.whatsapp_number ?? "",
+      gender: me?.user.gender ?? "",
+    },
+  });
+  useEffect(() => {
+    if (!me?.user) return;
+    form.reset({
+      fullName: me.user.full_name ?? "",
+      phone: me.user.phone ?? "",
+      whatsappNumber: me.user.whatsapp_number ?? "",
+      gender: me.user.gender ?? "",
+    });
+  }, [form, me?.user]);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2">
@@ -400,7 +428,7 @@ export function ProfilePage() {
         <h2 className="font-bold">Profile</h2>
         <form className="mt-4 space-y-3" onSubmit={form.handleSubmit(async (v) => {
           try {
-            await api("/auth/profile", { method: "PATCH", body: JSON.stringify(v) });
+            await api("/auth/profile", { method: "PATCH", body: JSON.stringify({ ...v, gender: v.gender || undefined }) });
             await refresh();
             toast.success("Profile updated");
           } catch (e) { toast.error(e instanceof ApiError ? e.message : "Update failed"); }
@@ -408,6 +436,15 @@ export function ProfilePage() {
           <label className="block"><span className="label">Full name</span><Input {...form.register("fullName")} /></label>
           <label className="block"><span className="label">Phone</span><Input {...form.register("phone")} /></label>
           <label className="block"><span className="label">WhatsApp number</span><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></label>
+          <label className="block">
+            <span className="label">Gender</span>
+            <Select {...form.register("gender")}>
+              <option value="">Select</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </Select>
+          </label>
+          <p className="text-xs text-slate-500">This switches the welcome avatar on your dashboard.</p>
           <Button>Save</Button>
         </form>
       </Card>

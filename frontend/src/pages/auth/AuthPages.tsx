@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button, Card, Input, PasswordInput } from "@/components/ui";
+import { Button, Card, Input, PasswordInput, Select } from "@/components/ui";
 import { ApiError, api, errorMessage } from "@/api/client";
 import { storedReferralCode, persistReferralCode } from "@/pages/customer/AffiliatePages";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -20,6 +20,7 @@ const registerSchema = z.object({
   password: z.string().min(8, "Use at least 8 characters"),
   phone: z.string().optional(),
   whatsappNumber: z.string().optional(),
+  gender: z.enum(["male", "female"], { errorMap: () => ({ message: "Select male or female" }) }),
   asReseller: z.boolean().optional(),
   storeName: z.string().optional(),
 });
@@ -200,7 +201,7 @@ export function RegisterPage() {
   const storeSlug = params.get("store") || registerStoreSlugFromPage();
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
-  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", storeName: "" } });
+  const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", gender: undefined as "male" | "female" | undefined, storeName: "" } });
   return (
     <AuthCard
       title={store.data ? `Join ${store.data.store_name}` : "Create your account"}
@@ -228,6 +229,7 @@ export function RegisterPage() {
               password: values.password,
               phone: values.phone?.trim() || undefined,
               whatsappNumber: values.whatsappNumber?.trim() || undefined,
+              gender: values.gender,
               asReseller: false,
               storeName: values.storeName?.trim() || undefined,
               referralCode: invitedBy,
@@ -244,10 +246,17 @@ export function RegisterPage() {
         <Field label="Email" error={form.formState.errors.email?.message}><Input type="email" autoComplete="email" {...form.register("email")} /></Field>
         <Field label="Phone"><Input {...form.register("phone")} /></Field>
         <Field label="WhatsApp number"><Input placeholder="233241112222" {...form.register("whatsappNumber")} /></Field>
+        <Field label="Gender" error={form.formState.errors.gender?.message}>
+          <Select {...form.register("gender")}>
+            <option value="">Select</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </Select>
+        </Field>
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
-        <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional.</p>
+        <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional. Gender sets your dashboard avatar.</p>
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
         </Button>
