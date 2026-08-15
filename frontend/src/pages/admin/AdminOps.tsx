@@ -386,7 +386,7 @@ export function AdminResellers() {
       <h1 className="text-2xl font-extrabold">Resellers</h1>
       <Card className="overflow-x-auto">
         <h2 className="font-bold">Upgrade applications</h2>
-        <p className="mt-1 text-sm text-slate-500">Customers who paid the reseller / child panel fee. Confirm after you see the Mobile Money payment, and their dashboard switches to reseller.</p>
+        <p className="mt-1 text-sm text-slate-500">Customers who paid the reseller upgrade fee. Confirm after you see the Mobile Money payment, and their dashboard switches to reseller.</p>
         <table className="mt-3 w-full text-left text-sm">
           <thead><tr className="text-slate-500">{["Customer","Store","Fee","MoMo","Payment","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
@@ -817,6 +817,7 @@ export function AdminSettings() {
       <LoyaltySettingsCard data={settings.data?.loyalty} onSave={(value) => save("loyalty", value)} />
       <MailSettingsCard data={settings.data?.mail} onSave={(value) => save("mail", value)} />
       <ResellerUpgradeSettingsCard data={settings.data?.resellers} onSave={(value) => save("resellers", value)} />
+      <ChildPanelSettingsCard data={settings.data?.childPanels} onSave={(value) => save("childPanels", value)} />
       <PricingSettingsCard data={settings.data?.pricing} onSave={(value) => save("pricing", value)} />
       <NotificationSettingsCard data={settings.data?.notifications} onSave={(value) => save("notifications", value)} />
       <ResetDashboardCard />
@@ -1182,8 +1183,8 @@ function ResellerUpgradeSettingsCard({
   };
   return (
     <Card>
-      <h2 className="font-bold">Reseller / child panel upgrade</h2>
-      <p className="mt-1 text-sm text-slate-500">Customers pay this fee by Mobile Money. After you confirm the payment on Resellers, their dashboard switches from customer to reseller.</p>
+      <h2 className="font-bold">Reseller upgrade</h2>
+      <p className="mt-1 text-sm text-slate-500">Customers pay this fee by Mobile Money. After you confirm the payment on Resellers, their dashboard switches from customer to reseller. Child panels are a separate product.</p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="block">
           <span className="label">Enabled</span>
@@ -1206,6 +1207,62 @@ function ResellerUpgradeSettingsCard({
         upgradeFee: Number(values.upgradeFee),
         upgradeNote: values.upgradeNote,
       })}>Save upgrade fee</Button>
+    </Card>
+  );
+}
+
+function ChildPanelSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const nameservers = Array.isArray(source.nameservers) ? source.nameservers.map(String) : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"];
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    enabled: String(source.enabled !== false),
+    monthlyPrice: String(source.monthlyPrice ?? 220),
+    ns1: String(nameservers[0] ?? "nelly.ns.cloudflare.com"),
+    ns2: String(nameservers[1] ?? "skip.ns.cloudflare.com"),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Child panel</h2>
+      <p className="mt-1 text-sm text-slate-500">Hosted panel on the customer’s domain. Charged from wallet at the monthly price. Not a reseller storefront.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="label">Enabled</span>
+          <Select value={values.enabled} onChange={(e) => setForm({ ...values, enabled: e.target.value })}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Price per month (GHS)</span>
+          <Input type="number" min="0" value={values.monthlyPrice} onChange={(e) => setForm({ ...values, monthlyPrice: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Nameserver 1</span>
+          <Input value={values.ns1} onChange={(e) => setForm({ ...values, ns1: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">Nameserver 2</span>
+          <Input value={values.ns2} onChange={(e) => setForm({ ...values, ns2: e.target.value })} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        enabled: values.enabled === "true",
+        monthlyPrice: Number(values.monthlyPrice),
+        nameservers: [values.ns1, values.ns2].map((item) => item.trim()).filter(Boolean),
+        currencies: source.currencies ?? [
+          { code: "USD", name: "U.S. Dollar (USD)" },
+          { code: "EUR", name: "Euro (EUR)" },
+          { code: "GBP", name: "Pound Sterling (GBP)" },
+          { code: "GHS", name: "Ghana Cedi (GHS)" },
+        ],
+      })}>Save child panel</Button>
     </Card>
   );
 }
@@ -1375,7 +1432,7 @@ export function AdminNotifications() {
               {[
                 { value: "customers", label: "Customers", hint: `${counts.data?.customers ?? "…"} active customers` },
                 { value: "resellers", label: "Resellers", hint: `${counts.data?.resellers ?? "…"} reseller accounts` },
-                { value: "child_panels", label: "Child panels", hint: `${counts.data?.child_panels ?? "…"} with an active storefront` },
+                { value: "child_panels", label: "Child panels", hint: `${counts.data?.child_panels ?? "…"} resellers with an active storefront` },
                 { value: "all", label: "Everyone", hint: `${counts.data?.all ?? "…"} customers and resellers` },
                 { value: "user", label: "One user", hint: "Search and pick a specific account" },
               ].map((option) => (

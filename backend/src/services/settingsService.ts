@@ -53,7 +53,20 @@ const defaults: Record<string, unknown> = {
     upgradeEnabled: true,
     upgradeFee: 200,
     upgradeNote:
-      "Pay the reseller / child panel fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller.",
+      "Pay the reseller upgrade fee by Mobile Money. After you pay, an admin confirms the payment and switches your dashboard to reseller.",
+  },
+  childPanels: {
+    enabled: true,
+    monthlyPrice: 220,
+    nameservers: ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"],
+    currencies: [
+      { code: "USD", name: "U.S. Dollar (USD)" },
+      { code: "EUR", name: "Euro (EUR)" },
+      { code: "GBP", name: "Pound Sterling (GBP)" },
+      { code: "GHS", name: "Ghana Cedi (GHS)" },
+      { code: "NGN", name: "Nigerian Naira (NGN)" },
+      { code: "INR", name: "Indian Rupee (INR)" },
+    ],
   },
   api: {
     enabled: true,
@@ -145,6 +158,27 @@ export async function getResellerUpgradeSettings() {
     upgradeEnabled: resellers.upgradeEnabled !== false,
     upgradeFee: Number(resellers.upgradeFee ?? 0),
     upgradeNote: String(resellers.upgradeNote ?? ""),
+    currency: String(general.currency ?? "GHS"),
+  };
+}
+
+export type ChildPanelCurrency = { code: string; name: string };
+
+export async function getChildPanelSettings() {
+  const all = await getSettings();
+  const general = all.general as Record<string, unknown>;
+  const childPanels = all.childPanels as Record<string, unknown>;
+  const nameservers = Array.isArray(childPanels.nameservers)
+    ? childPanels.nameservers.map((item) => String(item).trim()).filter(Boolean)
+    : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"];
+  const currencies = Array.isArray(childPanels.currencies)
+    ? (childPanels.currencies as ChildPanelCurrency[]).filter((item) => item?.code && item?.name)
+    : [];
+  return {
+    enabled: childPanels.enabled !== false,
+    monthlyPrice: Number(childPanels.monthlyPrice ?? 220),
+    nameservers: nameservers.length ? nameservers : ["nelly.ns.cloudflare.com", "skip.ns.cloudflare.com"],
+    currencies: currencies.length ? currencies : [{ code: "USD", name: "U.S. Dollar (USD)" }],
     currency: String(general.currency ?? "GHS"),
   };
 }

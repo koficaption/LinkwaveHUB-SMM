@@ -42,6 +42,21 @@ export function publicTicketId(): string {
   return `TCK-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
+export function publicChildPanelId(): string {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const rand = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `CP-${date}-${rand}`;
+}
+
+export function normalizeDomain(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/[/:].*$/, "");
+}
+
 export function paymentReference(): string {
   return `PAY-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }

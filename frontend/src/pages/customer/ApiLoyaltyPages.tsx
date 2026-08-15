@@ -148,7 +148,7 @@ export function LoyaltyPage() {
               </a>
             )}
             {data.childPanelFree && (
-              <Link to="/app/become-reseller"><Button>Claim free child panel</Button></Link>
+              <Link to="/app/child-panels"><Button>Claim free child panel</Button></Link>
             )}
             <Link to="/app"><Button variant={data.childPanelFree ? "outline" : "primary"}>Place an order</Button></Link>
           </div>

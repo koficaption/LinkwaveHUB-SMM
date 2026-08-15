@@ -10,6 +10,7 @@ import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/
 import {
   CustomerHome, BecomeResellerPage, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
 } from "@/pages/customer/CustomerPages";
+import { ChildPanelsPage } from "@/pages/customer/ChildPanelsPage";
 import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { RefundPolicyPage, TermsOfServicePage } from "@/pages/legal/LegalPages";
@@ -22,6 +23,7 @@ import {
 } from "@/pages/admin/AdminOps";
 import { AdminRefills } from "@/pages/admin/AdminRefills";
 import { AdminApiPage } from "@/pages/admin/AdminApiPage";
+import { AdminChildPanels } from "@/pages/admin/AdminChildPanels";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -66,6 +68,7 @@ export default function App() {
                   <Route path="/app/terms" element={<TermsOfServicePage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
                   <Route path="/app/become-reseller" element={<BecomeResellerPage />} />
+                  <Route path="/app/child-panels" element={<ChildPanelsPage />} />
                   <Route path="/app/support" element={<SupportPage />} />
                   <Route path="/app/notifications" element={<NotificationsPage />} />
                   <Route path="/app/reseller" element={<Guard roles={["reseller", "admin"]}><ResellerDashboard /></Guard>} />
@@ -88,6 +91,7 @@ export default function App() {
                   <Route path="/admin/users" element={<AdminUsers />} />
                   <Route path="/admin/users/:id" element={<AdminUserDetail />} />
                   <Route path="/admin/resellers" element={<AdminResellers />} />
+                  <Route path="/admin/child-panels" element={<AdminChildPanels />} />
                   <Route path="/admin/api" element={<AdminApiPage />} />
                   <Route path="/admin/affiliates" element={<AdminAffiliates />} />
                   <Route path="/admin/payments" element={<AdminPayments />} />

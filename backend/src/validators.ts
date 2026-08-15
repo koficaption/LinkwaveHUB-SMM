@@ -286,6 +286,23 @@ export const resellerUpgradeSchema = z.object({
   returnUrl: z.string().url().max(500).optional(),
 });
 
+export const childPanelOrderSchema = z.object({
+  domain: z.string().trim().min(3).max(253),
+  panelCurrency: z.string().trim().min(3).max(8),
+  adminUsername: z.string().trim().min(3).max(40),
+  adminPassword: z.string().min(8).max(72),
+  confirmPassword: z.string().min(8).max(72),
+}).superRefine((value, ctx) => {
+  if (value.adminPassword !== value.confirmPassword) {
+    ctx.addIssue({ code: "custom", message: "Passwords do not match", path: ["confirmPassword"] });
+  }
+});
+
+export const childPanelReviewSchema = z.object({
+  status: z.enum(["processing", "active", "rejected", "cancelled"]),
+  note: z.string().max(500).optional(),
+});
+
 export const paymentVerifySchema = z.object({
   reference: z.string().min(4).max(80),
 });

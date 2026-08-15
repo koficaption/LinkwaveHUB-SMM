@@ -13,6 +13,7 @@ const TRANSACTIONAL_TABLES = [
   "api_developers",
   "refills",
   "reseller_withdrawals",
+  "child_panel_orders",
   "affiliate_commissions",
   "reseller_applications",
   "reseller_products",

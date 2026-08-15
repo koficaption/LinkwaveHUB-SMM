@@ -27,7 +27,7 @@ export function CustomerLayout() {
   ];
   if (me?.user.role === "reseller") {
     items.push(
-      { to: "/app/reseller", label: "Child Panels", icon: <Users className="h-5 w-5" /> },
+      { to: "/app/reseller", label: "Reseller", icon: <Store className="h-5 w-5" /> },
       { to: "/app/reseller/storefront", label: "Storefront", icon: <Store className="h-5 w-5" /> },
       { to: "/app/reseller/pricing", label: "Pricing", icon: <Wallet className="h-5 w-5" /> },
       { to: "/app/reseller/customers", label: "Customers", icon: <Users className="h-5 w-5" /> },
@@ -35,10 +35,15 @@ export function CustomerLayout() {
     );
   }
   if (!panel) {
+    items.push({
+      to: "/app/child-panels",
+      label: "Child Panels",
+      icon: <Globe className="h-5 w-5" />,
+    });
     if (me?.user.role !== "reseller") {
       items.push({
         to: "/app/become-reseller",
-        label: "Child Panels",
+        label: "Become a reseller",
         icon: <Users className="h-5 w-5" />,
       });
     }
@@ -90,6 +95,7 @@ export function AdminLayout() {
           items: [
             { to: "/admin/users", label: "Users", icon: <Users className="h-5 w-5" /> },
             { to: "/admin/resellers", label: "Resellers", icon: <Store className="h-5 w-5" /> },
+            { to: "/admin/child-panels", label: "Child panels", icon: <Globe className="h-5 w-5" /> },
             { to: "/admin/affiliates", label: "Affiliates", icon: <Handshake className="h-5 w-5" /> },
             { to: "/admin/api", label: "API Management", icon: <Code2 className="h-5 w-5" /> },
           ],

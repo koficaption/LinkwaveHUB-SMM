@@ -394,7 +394,7 @@ export function ProfilePage() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2">
-        <PageHeader title="Account" subtitle="Profile, password, and child-panel upgrade." />
+        <PageHeader title="Account" subtitle="Profile, password, reseller upgrade, and child panel." />
       </div>
       <Card>
         <h2 className="font-bold">Profile</h2>
@@ -417,9 +417,16 @@ export function ProfilePage() {
       </Card>
       {me?.user.role === "customer" && !me.panel && (
         <Card className="lg:col-span-2">
-          <h2 className="font-bold">Become a reseller / child panel</h2>
-          <p className="mt-1 text-sm text-slate-500">Pay the upgrade fee by Mobile Money. After an admin confirms payment, your dashboard switches to reseller.</p>
+          <h2 className="font-bold">Become a reseller</h2>
+          <p className="mt-1 text-sm text-slate-500">Pay the upgrade fee by Mobile Money. After an admin confirms payment, your dashboard switches to reseller with a storefront on this site.</p>
           <Link to="/app/become-reseller"><Button className="mt-3">Start upgrade</Button></Link>
+        </Card>
+      )}
+      {!me?.panel && (
+        <Card className="lg:col-span-2">
+          <h2 className="font-bold">Child Panel</h2>
+          <p className="mt-1 text-sm text-slate-500">Order a hosted panel on your own domain. Point nameservers first, then submit the Child Panel form.</p>
+          <Link to="/app/child-panels"><Button className="mt-3">Order child panel</Button></Link>
         </Card>
       )}
     </div>
@@ -617,7 +624,7 @@ export function BecomeResellerPage() {
         return;
       }
       toast.success(data.instructions || (Number(offer.data?.upgradeFee ?? 0) === 0
-        ? "Application submitted. An admin will activate your child panel."
+        ? "Application submitted. An admin will activate your reseller dashboard."
         : "Application submitted. Pay by Mobile Money, then wait for admin confirmation."));
       await qc.invalidateQueries({ queryKey: ["reseller-upgrade"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
@@ -638,15 +645,13 @@ export function BecomeResellerPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="page-title">Become a reseller / child panel</h1>
+        <h1 className="page-title">Become a reseller</h1>
         <p className="mt-1 text-sm text-slate-500">
-          {data?.vipComplimentary
-            ? "VIP members receive a complimentary child panel for 1 month. Submit your store name — no upgrade fee."
-            : "Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation."}
+          Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation.
         </p>
       </div>
       <Card>
-        <p className="text-sm text-slate-500">{data?.vipComplimentary ? "VIP complimentary upgrade" : "Upgrade fee"}</p>
+        <p className="text-sm text-slate-500">Upgrade fee</p>
         <p className="mt-1 text-3xl font-extrabold">{money(data?.upgradeFee ?? 0, data?.currency ?? "GHS")}</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{data?.upgradeNote}</p>
       </Card>
@@ -680,7 +685,7 @@ export function BecomeResellerPage() {
         <Card>
           <h2 className="font-bold">{Number(data.upgradeFee) === 0 ? "Submit application" : "Apply and pay"}</h2>
           <div className="mt-4 space-y-3">
-            <label className="block"><span className="label">Store / child panel name</span><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
+            <label className="block"><span className="label">Store name</span><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
             {Number(data.upgradeFee) > 0 && (
               <>
                 <label className="block">
@@ -721,16 +726,11 @@ export function BecomeResellerPage() {
                 )}
               </>
             )}
-            {Number(data.upgradeFee) === 0 && data.vipComplimentary && (
-              <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                VIP complimentary child panel: no payment is required. An admin still confirms the application.
-              </p>
-            )}
             <Button disabled={apply.isPending || verifying || storeName.trim().length < 2} onClick={() => apply.mutate()}>
               {apply.isPending
                 ? "Submitting…"
                 : Number(data.upgradeFee) === 0
-                  ? "Submit (VIP free)"
+                  ? "Submit application"
                   : cardCheckout
                     ? `Pay ${money(upgradeQuote?.total ?? data.upgradeFee, data.currency)} with card`
                     : `Submit and pay ${money(data.upgradeFee, data.currency)}`}

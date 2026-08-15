@@ -40,6 +40,8 @@ import {
   paymentMethodSchema,
   adminBroadcastSchema,
   resellerUpgradeSchema,
+  childPanelOrderSchema,
+  childPanelReviewSchema,
   paymentVerifySchema,
   dashboardResetSchema,
   apiAdminDeveloperPatchSchema,
@@ -54,6 +56,7 @@ import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
 import * as platformReset from "../services/platformResetService.js";
+import * as childPanels from "../services/childPanelService.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
@@ -282,6 +285,13 @@ router.get("/account/reseller-upgrade", requireAuth, asyncHandler(async (req, re
 }));
 router.post("/account/reseller-upgrade", requireAuth, validate(resellerUpgradeSchema), asyncHandler(async (req, res) => {
   res.status(201).json(ok(await resellers.applyForResellerUpgrade(req.user!, req.body), "Application submitted"));
+}));
+
+router.get("/account/child-panels", requireAuth, asyncHandler(async (req, res) => {
+  res.json(ok(await childPanels.getChildPanelOffer(req.user!)));
+}));
+router.post("/account/child-panels", requireAuth, validate(childPanelOrderSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await childPanels.placeChildPanelOrder(req.user!, req.body), "Child panel order submitted"));
 }));
 
 router.get("/orders", requireAuth, asyncHandler(async (req, res) => {
@@ -586,6 +596,15 @@ admin.post("/reseller-applications/:id/approve", asyncHandler(async (req, res) =
 admin.post("/reseller-applications/:id/reject", asyncHandler(async (req, res) => {
   const body = z.object({ reason: z.string().max(500).optional() }).parse(req.body ?? {});
   res.json(ok(await resellers.rejectResellerApplication(req.params.id, req.user!, clientIp(req), body.reason), "Application rejected"));
+}));
+admin.get("/child-panels", asyncHandler(async (req, res) => {
+  res.json(ok(await childPanels.listChildPanelOrders(req.query.status as string | undefined)));
+}));
+admin.get("/child-panels/:id", asyncHandler(async (req, res) => {
+  res.json(ok(await childPanels.getChildPanelOrder(req.params.id, req.user!)));
+}));
+admin.post("/child-panels/:id/review", validate(childPanelReviewSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await childPanels.reviewChildPanelOrder(req.params.id, req.user!, req.body, clientIp(req)), "Child panel order updated"));
 }));
 admin.get("/resellers/:id", asyncHandler(async (req, res) => {
   res.json(ok(await resellers.getReseller(req.params.id)));
