@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { money } from "@/api/client";
 import { BRAND_SHORT } from "@/brand";
@@ -10,25 +11,55 @@ export function StatCard({
   subtitle,
   loading,
   className,
+  delay = "0s",
 }: {
   icon: React.ReactNode;
   title: React.ReactNode;
   subtitle: string;
   loading?: boolean;
   className?: string;
+  delay?: string;
 }) {
+  const card = useRef<HTMLDivElement>(null);
+
+  function tilt(event: React.PointerEvent<HTMLDivElement>) {
+    const el = card.current;
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    const x = (event.clientX - box.left) / box.width;
+    const y = (event.clientY - box.top) / box.height;
+    el.style.setProperty("--rx", `${((0.5 - y) * 16).toFixed(2)}deg`);
+    el.style.setProperty("--ry", `${((x - 0.5) * 18).toFixed(2)}deg`);
+    el.style.setProperty("--gx", `${(x * 100).toFixed(1)}%`);
+    el.style.setProperty("--gy", `${(y * 100).toFixed(1)}%`);
+  }
+
+  function flatten() {
+    const el = card.current;
+    if (!el) return;
+    el.style.setProperty("--rx", "0deg");
+    el.style.setProperty("--ry", "0deg");
+  }
+
   if (loading) return <Skeleton className="h-[108px] w-full rounded-2xl" />;
   return (
-    <div className={cn("card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}>
-      <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/60">
-        {icon}
-      </div>
-      <div className="h-14 w-px shrink-0 bg-brand-600/80" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
-          {title}
+    <div className="stat-8d-float" style={{ animationDelay: delay }}>
+      <div
+        ref={card}
+        onPointerMove={tilt}
+        onPointerLeave={flatten}
+        className={cn("stat-8d-card card flex min-h-[108px] items-center gap-4 p-4 sm:p-5", className)}
+      >
+        <div className="stat-8d-icon flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/60">
+          {icon}
         </div>
-        <p className="mt-1 text-sm text-muted">{subtitle}</p>
+        <div className="h-14 w-px shrink-0 bg-brand-600/80" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xl font-extrabold leading-tight text-brand-700 dark:text-brand-300 sm:text-2xl">
+            {title}
+          </div>
+          <p className="mt-1 text-sm text-muted">{subtitle}</p>
+        </div>
       </div>
     </div>
   );
@@ -46,12 +77,13 @@ export function WelcomeCard({ name, verified, loading }: { name: string; verifie
         </span>
       }
       subtitle={`Welcome To ${BRAND_SHORT}`}
+      delay="0s"
     />
   );
 }
 
 export function SpentCard({ amount, loading }: { amount: number | string | null | undefined; loading?: boolean }) {
-  return <StatCard loading={loading} icon={<CoinsIllustration />} title={money(amount)} subtitle="You've Spent" />;
+  return <StatCard loading={loading} icon={<CoinsIllustration />} title={money(amount)} subtitle="You've Spent" delay="0.35s" />;
 }
 
 export function OrdersCard({ count, loading }: { count: number; loading?: boolean }) {
@@ -61,12 +93,13 @@ export function OrdersCard({ count, loading }: { count: number; loading?: boolea
       icon={<CartIllustration />}
       title={count.toLocaleString()}
       subtitle="Orders (Today)"
+      delay="0.7s"
     />
   );
 }
 
 export function BalanceCard({ amount, loading }: { amount: number | string | null | undefined; loading?: boolean }) {
-  return <StatCard loading={loading} icon={<WalletIllustration />} title={money(amount)} subtitle="Your Balance" />;
+  return <StatCard loading={loading} icon={<WalletIllustration />} title={money(amount)} subtitle="Your Balance" delay="1.05s" />;
 }
 
 function AvatarIllustration() {

@@ -42,7 +42,7 @@ export function CustomerHome() {
   return (
     <div className="space-y-6">
       <MobileActionButtons />
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 [perspective:1000px] lg:grid-cols-4">
         <WelcomeCard name={handle} verified={me?.user.status === "active"} loading={loading} />
         <SpentCard amount={spent} loading={loading} />
         <OrdersCard count={todayOrders} loading={loading} />
