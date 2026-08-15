@@ -35,7 +35,7 @@ export function HomePage() {
         <h2 className="text-2xl font-extrabold">Choose a platform</h2>
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {platforms.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
-          {platforms.data?.map((p) => (
+          {platforms.data?.filter((p) => Number(p.product_count ?? 1) > 0).map((p) => (
             <Link key={p.id} to={`/services?platform=${p.slug}`}>
               <Card className="h-full transition hover:-translate-y-0.5 hover:border-brand-300">
                 <PlatformIcon name={p.icon} color={p.color} className="h-7 w-7" />

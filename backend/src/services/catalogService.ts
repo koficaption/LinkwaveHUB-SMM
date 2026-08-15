@@ -22,7 +22,10 @@ const productSelect = `
 `;
 
 export async function listPlatforms(opts: { includeInactive?: boolean } = {}) {
-  const where = opts.includeInactive ? "" : "WHERE is_active = TRUE";
+  const where = opts.includeInactive
+    ? ""
+    : `WHERE is_active = TRUE
+       AND EXISTS (SELECT 1 FROM products x WHERE x.platform_id = p.id AND x.status = 'active')`;
   return query(
     `SELECT p.*,
       (SELECT COUNT(*)::int FROM products x WHERE x.platform_id = p.id AND x.status = 'active') AS product_count
@@ -124,17 +127,39 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
   if (!opts.includeInactive) where.push("c.is_active = TRUE");
   if (opts.platformId) {
     params.push(opts.platformId);
-    where.push(`EXISTS (SELECT 1 FROM platform_categories pc WHERE pc.category_id = c.id AND pc.platform_id = $${params.length})`);
+    where.push(`EXISTS (
+      SELECT 1 FROM platform_categories pc
+      JOIN platforms pl ON pl.id = pc.platform_id
+      WHERE pc.category_id = c.id
+        AND (pc.platform_id::text = $${params.length} OR pl.slug = $${params.length})
+    )`);
   }
+  const countSql = opts.platformId
+    ? `(SELECT COUNT(*)::int FROM products x
+        JOIN platforms pl ON pl.id = x.platform_id
+        WHERE x.category_id = c.id AND x.status = 'active'
+          AND (x.platform_id::text = $1 OR pl.slug = $1))`
+    : `(SELECT COUNT(*)::int FROM products x WHERE x.category_id = c.id AND x.status = 'active')`;
   const sql = `SELECT c.*,
-    (SELECT COUNT(*)::int FROM products x WHERE x.category_id = c.id AND x.status = 'active') AS product_count,
-    COALESCE((SELECT json_agg(pc.platform_id) FROM platform_categories pc WHERE pc.category_id = c.id), '[]'::json) AS platform_ids
+    ${countSql} AS product_count,
+    COALESCE((SELECT json_agg(pc.platform_id) FROM platform_categories pc WHERE pc.category_id = c.id), '[]'::json) AS platform_ids,
+    COALESCE((
+      SELECT jsonb_object_agg(pc.platform_id::text, cnt.c)
+      FROM platform_categories pc
+      JOIN LATERAL (
+        SELECT COUNT(*)::int AS c
+        FROM products x
+        WHERE x.platform_id = pc.platform_id AND x.category_id = c.id AND x.status = 'active'
+      ) cnt ON TRUE
+      WHERE pc.category_id = c.id
+    ), '{}'::jsonb) AS platform_counts
     FROM categories c ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY c.sort_order, c.name`;
   const rows = await query(sql, params);
   return rows
     .filter((row) => opts.includeInactive || isCanonicalCategorySlug(String(row.slug || "")))
     .filter((row) => opts.includeInactive || !looksLikeProviderCategory(String(row.name || "")))
+    .filter((row) => opts.includeInactive || Number(row.product_count || 0) > 0)
     .map((row) => opts.includeInactive ? row : ({ ...row, name: publicCategoryName(String(row.name || "")) }));
 }
 

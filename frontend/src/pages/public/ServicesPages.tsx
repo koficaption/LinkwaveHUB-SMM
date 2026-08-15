@@ -16,6 +16,7 @@ import { productRefill } from "@/utils/refill";
 import { productCancel } from "@/utils/cancel";
 import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
+import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -47,11 +48,11 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
         <Input placeholder="Search services" defaultValue={search} onBlur={(e) => set("q", e.target.value)} />
         <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
           <option value="">All platforms</option>
-          {platforms.data?.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
+          {platforms.data?.filter((p) => Number(p.product_count ?? 1) > 0).map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
         </Select>
         <Select value={category} onChange={(e) => set("category", e.target.value)}>
           <option value="">All categories</option>
-          {categories.data?.filter((c) => !isProviderCategory(c.name)).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
+          {categories.data?.filter((c) => !isProviderCategory(c.name) && Number(c.product_count ?? 1) > 0).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
         </Select>
         <Select value={refill} onChange={(e) => set("refill", e.target.value)}>
           <option value="">Refill: All</option>
@@ -168,9 +169,12 @@ export function ServiceDetailPage() {
           <RefillBadge {...productRefill(p)} />
           <CancelBadge supported={productCancel(p).supported} />
         </div>
-        <div className="mt-5">
-          <span className="label">Description</span>
-          <ServiceDescription product={p} />
+        <div className="mt-5 space-y-3">
+          <InstagramFollowersNotice product={p} />
+          <div>
+            <span className="label">Description</span>
+            <ServiceDescription product={p} />
+          </div>
         </div>
         <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
           <Card>Delivery<br /><strong>{p.avg_delivery_time}</strong></Card>

@@ -11,6 +11,7 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productCancel } from "@/utils/cancel";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
+import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
 import { productRefill } from "@/utils/refill";
 import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 
@@ -50,13 +51,15 @@ export function NewOrderPanel() {
   const categoryOptions = useMemo(() => {
     const plats = [...(platforms.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
     const cats = [...(categories.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-    const options: { key: string; category: Category; platform: Platform }[] = [];
+    const options: { key: string; category: Category; platform: Platform; count: number }[] = [];
     for (const platform of plats) {
       for (const category of cats) {
         if (isProviderCategory(category.name)) continue;
         const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
         if (!linkedIds.includes(platform.id)) continue;
-        options.push({ key: `${platform.id}:${category.id}`, category, platform });
+        const count = Number(category.platform_counts?.[platform.id] ?? category.product_count ?? 0);
+        if (category.platform_counts && count <= 0) continue;
+        options.push({ key: `${platform.id}:${category.id}`, category, platform, count });
       }
     }
     return options;
@@ -135,9 +138,9 @@ export function NewOrderPanel() {
             }}
           >
             <option value="">Select a category</option>
-            {categoryOptions.map(({ key, category, platform }) => (
+            {categoryOptions.map(({ key, category, platform, count }) => (
               <option key={key} value={key}>
-                {platform.name} · {publicCategoryName(category.name)}
+                {platform.name} · {publicCategoryName(category.name)}{count ? ` (${count.toLocaleString()})` : ""}
               </option>
             ))}
           </select>
@@ -187,9 +190,12 @@ export function NewOrderPanel() {
         )}
       </label>
 
-      <div className="mt-4">
-        <span className="label">Description</span>
-        <ServiceDescription product={selected} />
+      <div className="mt-4 space-y-3">
+        <InstagramFollowersNotice product={selected} />
+        <div>
+          <span className="label">Description</span>
+          <ServiceDescription product={selected} />
+        </div>
       </div>
 
       {selected && (

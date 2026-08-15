@@ -47,6 +47,7 @@ export type Category = {
   sort_order: number;
   product_count?: number;
   platform_ids?: string[];
+  platform_counts?: Record<string, number>;
 };
 
 export type Product = {
