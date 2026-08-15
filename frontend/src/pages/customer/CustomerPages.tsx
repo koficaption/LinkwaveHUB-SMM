@@ -29,7 +29,7 @@ export function CustomerHome() {
   const { me } = useAuth();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
   const orders = useQuery({ queryKey: ["my-orders-home"], queryFn: () => api<Paginated<Order>>("/orders?limit=100") });
-  const handle = (me?.user.email.split("@")[0] || me?.user.full_name || "there").replace(/[^\w.-]/g, "");
+  const displayName = (me?.user.full_name || "").trim() || "there";
   const todayOrders = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -49,7 +49,7 @@ export function CustomerHome() {
       )}
       <div className="grid gap-4 [perspective:1000px] lg:grid-cols-4">
         <WelcomeCard
-          name={handle}
+          name={displayName}
           gender={me?.user.gender}
           verified={me?.user.status === "active"}
           loading={loading}
