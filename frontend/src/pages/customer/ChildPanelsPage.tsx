@@ -94,7 +94,7 @@ export function ChildPanelsPage() {
   });
 
   const data = offer.data;
-  const nameservers = data?.nameservers?.length ? data.nameservers : ["dns1.cloudns.net", "dns2.cloudns.net"];
+  const nameservers = data?.nameservers?.length ? data.nameservers : ["ns1.linkboostgrowth.site", "ns2.linkboostgrowth.site"];
   const listPrice = data?.listPrice ?? 220;
 
   if (me?.panel) return null;
@@ -133,7 +133,7 @@ export function ChildPanelsPage() {
             </label>
 
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-              <p>Before buying a Child Panel, point your domain to our nameservers. If you bought the domain at Spaceship, open the domain → Nameservers and replace Spaceship’s nameservers with:</p>
+              <p>Before buying a Child Panel, point your domain to our nameservers :</p>
               <ul className="mt-3 space-y-2">
                 {nameservers.map((ns) => (
                   <li key={ns} className="flex items-center justify-between gap-3 font-semibold">

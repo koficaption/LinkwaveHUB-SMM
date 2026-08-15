@@ -41,7 +41,7 @@ VALUES (
   '{
     "enabled": true,
     "monthlyPrice": 220,
-    "nameservers": ["dns1.cloudns.net", "dns2.cloudns.net"],
+    "nameservers": ["ns1.linkboostgrowth.site", "ns2.linkboostgrowth.site"],
     "currencies": [
       {"code":"USD","name":"U.S. Dollar (USD)"},
       {"code":"EUR","name":"Euro (EUR)"},

@@ -425,7 +425,7 @@ export function ProfilePage() {
       {!me?.panel && (
         <Card className="lg:col-span-2">
           <h2 className="font-bold">Child Panel</h2>
-          <p className="mt-1 text-sm text-slate-500">Order a hosted panel on your own domain. At Spaceship, set nameservers to dns1.cloudns.net and dns2.cloudns.net, then submit the form.</p>
+          <p className="mt-1 text-sm text-slate-500">Order a hosted panel on your own domain. Point it to our nameservers, then submit the form.</p>
           <Link to="/app/child-panels"><Button className="mt-3">Order child panel</Button></Link>
         </Card>
       )}
