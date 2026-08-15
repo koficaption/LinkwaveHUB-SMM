@@ -1,20 +1,15 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
-import { api, money } from "@/api/client";
-import type { Platform, Product } from "@/types";
+import { api } from "@/api/client";
+import type { Platform } from "@/types";
 import { Button, Card, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
 import { BrandLogo } from "@/components/BrandLogo";
-import { publicProductName } from "@/utils/catalog";
 
 export function HomePage() {
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
-  const products = useQuery({
-    queryKey: ["featured-products"],
-    queryFn: () => api<{ items: Product[] }>("/products?limit=8&sort=name"),
-  });
 
   return (
     <div>
@@ -67,25 +62,6 @@ export function HomePage() {
               </Card>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="container-page py-14">
-        <div className="flex items-end justify-between">
-          <h2 className="text-2xl font-extrabold">Popular services</h2>
-          <Link to="/services" className="text-sm font-semibold text-brand-700">See all</Link>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {products.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
-          {products.data?.items.map((p) => (
-            <Link key={p.id} to={`/services/${p.slug}`}>
-              <Card className="h-full transition hover:-translate-y-0.5 hover:border-brand-300">
-                <p className="text-xs font-semibold uppercase text-muted">{p.platform_name}</p>
-                <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
-                <p className="mt-3 text-lg font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1000</span></p>
-              </Card>
-            </Link>
-          ))}
         </div>
       </section>
 

@@ -68,6 +68,10 @@ export function publicProductName(name?: string | null) {
   return cleaned || original;
 }
 
+export function isSellableProductName(name?: string | null) {
+  return /[A-Za-z]{3,}/.test(publicProductName(name));
+}
+
 export function detectServiceCategory(panelCategory: string, serviceName: string) {
   const fromName = SERVICE_TYPES.find((type) => type.test.test(serviceName));
   if (fromName) return fromName;

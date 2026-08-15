@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -211,7 +211,10 @@ export async function listProducts(opts: {
 }) {
   const params: unknown[] = [];
   const where: string[] = [];
-  if (!opts.includeInactive) where.push(`p.status = 'active'`);
+  if (!opts.includeInactive) {
+    where.push(`p.status = 'active'`);
+    where.push(`p.name ~* '[A-Za-z]{3,}'`);
+  }
   if (opts.status) {
     params.push(opts.status);
     where.push(`p.status = $${params.length}`);
@@ -294,7 +297,9 @@ export async function getProduct(idOrSlug: string, opts: { admin?: boolean; rese
     [idOrSlug]
   );
   if (!row) throw new AppError("Product not found", 404);
-  if (!opts.admin && row.status !== "active") throw new AppError("Product not found", 404);
+  if (!opts.admin && (row.status !== "active" || !isSellableProductName(String(row.name || "")))) {
+    throw new AppError("Product not found", 404);
+  }
   return sanitizeProduct(row, Boolean(opts.reseller), Boolean(opts.admin));
 }
 

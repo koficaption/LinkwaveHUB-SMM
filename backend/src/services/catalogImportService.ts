@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug } from "../utils.js";
-import { detectServiceCategory, publicProductName } from "./catalogClassify.js";
+import { detectServiceCategory, isSellableProductName, publicProductName } from "./catalogClassify.js";
 import { parsePanelFlag, parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import { getSettings } from "./settingsService.js";
@@ -143,7 +143,8 @@ export async function importProviderPackages(
       const serviceId = String(service.service ?? "").trim();
       if (!serviceId) continue;
       const rawName = String(service.name || "").trim();
-      const displayName = (publicProductName(rawName) || rawName || `${service.category || "Service"} ${serviceId}`).slice(0, 180);
+      if (!isSellableProductName(rawName)) continue;
+      const displayName = publicProductName(rawName).slice(0, 180);
       if (!displayName) continue;
       const panelCategory = String(service.category || "General").slice(0, 80);
       const platform = detectPlatform(panelCategory, `${rawName} ${displayName}`);

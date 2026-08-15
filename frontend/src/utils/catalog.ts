@@ -40,3 +40,7 @@ export function publicProductName(name?: string | null) {
     .trim();
   return cleaned || original;
 }
+
+export function isSellableProductName(name?: string | null) {
+  return /[A-Za-z]{3,}/.test(publicProductName(name));
+}
