@@ -42,9 +42,7 @@ export async function attachReferrer(userId: string, code?: string | null, clien
   if (!referrer || referrer.id === userId) return null;
   const updated = await queryOne<{ id: string }>(
     `UPDATE users SET referred_by_id = $2
-     WHERE id = $1
-       AND referred_by_id IS NULL
-       AND created_at > NOW() - INTERVAL '14 days'
+     WHERE id = $1 AND referred_by_id IS NULL
      RETURNING id`,
     [userId, referrer.id],
     client
@@ -214,7 +212,7 @@ export async function getMyAffiliate(userId: string) {
   );
   return {
     code,
-    linkPath: `/register?ref=${code}`,
+    linkPath: `/r/${code}`,
     config: cfg,
     referredCount: Number(stats?.referred ?? 0),
     totalCommission: Number(stats?.commissions ?? 0),

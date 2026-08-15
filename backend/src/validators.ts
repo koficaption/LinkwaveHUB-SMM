@@ -105,12 +105,12 @@ export const API_SCOPES = [
 ] as const;
 
 export const apiApplySchema = z.object({
-  name: z.string().trim().min(2).max(120),
-  email: z.string().trim().email(),
-  website: optionalText(300),
-  companyName: optionalText(160),
+  website: z.string().trim().min(2).max(300),
   websiteUrl: optionalText(300),
-  intendedUsage: z.string().trim().min(8).max(2000),
+  name: optionalText(120),
+  email: z.string().trim().email().optional(),
+  companyName: optionalText(160),
+  intendedUsage: optionalText(2000),
   expectedMonthlyRequests: z.number().int().positive().max(100_000_000).optional(),
 });
 

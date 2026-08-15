@@ -139,10 +139,13 @@ export function AdminAffiliates() {
 
 export function ReferralCapture() {
   const location = useLocation();
+  const ref = new URLSearchParams(location.search).get("ref")
+    || location.pathname.match(/^\/r\/([A-Za-z0-9]{4,40})$/i)?.[1]
+    || "";
+  if (ref) persistReferralCode(ref);
   useEffect(() => {
-    const ref = new URLSearchParams(location.search).get("ref");
     if (ref) persistReferralCode(ref);
-  }, [location.search]);
+  }, [location.search, location.pathname, ref]);
   return null;
 }
 

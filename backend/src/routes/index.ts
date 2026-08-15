@@ -46,7 +46,7 @@ import * as googleAuth from "../services/googleAuth.js";
 import * as affiliates from "../services/affiliateService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin } from "../utils.js";
+import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest } from "../utils.js";
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
@@ -115,7 +115,11 @@ router.get("/store/:slug", asyncHandler(async (req, res) => {
 }));
 
 router.post("/auth/register", authLimit, validate(registerSchema), asyncHandler(async (req, res) => {
-  const result = await auth.registerUser({ ...req.body, ip: clientIp(req) });
+  const result = await auth.registerUser({
+    ...req.body,
+    referralCode: req.body.referralCode || referralCodeFromRequest(req),
+    ip: clientIp(req),
+  });
   setAuthCookie(res, result.token, req);
   res.status(201).json(ok(result, "Account created successfully"));
 }));
@@ -170,7 +174,12 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
   }
   try {
     const googleState = googleAuth.verifyGoogleState(state);
-    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, googleState.referralCode);
+    const referralCode = googleState.referralCode || referralCodeFromRequest(req);
+    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, referralCode);
+    if (referralCode) {
+      await affiliates.attachReferrer(result.user.id, referralCode);
+      await affiliates.settleMissedCommissionsForDepositor(result.user.id);
+    }
     setAuthCookie(res, result.token, req);
     return res.redirect(`${origin}/auth/callback?token=${encodeURIComponent(result.token)}`);
   } catch {
@@ -191,8 +200,9 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
       : body.code
         ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode)
         : (() => { throw new AppError("Google credential is required", 400); })();
-  if (body.referralCode) {
-    await affiliates.attachReferrer(result.user.id, body.referralCode);
+  const referralCode = body.referralCode || referralCodeFromRequest(req);
+  if (referralCode) {
+    await affiliates.attachReferrer(result.user.id, referralCode);
     await affiliates.settleMissedCommissionsForDepositor(result.user.id);
   }
   setAuthCookie(res, result.token, req);

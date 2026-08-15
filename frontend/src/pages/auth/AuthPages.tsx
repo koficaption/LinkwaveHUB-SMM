@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Card, Input, PasswordInput } from "@/components/ui";
 import { ApiError, api, errorMessage } from "@/api/client";
-import { storedReferralCode } from "@/pages/customer/AffiliatePages";
+import { storedReferralCode, persistReferralCode } from "@/pages/customer/AffiliatePages";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const loginSchema = z.object({ email: z.string().email("Enter a valid email"), password: z.string().min(1, "Password is required") });
@@ -179,8 +179,11 @@ export function ResetPasswordPage() {
 export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [asReseller, setAsReseller] = useState(false);
-  const invitedBy = storedReferralCode();
+  const urlRef = params.get("ref");
+  if (urlRef) persistReferralCode(urlRef);
+  const invitedBy = urlRef || storedReferralCode();
   const publicSettings = useQuery({ queryKey: ["public-settings"], queryFn: () => api<{ resellers?: { upgradeEnabled?: boolean; upgradeFee?: number } }>("/settings/public") });
   const paidUpgrade = publicSettings.data?.resellers?.upgradeEnabled !== false;
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", storeName: "" } });
@@ -204,6 +207,7 @@ export function RegisterPage() {
               whatsappNumber: values.whatsappNumber?.trim() || undefined,
               asReseller: paidUpgrade ? false : asReseller,
               storeName: values.storeName?.trim() || undefined,
+              referralCode: invitedBy,
             });
             toast.success("Account created");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
@@ -272,6 +276,7 @@ export function AuthCallbackPage() {
 const LIVE_GOOGLE_CALLBACK = "https://linkboostgrowth.site/api/auth/google/callback";
 
 function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
+  const [params] = useSearchParams();
   const config = useQuery({
     queryKey: ["google-config"],
     queryFn: () => api<{
@@ -283,7 +288,9 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   });
   const enabled = Boolean(config.data?.enabled);
   const redirectUri = config.data?.redirectUri || LIVE_GOOGLE_CALLBACK;
-  const ref = storedReferralCode();
+  const urlRef = params.get("ref");
+  if (urlRef) persistReferralCode(urlRef);
+  const ref = urlRef || storedReferralCode();
   const googleStart = ref
     ? `/api/auth/google/start?ref=${encodeURIComponent(ref)}`
     : "/api/auth/google/start";

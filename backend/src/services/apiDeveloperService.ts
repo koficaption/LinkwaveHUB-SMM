@@ -107,9 +107,13 @@ export async function applyForApi(user: AuthUser, input: Record<string, unknown>
     throw new AppError("You already have an API access application", 400);
   }
 
-  const website = String(input.websiteUrl || input.website || "").trim() || null;
+  const website = String(input.websiteUrl || input.website || "").trim();
+  if (website.length < 2) throw new AppError("Enter the name of your website", 400);
   const plan = user.role === "reseller" || user.role === "admin" ? "reseller" : "free";
   const rate = planLimit(plan, settings);
+  const name = String(input.name || user.full_name || "API developer").trim();
+  const email = String(input.email || user.email).trim().toLowerCase();
+  const intended = String(input.intendedUsage || `Website: ${website}`).trim();
 
   const row = existing
     ? await queryOne<Record<string, unknown>>(
@@ -122,12 +126,12 @@ export async function applyForApi(user: AuthUser, input: Record<string, unknown>
         [
           existing.id,
           plan,
-          input.name,
-          String(input.email).toLowerCase(),
+          name,
+          email,
           input.companyName ?? null,
           website,
-          input.intendedUsage,
-          input.expectedMonthlyRequests ?? null,
+          intended,
+          input.expectedMonthlyRequests ?? 10000,
           rate,
         ]
       )
@@ -140,12 +144,12 @@ export async function applyForApi(user: AuthUser, input: Record<string, unknown>
         [
           user.id,
           plan,
-          input.name,
-          String(input.email).toLowerCase(),
+          name,
+          email,
           input.companyName ?? null,
           website,
-          input.intendedUsage,
-          input.expectedMonthlyRequests ?? null,
+          intended,
+          input.expectedMonthlyRequests ?? 10000,
           rate,
         ]
       );

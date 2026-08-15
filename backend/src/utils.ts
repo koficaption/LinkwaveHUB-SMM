@@ -191,6 +191,45 @@ export function publicAppOrigin(originHeader?: string | string[]): string {
   return config.frontendUrl.replace(/\/$/, "");
 }
 
+export function normalizeReferralCode(code?: string | null) {
+  if (!code || typeof code !== "string") return "";
+  const cleaned = code.trim().replace(/^.*[?&]ref=/i, "").split(/[/?#]/)[0];
+  if (!/^[A-Za-z0-9]{4,40}$/.test(cleaned)) return "";
+  return cleaned;
+}
+
+export function referralCodeFromRequest(req: { body?: { referralCode?: string }; query?: Record<string, unknown>; cookies?: Record<string, string> }) {
+  const queryRef = typeof req.query?.ref === "string" ? req.query.ref : "";
+  return (
+    normalizeReferralCode(req.body?.referralCode) ||
+    normalizeReferralCode(queryRef) ||
+    normalizeReferralCode(req.cookies?.lwh_ref)
+  );
+}
+
+export function setReferralCookie(res: { cookie: (name: string, value: string, opts: Record<string, unknown>) => void }, code: string) {
+  const value = normalizeReferralCode(code);
+  if (!value) return;
+  res.cookie("lwh_ref", value, {
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    sameSite: "lax",
+    httpOnly: false,
+    secure: config.frontendUrl.startsWith("https"),
+  });
+}
+
+export function captureReferralFromRequest(
+  req: { path: string; query?: Record<string, unknown> },
+  res: { cookie: (name: string, value: string, opts: Record<string, unknown>) => void }
+) {
+  const pathCode = req.path.match(/^\/r\/([A-Za-z0-9]{4,40})$/i)?.[1] || "";
+  const queryRef = typeof req.query?.ref === "string" ? req.query.ref : "";
+  const code = normalizeReferralCode(queryRef) || normalizeReferralCode(pathCode);
+  if (code) setReferralCookie(res, code);
+  return code;
+}
+
 /** Checkout providers redirect the payer's browser here after payment. Only /app/* paths are allowed. */
 export function safeCheckoutReturnUrl(candidate: string | undefined, fallbackPath: string): string {
   const path = fallbackPath.startsWith("/") ? fallbackPath : `/${fallbackPath}`;

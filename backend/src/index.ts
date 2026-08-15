@@ -13,7 +13,7 @@ import { errorHandler, asyncHandler } from "./middleware/errorHandler.js";
 import { migrate } from "./db/migrate.js";
 import { seedIfEmpty } from "./db/seed.js";
 import { handleKorapayWebhook } from "./routes/korapayWebhook.js";
-import { isAllowedWebHost } from "./utils.js";
+import { isAllowedWebHost, captureReferralFromRequest } from "./utils.js";
 import { syncRefillStatuses } from "./services/refillService.js";
 import { syncWebhookDeliveries } from "./services/apiWebhookService.js";
 import { syncOpenOrdersFromProvider } from "./services/orderService.js";
@@ -70,6 +70,10 @@ app.post(
 );
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
+app.use((req, res, next) => {
+  captureReferralFromRequest(req, res);
+  next();
+});
 const dashboardLimit = rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false });
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/v1")) return next();
@@ -91,6 +95,11 @@ if (fs.existsSync(path.join(frontendDist, "index.html"))) {
   }));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    const ref = req.path.match(/^\/r\/([A-Za-z0-9]{4,40})$/i);
+    if (ref) {
+      captureReferralFromRequest(req, res);
+      return res.redirect(302, `/register?ref=${encodeURIComponent(ref[1])}`);
+    }
     res.setHeader("Cache-Control", "no-store");
     res.sendFile(path.join(frontendDist, "index.html"));
   });

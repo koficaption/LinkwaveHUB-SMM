@@ -619,16 +619,8 @@ function WebhooksSection({ developer }: { developer: Developer | null }) {
 }
 
 function SettingsSection({ developer, onRefresh }: { developer: Developer | null; onRefresh: () => void }) {
-  const { me } = useAuth();
-  const [form, setForm] = useState({
-    name: developer?.applicant_name || me?.user.full_name || "",
-    email: developer?.applicant_email || me?.user.email || "",
-    companyName: developer?.company_name || "",
-    websiteUrl: developer?.website_url || "",
-    intendedUsage: developer?.intended_usage || "",
-    expectedMonthlyRequests: developer?.expected_monthly_requests || 10000,
-    allowedIps: (developer?.allowed_ips || []).join("\n"),
-  });
+  const [website, setWebsite] = useState(developer?.website_url || developer?.company_name || "");
+  const [allowedIps, setAllowedIps] = useState((developer?.allowed_ips || []).join("\n"));
 
   if (developer && developer.status !== "rejected") {
     return (
@@ -636,17 +628,16 @@ function SettingsSection({ developer, onRefresh }: { developer: Developer | null
         <Card>
           <h2 className="font-bold">Application</h2>
           <p className="mt-2 text-sm">Status: <Badge className={statusTone(developer.status)}>{developer.status}</Badge></p>
-          <p className="mt-2 text-sm text-muted">{developer.company_name} · {developer.website_url}</p>
-          <p className="mt-2 text-sm">{developer.intended_usage}</p>
+          <p className="mt-2 text-sm text-muted">Website: {developer.website_url || developer.company_name || "—"}</p>
         </Card>
         {developer.status === "approved" && (
           <Card>
             <h2 className="font-bold">IP restrictions</h2>
             <p className="mt-1 text-sm text-muted">Leave empty to allow any IP. One address per line.</p>
-            <Textarea className="mt-3" value={form.allowedIps} onChange={(e) => setForm({ ...form, allowedIps: e.target.value })} />
+            <Textarea className="mt-3" value={allowedIps} onChange={(e) => setAllowedIps(e.target.value)} />
             <Button className="mt-3" onClick={async () => {
               try {
-                await api("/developer/settings", { method: "PATCH", body: JSON.stringify({ allowedIps: form.allowedIps.split("\n").map((s) => s.trim()).filter(Boolean) }) });
+                await api("/developer/settings", { method: "PATCH", body: JSON.stringify({ allowedIps: allowedIps.split("\n").map((s) => s.trim()).filter(Boolean) }) });
                 toast.success("Settings saved");
                 onRefresh();
               } catch (e) { toast.error(errorMessage(e)); }
@@ -660,21 +651,18 @@ function SettingsSection({ developer, onRefresh }: { developer: Developer | null
   return (
     <Card>
       <h2 className="font-bold">API access application</h2>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="block"><span className="label">Name</span><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-        <label className="block"><span className="label">Email</span><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-        <label className="block"><span className="label">Company / business</span><Input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} /></label>
-        <label className="block"><span className="label">Website URL</span><Input value={form.websiteUrl} onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })} /></label>
-        <label className="block sm:col-span-2"><span className="label">Intended API usage</span><Textarea value={form.intendedUsage} onChange={(e) => setForm({ ...form, intendedUsage: e.target.value })} /></label>
-        <label className="block"><span className="label">Expected monthly requests</span><Input type="number" value={form.expectedMonthlyRequests} onChange={(e) => setForm({ ...form, expectedMonthlyRequests: Number(e.target.value) })} /></label>
-      </div>
+      <p className="mt-1 text-sm text-muted">Enter the name of your website. We use your account name and email for the rest.</p>
+      <label className="mt-4 block">
+        <span className="label">Name of website</span>
+        <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="e.g. Quick Data Ghana" />
+      </label>
       <Button className="mt-4" onClick={async () => {
         try {
-          await api("/developer/apply", { method: "POST", body: JSON.stringify({ ...form, website: form.websiteUrl }) });
+          await api("/developer/apply", { method: "POST", body: JSON.stringify({ website: website.trim() }) });
           toast.success("Application submitted");
           onRefresh();
         } catch (e) { toast.error(errorMessage(e)); }
-      }}>Submit application</Button>
+      }}>Submit</Button>
     </Card>
   );
 }
