@@ -263,10 +263,6 @@ export const resellerPriceSchema = z.object({
   isEnabled: z.boolean().optional(),
 });
 
-export const dashboardResetSchema = z.object({
-  confirm: z.string().min(1).max(40),
-});
-
 export const adminBroadcastSchema = z.object({
   title: z.string().min(2).max(160),
   body: z.string().min(2).max(4000),

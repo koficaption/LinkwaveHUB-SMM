@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, money } from "@/api/client";
 import { Card, PageHeader, Select, Skeleton } from "@/components/ui";
-import { ResetDashboardCard } from "@/pages/admin/ResetDashboardCard";
 import { useState } from "react";
 
 const COLORS = ["#0d9488", "#6366f1", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6", "#84cc16", "#64748b"];
@@ -38,7 +37,6 @@ export function AdminOverview() {
         <Link to="/admin/settings" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">USD rate and default percent</Link>
         <Link to="/admin/wallets" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Wallets</Link>
       </div>
-      <ResetDashboardCard />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {overview.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         {cards.map(([label, value]) => (
