@@ -17,13 +17,26 @@ export function isProviderCategory(name?: string | null) {
   return PROVIDER_NOISE.test(String(name || ""));
 }
 
-export function isEachPrice(product?: { price_unit?: string } | null) {
-  return product?.price_unit === "each";
+export function isEachPrice(product?: {
+  price_unit?: string;
+  name?: string;
+  min_quantity?: number;
+  max_quantity?: number;
+} | null) {
+  if (!product) return false;
+  if (product.price_unit === "each") return true;
+  const min = Number(product.min_quantity ?? 0);
+  const max = Number(product.max_quantity ?? 0);
+  return /netflix/i.test(product.name || "") && min <= 10 && max <= 10;
 }
 
 export function orderTotal(unit: number, quantity: number, priceUnit?: string) {
   if (priceUnit === "each") return unit * quantity;
   return (unit * quantity) / 1000;
+}
+
+export function priceUnitSuffix(product?: { price_unit?: string; name?: string; min_quantity?: number; max_quantity?: number } | null) {
+  return isEachPrice(product) ? "per 1" : "/ 1,000";
 }
 
 export function publicProductDescription(description?: string | null) {

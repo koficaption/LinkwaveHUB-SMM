@@ -148,6 +148,14 @@ export function detectPlatform(category: string, name: string) {
   return OTHER_PLATFORM;
 }
 
-export function looksLikePerUnitProduct(name: string, minQty: number, maxQty: number) {
-  return minQty <= 10 && maxQty <= 100 && /netflix/i.test(name);
+export function looksLikePerUnitProduct(
+  name: string,
+  minQty: number,
+  maxQty: number,
+  opts?: { cost?: number; providerServiceId?: string | null }
+) {
+  if (!Number.isFinite(minQty) || minQty > 10 || !Number.isFinite(maxQty) || maxQty > 10) return false;
+  if (/netflix/i.test(name)) return true;
+  const providerId = String(opts?.providerServiceId || "").trim();
+  return !providerId && Number(opts?.cost ?? 0) === 0;
 }

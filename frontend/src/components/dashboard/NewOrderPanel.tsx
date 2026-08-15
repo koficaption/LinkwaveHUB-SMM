@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal } from "@/utils/catalog";
+import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -74,7 +74,7 @@ export function NewOrderPanel() {
   const unit = Number(selected?.display_price_per_1000 ?? selected?.price_per_1000 ?? 0);
   const qty = Number(quantity || selected?.min_quantity || 0);
   const each = isEachPrice(selected);
-  const total = selected ? orderTotal(unit, qty, selected.price_unit) : 0;
+  const total = selected ? orderTotal(unit, qty, each ? "each" : "per_1000") : 0;
 
   useEffect(() => {
     if (selected) setQuantity(String(selected.min_quantity));
@@ -98,7 +98,7 @@ export function NewOrderPanel() {
 
   function serviceLabel(p: Product) {
     const sid = p.provider_service_id || p.id.slice(0, 8);
-    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)}${isEachPrice(p) ? " each" : " / 1,000"}`;
+    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`;
   }
 
   return (
@@ -224,16 +224,16 @@ export function NewOrderPanel() {
           <div className="grid gap-3 rounded-2xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
             <p>
               <span className="text-muted">Price</span><br />
-              <strong>{each ? `${money(unit)} each` : `${money(unit)} / 1,000`}</strong>
+              <strong>{money(unit)} {each ? "per 1" : "/ 1,000"}</strong>
             </p>
             <p><span className="text-muted">Current Balance</span><br /><strong>{me?.wallet ? money(me.wallet.available_balance ?? me.wallet.balance) : "—"}</strong></p>
             <p><span className="text-muted">Estimated Delivery</span><br /><strong>{selected.avg_delivery_time || "—"}</strong></p>
             <p><span className="text-muted">Total</span><br /><strong className="text-lg text-brand-700">{money(total)}</strong></p>
-            {!each && (
-              <p className="sm:col-span-2 text-xs text-muted">
-                {money(unit)} per 1,000 × {qty.toLocaleString()} = {money(total)}. This is not {money(unit)} per item.
-              </p>
-            )}
+            <p className="sm:col-span-2 text-xs text-muted">
+              {each
+                ? `${money(unit)} per 1 × ${qty.toLocaleString()} = ${money(total)}`
+                : `${money(unit)} per 1,000 × ${qty.toLocaleString()} = ${money(total)}. This is not ${money(unit)} per 1.`}
+            </p>
             {me?.user.role === "customer" && (loyalty.data?.discountPercent ?? 0) > 0 && (
               <p className="sm:col-span-2 text-brand-800 dark:text-brand-300">
                 {loyalty.data?.current.name} {loyalty.data?.discountPercent}% off is already included in this price.

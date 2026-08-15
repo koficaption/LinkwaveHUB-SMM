@@ -197,20 +197,20 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
           <p className="text-sm font-semibold">Your price</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
             {form.priceUnit === "each"
-              ? "This price is charged once per quantity (for Netflix, subscriptions, and similar packages). Quantity 1 = this amount."
-              : "Provider cost is what you pay the panel. Followers, likes and views are priced per 1,000. Quantity 1 of ₵120 / 1,000 costs ₵0.12."}
+              ? "This price is for 1 item. Quantity 1 of ₵120 costs ₵120."
+              : "Followers, likes and views are priced per 1,000. Quantity 1 of ₵120 / 1,000 costs ₵0.12. Tick the box below for packages that cost ₵120 per 1."}
           </p>
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.priceUnit === "each"} onChange={(e) => set("priceUnit", e.target.checked ? "each" : "per_1000")} />
-            Charge this price for each item (package / subscription)
+            Charge this price per 1 (not per 1,000)
           </label>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="block"><span className="label">{form.priceUnit === "each" ? "Provider cost each (GHS)" : "Provider cost / 1000 (GHS)"}</span><Input type="number" step="0.01" value={form.costPer1000} onChange={(e) => setCost(Number(e.target.value))} /></label>
+            <label className="block"><span className="label">{form.priceUnit === "each" ? "Provider cost per 1 (GHS)" : "Provider cost / 1,000 (GHS)"}</span><Input type="number" step="0.01" value={form.costPer1000} onChange={(e) => setCost(Number(e.target.value))} /></label>
             <label className="block"><span className="label">Your percent %</span><Input type="number" step="0.1" value={form.markupPercent} onChange={(e) => setPercent(Number(e.target.value))} /></label>
-            <label className="block"><span className="label">{form.priceUnit === "each" ? "Customer pays each" : "Customer pays / 1000"}</span><Input type="number" step="0.01" value={form.pricePer1000} onChange={(e) => setSell(Number(e.target.value))} /></label>
+            <label className="block"><span className="label">{form.priceUnit === "each" ? "Customer pays per 1" : "Customer pays / 1,000"}</span><Input type="number" step="0.01" value={form.pricePer1000} onChange={(e) => setSell(Number(e.target.value))} /></label>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
-            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">Profit {form.priceUnit === "each" ? "each" : "/ 1000"}: <strong className="text-emerald-700 dark:text-emerald-400">{money(profit)}</strong></div>
+            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">Profit {form.priceUnit === "each" ? "per 1" : "/ 1,000"}: <strong className="text-emerald-700 dark:text-emerald-400">{money(profit)}</strong></div>
             <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">{form.priceUnit === "each" ? `Qty 1 costs the customer ${money(form.pricePer1000)}` : `On 1000 units you keep ${money(profit)} after paying the provider ${money(form.costPer1000)}`}</div>
           </div>
         </div>

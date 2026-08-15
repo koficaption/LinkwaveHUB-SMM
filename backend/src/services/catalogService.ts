@@ -351,7 +351,10 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       input.apiPricePer1000 ?? null,
       input.apiMinQuantity ?? null,
       input.apiMaxQuantity ?? null,
-      input.priceUnit === "each" || looksLikePerUnitProduct(String(input.name || ""), Number(input.minQuantity), Number(input.maxQuantity))
+      input.priceUnit === "each" || looksLikePerUnitProduct(String(input.name || ""), Number(input.minQuantity), Number(input.maxQuantity), {
+        cost: Number(input.costPer1000),
+        providerServiceId: input.providerServiceId == null ? "" : String(input.providerServiceId),
+      })
         ? "each"
         : "per_1000",
     ]
@@ -503,6 +506,12 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   }
   product.category_name = publicCategoryName(String(product.category_name || ""));
   product.description = publicProductDescription(product.description as string | null);
+  const perUnit = product.price_unit === "each" || looksLikePerUnitProduct(
+    String(product.name || ""),
+    Number(product.min_quantity),
+    Number(product.max_quantity),
+    { cost: Number(product.cost_per_1000), providerServiceId: String(product.provider_service_id ?? "") }
+  );
   if (!admin) {
     product.name = publicProductName(String(product.name || ""));
     delete product.cost_per_1000;
@@ -519,7 +528,7 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     product.loyalty_discount_percent = loyaltyDiscountPercent;
   }
   product.display_price_per_1000 = display;
-  product.price_unit = product.price_unit === "each" ? "each" : "per_1000";
+  product.price_unit = perUnit ? "each" : "per_1000";
   return product;
 }
 

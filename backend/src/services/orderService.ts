@@ -6,7 +6,7 @@ import { notify } from "./notificationService.js";
 import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
 import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
-import { publicProductName } from "./catalogClassify.js";
+import { publicProductName, looksLikePerUnitProduct } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -86,7 +86,12 @@ export async function quoteOrder(
     unit = applyLoyaltyDiscount(unit, await customerLoyaltyDiscountPercent(user));
   }
 
-  const priceUnit = product.price_unit === "each" ? "each" as const : "per_1000" as const;
+  const priceUnit = product.price_unit === "each" || looksLikePerUnitProduct(
+    String(product.name || ""),
+    Number(product.min_quantity),
+    Number(product.max_quantity),
+    { cost: Number(product.cost_per_1000), providerServiceId: String(product.provider_service_id ?? "") }
+  ) ? "each" as const : "per_1000" as const;
   const charge = calcCharge(unit, quantity, priceUnit);
   const cost = calcCharge(Number(product.cost_per_1000), quantity, priceUnit);
   return {
