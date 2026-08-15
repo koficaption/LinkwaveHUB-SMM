@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
 import { publicCategoryName, isProviderCategory, publicProductName } from "@/utils/catalog";
+import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -162,10 +163,10 @@ export function ServiceDetailPage() {
           <h1 className="text-3xl font-extrabold">{publicProductName(p.name)}</h1>
           <RefillBadge {...productRefill(p)} />
         </div>
-        <p className="mt-4 text-slate-600 dark:text-slate-300">{p.description}</p>
-        <ul className="mt-6 space-y-2 text-sm">
-          {(p.features || []).map((f) => <li key={f}>• {f}</li>)}
-        </ul>
+        <div className="mt-5">
+          <span className="label">Description</span>
+          <ServiceDescription product={p} />
+        </div>
         <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
           <Card>Delivery<br /><strong>{p.avg_delivery_time}</strong></Card>
           <Card>Type<br /><strong className="capitalize">{p.delivery_type}</strong></Card>

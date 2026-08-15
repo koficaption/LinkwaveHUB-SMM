@@ -8,8 +8,9 @@ import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, publicProductDescription, isProviderCategory, publicProductName } from "@/utils/catalog";
+import { publicCategoryName, isProviderCategory, publicProductName } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -137,19 +138,26 @@ export function NewOrderPanel() {
         {products.isLoading ? (
           <Skeleton className="h-12" />
         ) : (
-          <select
-            className="input h-12"
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            disabled={!canLoadServices}
-          >
-            <option value="">{canLoadServices ? "Select a service" : "Select a category first"}</option>
-            {visibleProducts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {serviceLabel(p)}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            {selected && (
+              <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-brand-800 px-2.5 py-0.5 text-[11px] font-bold text-white">
+                {selected.provider_service_id || selected.id.slice(0, 8)}
+              </span>
+            )}
+            <select
+              className={`input h-12 ${selected ? "pl-[4.75rem]" : ""}`}
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              disabled={!canLoadServices}
+            >
+              <option value="">{canLoadServices ? "Select a service" : "Select a category first"}</option>
+              {visibleProducts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {serviceLabel(p)}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
         {!products.isLoading && canLoadServices && visibleProducts.length > 0 && (
           <p className="mt-2 text-sm text-muted">
@@ -167,6 +175,11 @@ export function NewOrderPanel() {
           <p className="mt-2 text-sm text-muted">No services match that search or category.</p>
         )}
       </label>
+
+      <div className="mt-4">
+        <span className="label">Description</span>
+        <ServiceDescription product={selected} />
+      </div>
 
       {selected && (
         <form
@@ -191,9 +204,6 @@ export function NewOrderPanel() {
             </p>
             <RefillBadge {...productRefill(selected)} />
           </div>
-          {selected.description && publicProductDescription(selected.description) && (
-            <p className="text-sm text-slate-600 dark:text-slate-300">{publicProductDescription(selected.description)}</p>
-          )}
           <label className="block">
             <span className="label">Target / Link</span>
             <Input placeholder="https://..." value={target} onChange={(e) => setTarget(e.target.value)} />
