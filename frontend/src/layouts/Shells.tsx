@@ -98,8 +98,8 @@ export function AppShell({
   const navGroups = groups ?? [{ items: items ?? [] }];
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F6FAF9] dark:bg-slate-950">
-      <header className="sticky top-0 z-50 flex h-[4.25rem] items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#F6FAF9] dark:bg-slate-950">
+      <header className="z-50 flex h-[4.25rem] shrink-0 items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <BrandLogo to={home} />
         </div>
@@ -126,26 +126,27 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="lg:flex">
+      <div className="flex min-h-0 flex-1">
         <aside
           aria-label={title}
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex w-[min(20rem,88vw)] flex-col bg-brand-600 text-white shadow-xl transition-transform duration-300 lg:sticky lg:top-16 lg:z-30 lg:h-[calc(100vh-4rem)] lg:w-64 lg:translate-x-0 lg:shadow-none",
-            open ? "translate-x-0" : "-translate-x-full"
+            "z-50 flex w-[min(20rem,88vw)] flex-col bg-brand-600 text-white shadow-xl transition-transform duration-300",
+            "fixed inset-y-0 left-0 lg:static lg:z-30 lg:h-full lg:w-64 lg:translate-x-0 lg:shadow-none",
+            open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           )}
         >
-          <div className="flex h-16 items-center justify-between px-4 lg:hidden">
+          <div className="flex h-16 shrink-0 items-center justify-between px-4 lg:hidden">
             <p className="font-bold">Menu</p>
             <button onClick={() => setOpen(false)} aria-label="Close navigation" className="rounded-lg p-2 hover:bg-white/10">
               <X className="h-5 w-5" />
             </button>
           </div>
-          <nav className={cn("flex-1 space-y-4 overflow-y-auto px-3 py-4", dense && "text-[13px]")}>
+          <nav className={cn("min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-4", dense && "text-[13px]")}>
             {navGroups.map((group, i) => (
               <SidebarGroup key={group.label || i} group={group} home={home} onNavigate={() => setOpen(false)} />
             ))}
           </nav>
-          <div className="space-y-1 border-t border-white/15 p-3 lg:hidden">
+          <div className="shrink-0 space-y-1 border-t border-white/15 p-3 lg:hidden">
             <button
               className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium hover:bg-white/10"
               onClick={() => setDark(!dark)}
@@ -166,7 +167,7 @@ export function AppShell({
           </div>
         </aside>
         {open && <button className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu overlay" />}
-        <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10">
           <div className="container-dashboard">
             <Outlet />
           </div>
