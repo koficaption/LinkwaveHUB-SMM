@@ -8,6 +8,8 @@ import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { CancelBadge } from "@/components/dashboard/CancelBadge";
+import { productCancel } from "@/utils/cancel";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { productRefill } from "@/utils/refill";
 import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
@@ -212,6 +214,7 @@ export function NewOrderPanel() {
               {selected.avg_delivery_time ? ` · ${selected.avg_delivery_time}` : ""}
             </p>
             <RefillBadge {...productRefill(selected)} />
+            <CancelBadge supported={productCancel(selected).supported} />
           </div>
           <label className="block">
             <span className="label">Target / Link</span>

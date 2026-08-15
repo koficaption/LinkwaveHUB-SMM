@@ -1,6 +1,8 @@
 import { AlertTriangle } from "lucide-react";
 import type { Product } from "@/types";
 import { orderGuide } from "@/utils/orderGuide";
+import { productCancel } from "@/utils/cancel";
+import { CancelBar } from "@/components/dashboard/CancelBadge";
 
 export function ServiceDescription({ product }: { product?: Product }) {
   if (!product) {
@@ -12,9 +14,11 @@ export function ServiceDescription({ product }: { product?: Product }) {
   }
 
   const guide = orderGuide(product);
+  const canCancel = productCancel(product).supported;
   return (
     <div className="rounded-2xl bg-brand-50 px-4 py-5 text-sm leading-relaxed text-slate-800 dark:bg-slate-800 dark:text-slate-100">
-      <p className="flex items-start gap-2 text-[15px] font-bold text-brand-800 dark:text-brand-200">
+      <CancelBar supported={canCancel} />
+      <p className={`flex items-start gap-2 text-[15px] font-bold text-brand-800 dark:text-brand-200 ${canCancel ? "mt-3" : ""}`}>
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" aria-hidden />
         Please Read Before Ordering
       </p>

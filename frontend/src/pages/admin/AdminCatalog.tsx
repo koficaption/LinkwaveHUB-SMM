@@ -7,6 +7,8 @@ import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, Paginatio
 import { prettyStatus, statusTone } from "@/utils/cn";
 import { productRefill } from "@/utils/refill";
 import { priceUnitSuffix } from "@/utils/catalog";
+import { productCancel } from "@/utils/cancel";
+import { CancelBadge } from "@/components/dashboard/CancelBadge";
 
 function round4(value: number) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(4));
@@ -95,7 +97,7 @@ export function AdminProducts() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Provider","Provider cost","Your %","Sell","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Provider","Provider cost","Your %","Sell","Profit","Refill","Cancel","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -110,6 +112,7 @@ export function AdminProducts() {
                 <td className="p-2 whitespace-nowrap">{money(p.price_per_1000)} <span className="text-xs text-slate-500">{priceUnitSuffix(p)}</span></td>
                 <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
                 <td className="p-2">{productRefill(p).supported ? <Badge className={statusTone.available}>{productRefill(p).days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
+                <td className="p-2"><CancelBadge supported={productCancel(p).supported} /></td>
                 <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-2">

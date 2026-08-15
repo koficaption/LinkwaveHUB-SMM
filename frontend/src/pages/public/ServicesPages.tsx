@@ -11,7 +11,9 @@ import { Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "@
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productRefill } from "@/utils/refill";
+import { productCancel } from "@/utils/cancel";
 import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 
@@ -69,6 +71,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
             <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <RefillBadge {...productRefill(p)} />
+              <CancelBadge supported={productCancel(p).supported} />
               <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase text-emerald-800">{p.status}</span>
             </div>
             <Link to={`/services/${p.slug}`}><Button className="mt-4 w-full">View</Button></Link>
@@ -81,13 +84,13 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-brand-600 text-white">
               <tr>
-                {["ID","Platform","Category","Service","Price","Min / Max","Speed","Refill","Status",""].map((h) => (
+                {["ID","Platform","Category","Service","Price","Min / Max","Speed","Refill","Cancel","Status",""].map((h) => (
                   <th key={h} className="px-3 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {products.isLoading && <tr><td colSpan={10} className="p-4"><Skeleton className="h-24" /></td></tr>}
+              {products.isLoading && <tr><td colSpan={11} className="p-4"><Skeleton className="h-24" /></td></tr>}
               {products.data?.items.map((p) => (
                 <tr key={p.id} className="border-t border-slate-100 dark:border-slate-800">
                   <td className="px-3 py-3 font-mono text-xs">{p.provider_service_id || p.id.slice(0, 8)}</td>
@@ -103,6 +106,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
                   <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
                   <td className="px-3 py-3 text-xs">{p.avg_delivery_time || "—"}</td>
                   <td className="px-3 py-3"><RefillBadge {...productRefill(p)} /></td>
+                  <td className="px-3 py-3"><CancelBadge supported={productCancel(p).supported} /></td>
                   <td className="px-3 py-3 capitalize">{p.status}</td>
                   <td className="px-3 py-3"><Link to={`/services/${p.slug}`}><Button className="h-9 px-3">View</Button></Link></td>
                 </tr>
@@ -162,6 +166,7 @@ export function ServiceDetailPage() {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-extrabold">{publicProductName(p.name)}</h1>
           <RefillBadge {...productRefill(p)} />
+          <CancelBadge supported={productCancel(p).supported} />
         </div>
         <div className="mt-5">
           <span className="label">Description</span>
@@ -216,6 +221,10 @@ export function StorefrontPage() {
             <p className="text-xs text-slate-500">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
             <p className="mt-3 font-extrabold">{money(p.display_price_per_1000)} {priceUnitSuffix(p)}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <RefillBadge {...productRefill(p)} />
+              <CancelBadge supported={productCancel(p).supported} />
+            </div>
             <Link to={`/services/${p.slug}?store=${slug}`}><Button className="mt-4 w-full">Order</Button></Link>
           </Card>
         ))}

@@ -136,7 +136,7 @@ export async function importProviderPackages(
       const features = [
         service.type ? String(service.type) : "",
         refill ? (hint.days === 365 ? "Lifetime refill" : `${hint.days} day refill`) : "No refill",
-        service.cancel ? "Cancel available" : "",
+        service.cancel ? "Cancel anytime" : "",
       ].filter(Boolean);
       rows.push({
         platformId,

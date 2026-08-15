@@ -1,6 +1,7 @@
 import type { Product } from "@/types";
 import { publicCategoryName, publicProductDescription, publicProductName } from "@/utils/catalog";
 import { productRefill } from "@/utils/refill";
+import { productCancel } from "@/utils/cancel";
 
 const COUNTRIES: { test: RegExp; name: string }[] = [
   { test: /\busa\b|united states|\bus\b/i, name: "USA" },
@@ -69,15 +70,17 @@ function refillTime(product: Product) {
 
 export function orderGuide(product: Product): OrderGuide {
   const refill = productRefill(product);
+  const cancel = productCancel(product);
   const extra = publicProductDescription(product.description);
   const notes = [
     extra,
-    ...(product.features || []).filter((item) => item && !/^imported/i.test(item)),
+    ...(product.features || []).filter((item) => item && !/^imported/i.test(item) && !/^cancel (available|anytime)/i.test(item)),
     product.refill_instructions,
     "If demand is high, start time and speed can change.",
     "Wait until an order on the same link finishes before placing another on that link.",
     "Use a public profile, post, or video link. Do not send passwords.",
     refill.supported ? `Drops during the ${refill.days >= 365 ? "lifetime" : `${refill.days}-day`} refill window can be requested from Orders.` : null,
+    cancel.supported ? "This service can be cancelled anytime." : null,
   ].filter((item): item is string => Boolean(item && item.trim()));
 
   return {
@@ -87,6 +90,7 @@ export function orderGuide(product: Product): OrderGuide {
       { label: "Quality", value: quality(product) },
       { label: "Start Time", value: startTime(product) },
       { label: "Refill Time", value: refillTime(product) },
+      { label: "Cancel", value: cancel.supported ? "Anytime" : "No" },
       { label: "Category", value: `${product.platform_name} · ${publicCategoryName(product.category_name)}` },
       { label: "Min / Max", value: `${product.min_quantity.toLocaleString()} / ${product.max_quantity.toLocaleString()}` },
     ],
