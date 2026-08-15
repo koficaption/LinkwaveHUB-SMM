@@ -1,49 +1,12 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug } from "../utils.js";
-import { detectServiceCategory, isSellableProductName, publicProductName } from "./catalogClassify.js";
+import { detectPlatform, detectServiceCategory, isSellableProductName, publicProductName } from "./catalogClassify.js";
 import { parsePanelFlag, parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import { getSettings } from "./settingsService.js";
 import { listProviderServices } from "./providerService.js";
 import type { AuthUser } from "../middleware/auth.js";
-
-const PLATFORM_RULES: { test: RegExp; name: string; slug: string; icon: string; color: string }[] = [
-  { test: /tiktok/i, name: "TikTok", slug: "tiktok", icon: "Music2", color: "#111111" },
-  { test: /instagram|\big\b/i, name: "Instagram", slug: "instagram", icon: "Instagram", color: "#E1306C" },
-  { test: /youtube|yt\b/i, name: "YouTube", slug: "youtube", icon: "Youtube", color: "#FF0000" },
-  { test: /facebook|\bfb\b/i, name: "Facebook", slug: "facebook", icon: "Facebook", color: "#1877F2" },
-  { test: /\bx\b|twitter/i, name: "X", slug: "x", icon: "Twitter", color: "#0F1419" },
-  { test: /telegram/i, name: "Telegram", slug: "telegram", icon: "Send", color: "#229ED9" },
-  { test: /spotify/i, name: "Spotify", slug: "spotify", icon: "Music", color: "#1DB954" },
-  { test: /threads/i, name: "Threads", slug: "threads", icon: "AtSign", color: "#000000" },
-  { test: /snapchat/i, name: "Snapchat", slug: "snapchat", icon: "Smile", color: "#FFFC00" },
-  { test: /linkedin/i, name: "LinkedIn", slug: "linkedin", icon: "Globe", color: "#0A66C2" },
-  { test: /whatsapp/i, name: "WhatsApp", slug: "whatsapp", icon: "MessageCircle", color: "#25D366" },
-  { test: /discord/i, name: "Discord", slug: "discord", icon: "MessageCircle", color: "#5865F2" },
-  { test: /twitch/i, name: "Twitch", slug: "twitch", icon: "Eye", color: "#9146FF" },
-  { test: /pinterest/i, name: "Pinterest", slug: "pinterest", icon: "Heart", color: "#E60023" },
-  { test: /reddit/i, name: "Reddit", slug: "reddit", icon: "Globe", color: "#FF4500" },
-  { test: /soundcloud/i, name: "SoundCloud", slug: "soundcloud", icon: "Music", color: "#FF5500" },
-  { test: /audiomack/i, name: "Audiomack", slug: "audiomack", icon: "Music", color: "#FFA200" },
-  { test: /apple music/i, name: "Apple Music", slug: "apple-music", icon: "Music", color: "#FA243C" },
-  { test: /deezer/i, name: "Deezer", slug: "deezer", icon: "Music", color: "#A238FF" },
-  { test: /kick\b/i, name: "Kick", slug: "kick", icon: "Eye", color: "#53FC18" },
-  { test: /rumble/i, name: "Rumble", slug: "rumble", icon: "Youtube", color: "#85C742" },
-  { test: /likee/i, name: "Likee", slug: "likee", icon: "Music2", color: "#FF1C6C" },
-  { test: /kwai/i, name: "Kwai", slug: "kwai", icon: "Music2", color: "#FF4906" },
-  { test: /website|traffic|seo|visit/i, name: "Website Traffic", slug: "website-traffic", icon: "Globe", color: "#0D9488" },
-];
-
-function detectPlatform(category: string, name: string) {
-  const haystack = `${category} ${name}`;
-  return PLATFORM_RULES.find((rule) => rule.test.test(haystack)) ?? {
-    name: "Other",
-    slug: "other",
-    icon: "Globe",
-    color: "#0D9488",
-  };
-}
 
 function money4(value: number) {
   return Number(Math.max(0, value).toFixed(4));
@@ -103,16 +66,16 @@ export async function importProviderPackages(
       return row!.id;
     }
 
-    async function ensureCategory(name: string) {
+    async function ensureCategory(name: string, sort = 900) {
       const slug = categorySlug(name);
       const existing = categoryBySlug.get(slug);
       if (existing) return existing;
       const row = await queryOne<{ id: string }>(
         `INSERT INTO categories (name, slug, description, sort_order, is_active)
-         VALUES ($1,$2,$3,(SELECT COALESCE(MAX(sort_order),0)+1 FROM categories), TRUE)
-         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+         VALUES ($1,$2,$3,$4, TRUE)
+         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, sort_order = LEAST(categories.sort_order, EXCLUDED.sort_order), is_active = TRUE
          RETURNING id`,
-        [name.slice(0, 80), slug, "Imported from the connected SMM provider"],
+        [name.slice(0, 80), slug, "Imported from the connected SMM provider", sort],
         client
       );
       categoryBySlug.set(slug, row!.id);
@@ -147,10 +110,10 @@ export async function importProviderPackages(
       const displayName = publicProductName(rawName).slice(0, 180);
       if (!displayName) continue;
       const panelCategory = String(service.category || "General").slice(0, 80);
-      const platform = detectPlatform(panelCategory, `${rawName} ${displayName}`);
+      const platform = detectPlatform(panelCategory, displayName);
       const platformId = await ensurePlatform(platform);
-      const serviceCategory = detectServiceCategory(panelCategory, `${rawName} ${displayName}`);
-      const categoryId = await ensureCategory(serviceCategory.name);
+      const serviceCategory = detectServiceCategory(panelCategory, displayName);
+      const categoryId = await ensureCategory(serviceCategory.name, serviceCategory.sort);
       const linkKey = `${platformId}:${categoryId}`;
       if (!linked.has(linkKey)) {
         await query(
@@ -227,6 +190,8 @@ export async function importProviderPackages(
          )
          ON CONFLICT (provider_id, provider_service_id) WHERE provider_id IS NOT NULL AND provider_service_id IS NOT NULL
          DO UPDATE SET
+           platform_id = EXCLUDED.platform_id,
+           category_id = EXCLUDED.category_id,
            name = EXCLUDED.name,
            description = EXCLUDED.description,
            min_quantity = EXCLUDED.min_quantity,

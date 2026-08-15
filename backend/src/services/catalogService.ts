@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCanonicalCategorySlug, looksLikePerUnitProduct } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -13,7 +13,7 @@ const productSelect = `
   p.features, p.created_at, p.updated_at, p.platform_id, p.category_id, p.provider_id,
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
-  p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity,
+  p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -133,6 +133,7 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
     ORDER BY c.sort_order, c.name`;
   const rows = await query(sql, params);
   return rows
+    .filter((row) => opts.includeInactive || isCanonicalCategorySlug(String(row.slug || "")))
     .filter((row) => opts.includeInactive || !looksLikeProviderCategory(String(row.name || "")))
     .map((row) => opts.includeInactive ? row : ({ ...row, name: publicCategoryName(String(row.name || "")) }));
 }
@@ -215,6 +216,7 @@ export async function listProducts(opts: {
   if (!opts.includeInactive) {
     where.push(`p.status = 'active'`);
     where.push(`p.name ~* '[A-Za-z]{3,}'`);
+    where.push(`p.name !~* 'not[[:space:]]*available|unavailable|out[[:space:]]*of[[:space:]]*stock|do[[:space:]]*not[[:space:]]*order'`);
   }
   if (opts.status) {
     params.push(opts.status);
@@ -250,6 +252,7 @@ export async function listProducts(opts: {
     price_asc: "p.price_per_1000 ASC",
     price_desc: "p.price_per_1000 DESC",
     name: "p.name ASC",
+    catalog: "pl.sort_order, c.sort_order, p.name ASC",
   };
   const orderBy = sortMap[opts.sort ?? "newest"] ?? "p.created_at DESC";
   const requested = Math.max(1, Number(opts.limit ?? 50) || 50);
@@ -315,8 +318,8 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       status, delivery_type, avg_delivery_time, provider_service_id, image_url, features,
       refill_supported, refill_days, refill_type, refill_service_id, refill_instructions,
       refill_limit, provider_refill_supported, reseller_available, api_available,
-      api_price_per_1000, api_min_quantity, api_max_quantity
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+      api_price_per_1000, api_min_quantity, api_max_quantity, price_unit
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
     RETURNING *`,
     [
       input.platformId,
@@ -348,6 +351,9 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       input.apiPricePer1000 ?? null,
       input.apiMinQuantity ?? null,
       input.apiMaxQuantity ?? null,
+      input.priceUnit === "each" || looksLikePerUnitProduct(String(input.name || ""), Number(input.minQuantity), Number(input.maxQuantity))
+        ? "each"
+        : "per_1000",
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: input.name } });
@@ -386,7 +392,8 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       api_available = COALESCE($26, api_available),
       api_price_per_1000 = COALESCE($27, api_price_per_1000),
       api_min_quantity = COALESCE($28, api_min_quantity),
-      api_max_quantity = COALESCE($29, api_max_quantity)
+      api_max_quantity = COALESCE($29, api_max_quantity),
+      price_unit = COALESCE($30, price_unit)
      WHERE id = $1`,
     [
       id,
@@ -418,6 +425,7 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.apiPricePer1000 === undefined ? null : input.apiPricePer1000,
       input.apiMinQuantity === undefined ? null : input.apiMinQuantity,
       input.apiMaxQuantity === undefined ? null : input.apiMaxQuantity,
+      input.priceUnit === undefined ? null : input.priceUnit,
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -468,6 +476,7 @@ export async function duplicateProduct(id: string, actor: AuthUser, ip?: string)
       apiPricePer1000: current.api_price_per_1000 ? Number(current.api_price_per_1000) : null,
       apiMinQuantity: current.api_min_quantity ? Number(current.api_min_quantity) : null,
       apiMaxQuantity: current.api_max_quantity ? Number(current.api_max_quantity) : null,
+      priceUnit: current.price_unit === "each" ? "each" : "per_1000",
     },
     actor,
     ip
@@ -510,6 +519,7 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     product.loyalty_discount_percent = loyaltyDiscountPercent;
   }
   product.display_price_per_1000 = display;
+  product.price_unit = product.price_unit === "each" ? "each" : "per_1000";
   return product;
 }
 

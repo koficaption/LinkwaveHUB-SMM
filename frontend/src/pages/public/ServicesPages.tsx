@@ -12,7 +12,7 @@ import { PlatformIcon } from "@/components/ui/PlatformIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, isProviderCategory, publicProductName } from "@/utils/catalog";
+import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
@@ -29,7 +29,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   });
   const products = useQuery({
     queryKey: ["products", platform, category, search, page, refill],
-    queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=50&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${refill ? `&refill=${refill}` : ""}`),
+        queryFn: () => api<{ items: Product[]; total: number; limit: number; page: number }>(`/products?limit=50&page=${page}&sort=catalog${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}${refill ? `&refill=${refill}` : ""}`),
   });
   const set = (key: string, value: string) => setParams((p) => {
     if (value) p.set(key, value); else p.delete(key);
@@ -65,7 +65,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
             <p className="text-xs font-mono text-muted">#{p.provider_service_id || p.id.slice(0, 8)}</p>
             <h3 className="mt-1 font-bold">{publicProductName(p.name)}</h3>
             <p className="mt-1 text-sm text-muted">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
-            <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">/ 1k</span></p>
+            <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">{isEachPrice(p) ? "each" : "/ 1k"}</span></p>
             <p className="mt-1 text-sm text-muted">Min {p.min_quantity.toLocaleString()} · Max {p.max_quantity.toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <RefillBadge {...productRefill(p)} />
@@ -81,7 +81,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-brand-600 text-white">
               <tr>
-                {["ID","Platform","Category","Service","Price / 1k","Min / Max","Speed","Refill","Status",""].map((h) => (
+                {["ID","Platform","Category","Service","Price","Min / Max","Speed","Refill","Status",""].map((h) => (
                   <th key={h} className="px-3 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -99,7 +99,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
                   </td>
                   <td className="px-3 py-3">{publicCategoryName(p.category_name)}</td>
                   <td className="px-3 py-3 font-medium">{publicProductName(p.name)}</td>
-                  <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}</span></td>
+                  <td className="px-3 py-3"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">{money(p.display_price_per_1000 ?? p.price_per_1000)}{isEachPrice(p) ? " each" : " / 1k"}</span></td>
                   <td className="px-3 py-3 text-xs">{p.min_quantity.toLocaleString()} / {p.max_quantity.toLocaleString()}</td>
                   <td className="px-3 py-3 text-xs">{p.avg_delivery_time || "—"}</td>
                   <td className="px-3 py-3"><RefillBadge {...productRefill(p)} /></td>
@@ -138,7 +138,7 @@ export function ServiceDetailPage() {
   const form = useForm({ resolver: zodResolver(orderSchema), defaultValues: { quantity: 100, target: "" } });
   const quantity = form.watch("quantity");
   const unit = Number(product.data?.display_price_per_1000 ?? product.data?.price_per_1000 ?? 0);
-  const total = useMemo(() => (unit * Number(quantity || 0)) / 1000, [unit, quantity]);
+  const total = useMemo(() => orderTotal(unit, Number(quantity || 0), product.data?.price_unit), [unit, quantity, product.data?.price_unit]);
 
   const mutation = useMutation({
     mutationFn: (values: { quantity: number; target: string }) =>
@@ -183,8 +183,9 @@ export function ServiceDetailPage() {
           <label className="block"><span className="label">Quantity</span><Input type="number" {...form.register("quantity")} /></label>
           <label className="block"><span className="label">Target (profile / post / link)</span><Input placeholder="https://..." {...form.register("target")} /></label>
           <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">
-            <p>Price: {money(unit)} / 1000</p>
+            <p>Price: {isEachPrice(p) ? `${money(unit)} each` : `${money(unit)} / 1,000`}</p>
             <p>Balance: {me?.wallet ? money(me.wallet.balance) : "Sign in to view"}</p>
+            {!isEachPrice(p) && <p className="text-xs text-muted">{money(unit)} per 1,000 × {Number(quantity || 0).toLocaleString()} = {money(total)}</p>}
             <p className="mt-2 text-lg font-extrabold">Total: {money(total)}</p>
           </div>
           <Button className="w-full" disabled={mutation.isPending}>{me ? "Place order" : "Login to order"}</Button>
@@ -214,7 +215,7 @@ export function StorefrontPage() {
           <Card key={p.id}>
             <p className="text-xs text-slate-500">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
-            <p className="mt-3 font-extrabold">{money(p.display_price_per_1000)} / 1000</p>
+            <p className="mt-3 font-extrabold">{money(p.display_price_per_1000)} {isEachPrice(p) ? "each" : "/ 1,000"}</p>
             <Link to={`/services/${p.slug}?store=${slug}`}><Button className="mt-4 w-full">Order</Button></Link>
           </Card>
         ))}

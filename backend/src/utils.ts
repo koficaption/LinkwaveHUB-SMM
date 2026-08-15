@@ -93,7 +93,8 @@ export function decryptSecret(payload: string): string {
   return decrypted.toString("utf8");
 }
 
-export function calcCharge(pricePer1000: number, quantity: number): number {
+export function calcCharge(pricePer1000: number, quantity: number, priceUnit: "per_1000" | "each" = "per_1000"): number {
+  if (priceUnit === "each") return Number((pricePer1000 * quantity).toFixed(4));
   return Number(((pricePer1000 * quantity) / 1000).toFixed(4));
 }
 

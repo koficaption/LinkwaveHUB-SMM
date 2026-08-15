@@ -94,6 +94,7 @@ export const productSchema = z.object({
   apiPricePer1000: z.number().nonnegative().optional().nullable(),
   apiMinQuantity: z.number().int().positive().optional().nullable(),
   apiMaxQuantity: z.number().int().positive().optional().nullable(),
+  priceUnit: z.enum(["per_1000", "each"]).optional(),
 });
 
 export const API_SCOPES = [

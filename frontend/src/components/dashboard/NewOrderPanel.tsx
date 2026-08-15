@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { productRefill } from "@/utils/refill";
-import { publicCategoryName, isProviderCategory, publicProductName } from "@/utils/catalog";
+import { publicCategoryName, isProviderCategory, publicProductName, isEachPrice, orderTotal } from "@/utils/catalog";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -35,7 +35,7 @@ export function NewOrderPanel() {
     queryKey: ["order-products", platformId, categoryId, debounced],
     queryFn: () =>
       api<Paginated<Product>>(
-        `/products?limit=2000&page=1${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
+        `/products?limit=2000&page=1&sort=catalog${platformId ? `&platformId=${platformId}` : ""}${categoryId ? `&categoryId=${categoryId}` : ""}${debounced ? `&search=${encodeURIComponent(debounced)}` : ""}`
       ),
     enabled: canLoadServices,
   });
@@ -47,12 +47,13 @@ export function NewOrderPanel() {
 
   const categoryOptions = useMemo(() => {
     const plats = [...(platforms.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+    const cats = [...(categories.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
     const options: { key: string; category: Category; platform: Platform }[] = [];
-    for (const category of categories.data ?? []) {
-      const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
-      const linked = plats.filter((p) => linkedIds.includes(p.id));
-      if (isProviderCategory(category.name)) continue;
-      for (const platform of linked) {
+    for (const platform of plats) {
+      for (const category of cats) {
+        if (isProviderCategory(category.name)) continue;
+        const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
+        if (!linkedIds.includes(platform.id)) continue;
         options.push({ key: `${platform.id}:${category.id}`, category, platform });
       }
     }
@@ -61,16 +62,19 @@ export function NewOrderPanel() {
 
   const selectedKey = platformId && categoryId ? `${platformId}:${categoryId}` : "";
   const selectedCategory = categoryOptions.find((c) => c.key === selectedKey);
-  const visibleProducts = (products.data?.items ?? []).filter((p) => {
-    if (platformId && p.platform_id !== platformId) return false;
-    if (categoryId && p.category_id !== categoryId) return false;
-    return true;
-  });
+  const visibleProducts = [...(products.data?.items ?? [])]
+    .filter((p) => {
+      if (platformId && p.platform_id !== platformId) return false;
+      if (categoryId && p.category_id !== categoryId) return false;
+      return true;
+    })
+    .sort((a, b) => publicProductName(a.name).localeCompare(publicProductName(b.name)));
 
   const selected = visibleProducts.find((p) => p.id === productId);
   const unit = Number(selected?.display_price_per_1000 ?? selected?.price_per_1000 ?? 0);
   const qty = Number(quantity || selected?.min_quantity || 0);
-  const total = selected ? (unit * qty) / 1000 : 0;
+  const each = isEachPrice(selected);
+  const total = selected ? orderTotal(unit, qty, selected.price_unit) : 0;
 
   useEffect(() => {
     if (selected) setQuantity(String(selected.min_quantity));
@@ -94,7 +98,7 @@ export function NewOrderPanel() {
 
   function serviceLabel(p: Product) {
     const sid = p.provider_service_id || p.id.slice(0, 8);
-    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} / 1000`;
+    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)}${isEachPrice(p) ? " each" : " / 1,000"}`;
   }
 
   return (
@@ -218,10 +222,18 @@ export function NewOrderPanel() {
             <Input type="number" min={selected.min_quantity} max={selected.max_quantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </label>
           <div className="grid gap-3 rounded-2xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
-            <p><span className="text-muted">Price</span><br /><strong>{money(unit)} / 1000</strong></p>
+            <p>
+              <span className="text-muted">Price</span><br />
+              <strong>{each ? `${money(unit)} each` : `${money(unit)} / 1,000`}</strong>
+            </p>
             <p><span className="text-muted">Current Balance</span><br /><strong>{me?.wallet ? money(me.wallet.available_balance ?? me.wallet.balance) : "—"}</strong></p>
             <p><span className="text-muted">Estimated Delivery</span><br /><strong>{selected.avg_delivery_time || "—"}</strong></p>
             <p><span className="text-muted">Total</span><br /><strong className="text-lg text-brand-700">{money(total)}</strong></p>
+            {!each && (
+              <p className="sm:col-span-2 text-xs text-muted">
+                {money(unit)} per 1,000 × {qty.toLocaleString()} = {money(total)}. This is not {money(unit)} per item.
+              </p>
+            )}
             {me?.user.role === "customer" && (loyalty.data?.discountPercent ?? 0) > 0 && (
               <p className="sm:col-span-2 text-brand-800 dark:text-brand-300">
                 {loyalty.data?.current.name} {loyalty.data?.discountPercent}% off is already included in this price.

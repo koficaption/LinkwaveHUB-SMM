@@ -17,6 +17,15 @@ export function isProviderCategory(name?: string | null) {
   return PROVIDER_NOISE.test(String(name || ""));
 }
 
+export function isEachPrice(product?: { price_unit?: string } | null) {
+  return product?.price_unit === "each";
+}
+
+export function orderTotal(unit: number, quantity: number, priceUnit?: string) {
+  if (priceUnit === "each") return unit * quantity;
+  return (unit * quantity) / 1000;
+}
+
 export function publicProductDescription(description?: string | null) {
   if (!description) return null;
   const text = description.replace(/\s*·?\s*imported from .+$/i, "").trim();

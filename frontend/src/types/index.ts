@@ -44,6 +44,7 @@ export type Category = {
   description?: string | null;
   icon?: string | null;
   is_active: boolean;
+  sort_order: number;
   product_count?: number;
   platform_ids?: string[];
 };
@@ -91,6 +92,7 @@ export type Product = {
   api_min_quantity?: number | null;
   api_max_quantity?: number | null;
   loyalty_discount_percent?: number;
+  price_unit?: "per_1000" | "each";
 };
 
 export type RefillSummary = {

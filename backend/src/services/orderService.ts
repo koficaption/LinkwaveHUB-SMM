@@ -86,12 +86,14 @@ export async function quoteOrder(
     unit = applyLoyaltyDiscount(unit, await customerLoyaltyDiscountPercent(user));
   }
 
-  const charge = calcCharge(unit, quantity);
-  const cost = calcCharge(Number(product.cost_per_1000), quantity);
+  const priceUnit = product.price_unit === "each" ? "each" as const : "per_1000" as const;
+  const charge = calcCharge(unit, quantity, priceUnit);
+  const cost = calcCharge(Number(product.cost_per_1000), quantity, priceUnit);
   return {
     product,
     quantity,
     unitPricePer1000: unit,
+    priceUnit,
     charge,
     cost,
     profit: Number((charge - cost).toFixed(4)),
@@ -133,11 +135,12 @@ export async function placeOrder(input: {
     await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, newBalance], client);
 
     const publicId = publicOrderId();
+    const priceUnit = quote.priceUnit ?? "per_1000";
     const resellerProfit =
       quote.resellerId != null
-        ? Number((quote.charge - calcCharge(quote.resellerCost, input.quantity)).toFixed(4))
+        ? Number((quote.charge - calcCharge(quote.resellerCost, input.quantity, priceUnit)).toFixed(4))
         : 0;
-    const platformProfit = Number((calcCharge(quote.resellerId ? quote.resellerCost : Number(quote.product.price_per_1000), input.quantity) - quote.cost).toFixed(4));
+    const platformProfit = Number((calcCharge(quote.resellerId ? quote.resellerCost : Number(quote.product.price_per_1000), input.quantity, priceUnit) - quote.cost).toFixed(4));
 
     const order = await queryOne(
       `INSERT INTO orders (
