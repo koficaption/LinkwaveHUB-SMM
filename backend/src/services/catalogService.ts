@@ -235,6 +235,7 @@ export async function listProducts(opts: {
   apiAvailable?: string;
   resellerAvailable?: string;
   loyaltyDiscountPercent?: number;
+  panelResellerId?: string;
 }) {
   const params: unknown[] = [];
   const where: string[] = [];
@@ -265,6 +266,7 @@ export async function listProducts(opts: {
   if (opts.apiAvailable === "no") where.push(`p.api_available = FALSE`);
   if (opts.resellerAvailable === "yes") where.push(`p.reseller_available = TRUE`);
   if (opts.resellerAvailable === "no") where.push(`p.reseller_available = FALSE`);
+  if (opts.panelResellerId) where.push(`p.reseller_available IS NOT FALSE`);
   const search = like(opts.search);
   if (search) {
     params.push(search);
@@ -295,7 +297,7 @@ export async function listProducts(opts: {
   );
 
   params.push(limit, offset);
-  const items = await query(
+  let items = await query(
     `SELECT ${productSelect}
      FROM products p
      JOIN platforms pl ON pl.id = p.platform_id
@@ -306,16 +308,19 @@ export async function listProducts(opts: {
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
+  if (opts.panelResellerId) {
+    items = await applyPanelPrices(items, opts.panelResellerId);
+  }
 
   return {
-    items: items.map((p) => sanitizeProduct(p, Boolean(opts.resellerPrice), Boolean(opts.includeInactive), opts.loyaltyDiscountPercent)),
+    items: items.map((p) => sanitizeProduct(p, Boolean(opts.resellerPrice), Boolean(opts.includeInactive), opts.panelResellerId ? 0 : opts.loyaltyDiscountPercent)),
     total: Number(countRow?.count ?? 0),
     page,
     limit,
   };
 }
 
-export async function getProduct(idOrSlug: string, opts: { admin?: boolean; reseller?: boolean; loyaltyDiscountPercent?: number } = {}) {
+export async function getProduct(idOrSlug: string, opts: { admin?: boolean; reseller?: boolean; loyaltyDiscountPercent?: number; panelResellerId?: string } = {}) {
   const row = await queryOne(
     `SELECT ${productSelect}
      FROM products p
@@ -329,7 +334,9 @@ export async function getProduct(idOrSlug: string, opts: { admin?: boolean; rese
   if (!opts.admin && (row.status !== "active" || !isSellableProductName(String(row.name || "")))) {
     throw new AppError("Product not found", 404);
   }
-  return sanitizeProduct(row, Boolean(opts.reseller), Boolean(opts.admin), opts.loyaltyDiscountPercent);
+  const priced = opts.panelResellerId ? (await applyPanelPrices([row], opts.panelResellerId))[0] : row;
+  if (!priced) throw new AppError("Product not found", 404);
+  return sanitizeProduct(priced, Boolean(opts.reseller), Boolean(opts.admin), opts.panelResellerId ? 0 : opts.loyaltyDiscountPercent);
 }
 
 export async function createProduct(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
@@ -536,6 +543,29 @@ export async function bulkProductStatus(ids: string[], status: "active" | "inact
   });
 }
 
+async function applyPanelPrices(items: Record<string, unknown>[], resellerId: string) {
+  const reseller = await queryOne<{ markup_percent: string }>(
+    `SELECT markup_percent FROM resellers WHERE id = $1 AND status = 'active'`,
+    [resellerId]
+  );
+  if (!reseller) return items;
+  const rows = await query<{ product_id: string; selling_price: string | null; is_enabled: boolean }>(
+    `SELECT product_id, selling_price, is_enabled FROM reseller_products WHERE reseller_id = $1`,
+    [resellerId]
+  );
+  const map = new Map(rows.map((row) => [String(row.product_id), row]));
+  const markup = Number(reseller.markup_percent || 0);
+  return items.flatMap((product) => {
+    const custom = map.get(String(product.id));
+    if (custom?.is_enabled === false) return [];
+    const base = Number(product.reseller_price_per_1000 ?? product.price_per_1000);
+    const display = custom?.selling_price != null
+      ? Number(custom.selling_price)
+      : Number((base * (1 + markup / 100)).toFixed(4));
+    return [{ ...product, panel_display_price: display }];
+  });
+}
+
 function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin: boolean, loyaltyDiscountPercent = 0) {
   const product = { ...row };
   const hint = parseRefillHint(String(product.name || ""), "", Boolean(product.refill_supported));
@@ -560,7 +590,9 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
     delete product.provider_name;
   }
   let display = Number(product.price_per_1000);
-  if (reseller && product.reseller_price_per_1000 != null) {
+  if (product.panel_display_price != null) {
+    display = Number(product.panel_display_price);
+  } else if (reseller && product.reseller_price_per_1000 != null) {
     display = Number(product.reseller_price_per_1000);
   } else if (!reseller && loyaltyDiscountPercent > 0) {
     display = Number((display * (1 - loyaltyDiscountPercent / 100)).toFixed(4));

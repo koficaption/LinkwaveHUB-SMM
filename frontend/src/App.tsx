@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, ThemeProvider } from "@/contexts/AuthContext";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
-import { AdminLayout, CustomerLayout, Guard, PublicLayout } from "@/layouts/Guards";
+import { AdminLayout, CustomerLayout, Guard, PublicLayout, StoreLayout } from "@/layouts/Guards";
 import { HomePage } from "@/pages/public/HomePage";
 import { LoginPage, RegisterPage, AuthCallbackPage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/auth/AuthPages";
 import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/ServicesPages";
@@ -13,7 +13,8 @@ import {
 import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { RefundPolicyPage, TermsOfServicePage } from "@/pages/legal/LegalPages";
-import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "@/pages/reseller/ResellerPages";
+import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage, ResellerCustomersPage, ResellerCustomerDetailPage } from "@/pages/reseller/ResellerPages";
+import { StoreCapture } from "@/components/StoreCapture";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
 import {
@@ -34,12 +35,12 @@ export default function App() {
           <BrowserRouter>
             <CurrencyProvider>
               <ReferralCapture />
+              <StoreCapture />
               <Routes>
               <Route element={<PublicLayout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/services" element={<ServicesPage />} />
                 <Route path="/services/:slug" element={<ServiceDetailPage />} />
-                <Route path="/store/:slug" element={<StorefrontPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -47,6 +48,9 @@ export default function App() {
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
                 <Route path="/refund-policy" element={<RefundPolicyPage />} />
                 <Route path="/terms" element={<TermsOfServicePage />} />
+              </Route>
+              <Route element={<StoreLayout />}>
+                <Route path="/store/:slug" element={<StorefrontPage />} />
               </Route>
               <Route element={<Guard />}>
                 <Route element={<CustomerLayout />}>
@@ -67,6 +71,8 @@ export default function App() {
                   <Route path="/app/reseller" element={<Guard roles={["reseller", "admin"]}><ResellerDashboard /></Guard>} />
                   <Route path="/app/reseller/storefront" element={<Guard roles={["reseller", "admin"]}><ResellerStorefrontPage /></Guard>} />
                   <Route path="/app/reseller/pricing" element={<Guard roles={["reseller", "admin"]}><ResellerPricingPage /></Guard>} />
+                  <Route path="/app/reseller/customers" element={<Guard roles={["reseller", "admin"]}><ResellerCustomersPage /></Guard>} />
+                  <Route path="/app/reseller/customers/:id" element={<Guard roles={["reseller", "admin"]}><ResellerCustomerDetailPage /></Guard>} />
                 </Route>
               </Route>
               <Route element={<Guard roles={["admin"]} />}>

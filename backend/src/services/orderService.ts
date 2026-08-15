@@ -57,6 +57,15 @@ export async function quoteOrder(
   let resellerId: string | null = null;
   let resellerCost = unit;
 
+  if (!storeSlug && user?.role === "customer") {
+    const panel = await queryOne<{ store_slug: string }>(
+      `SELECT r.store_slug FROM users u JOIN resellers r ON r.id = u.panel_reseller_id
+       WHERE u.id = $1 AND r.status = 'active'`,
+      [user.id]
+    );
+    if (panel?.store_slug) storeSlug = panel.store_slug;
+  }
+
   if (options?.viaApi) {
     const apiPrice = Number(product.api_price_per_1000);
     if (Number.isFinite(apiPrice) && apiPrice > 0) {
@@ -65,13 +74,19 @@ export async function quoteOrder(
       unit = Number(product.reseller_price_per_1000 ?? product.price_per_1000);
     }
   } else if (storeSlug) {
+    if (product.reseller_available === false) {
+      throw new AppError("This service is not available on this storefront", 404);
+    }
     const store = await queryOne<Record<string, unknown>>(
-      `SELECT r.*, rp.selling_price FROM resellers r
+      `SELECT r.*, rp.selling_price, rp.is_enabled FROM resellers r
        LEFT JOIN reseller_products rp ON rp.reseller_id = r.id AND rp.product_id = $2
        WHERE r.store_slug = $1 AND r.status = 'active'`,
       [storeSlug, productId]
     );
     if (store) {
+      if (store.is_enabled === false) {
+        throw new AppError("This service is not available on this storefront", 404);
+      }
       resellerId = String(store.id);
       const resellerBase = Number(product.reseller_price_per_1000 ?? product.price_per_1000);
       resellerCost = resellerBase;

@@ -5,6 +5,7 @@ import { AppError } from "../errors.js";
 import { signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
+import { attachPanelCustomer } from "./resellerService.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, role, status, avatar_url, last_login_at, created_at`;
 
@@ -25,20 +26,21 @@ export function googleRedirectUrl(state: string, redirectUri = config.googleRedi
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export function createGoogleState(redirectUri: string, referralCode?: string) {
+export function createGoogleState(redirectUri: string, referralCode?: string, storeSlug?: string) {
   return jwt.sign(
-    { typ: "google_oauth", redirectUri, referralCode: referralCode || undefined },
+    { typ: "google_oauth", redirectUri, referralCode: referralCode || undefined, storeSlug: storeSlug || undefined },
     config.jwtSecret,
     { expiresIn: "10m" }
   );
 }
 
 export function verifyGoogleState(state: string) {
-  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string; referralCode?: string };
+  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string; referralCode?: string; storeSlug?: string };
   if (payload.typ !== "google_oauth") throw new AppError("Invalid Google sign-in state", 400);
   return {
     redirectUri: payload.redirectUri || config.googleRedirectUri,
     referralCode: payload.referralCode || "",
+    storeSlug: payload.storeSlug || "",
   };
 }
 
@@ -50,7 +52,7 @@ type GoogleProfile = {
   picture?: string;
 };
 
-export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string) {
+export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string, storeSlug?: string) {
   if (!config.googleClientId || !config.googleClientSecret) {
     throw new AppError("Google sign-in is not configured", 501);
   }
@@ -71,7 +73,7 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
     throw new AppError(tokenJson.error_description || "Google sign-in failed", 401);
   }
   if (tokenJson.id_token) {
-    return loginWithGoogleIdToken(tokenJson.id_token, referralCode);
+    return loginWithGoogleIdToken(tokenJson.id_token, referralCode, storeSlug);
   }
   if (!tokenJson.access_token) throw new AppError("Google did not return a user token", 401);
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -81,10 +83,10 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile, referralCode);
+  return upsertGoogleUser(profile, referralCode, storeSlug);
 }
 
-export async function loginWithGoogleAccessToken(accessToken: string, referralCode?: string) {
+export async function loginWithGoogleAccessToken(accessToken: string, referralCode?: string, storeSlug?: string) {
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -92,10 +94,10 @@ export async function loginWithGoogleAccessToken(accessToken: string, referralCo
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile, referralCode);
+  return upsertGoogleUser(profile, referralCode, storeSlug);
 }
 
-export async function loginWithGoogleIdToken(idToken: string, referralCode?: string) {
+export async function loginWithGoogleIdToken(idToken: string, referralCode?: string, storeSlug?: string) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   const payload = (await res.json()) as GoogleProfile & { aud?: string; error?: string };
   if (!res.ok || payload.error || !payload.email || !payload.sub) {
@@ -104,10 +106,10 @@ export async function loginWithGoogleIdToken(idToken: string, referralCode?: str
   if (config.googleClientId && payload.aud !== config.googleClientId) {
     throw new AppError("Google credential does not match this app", 401);
   }
-  return upsertGoogleUser(payload, referralCode);
+  return upsertGoogleUser(payload, referralCode, storeSlug);
 }
 
-async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string) {
+async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, storeSlug?: string) {
   const email = profile.email.toLowerCase();
   const verified = profile.email_verified !== false && profile.email_verified !== "false";
   if (!verified) throw new AppError("Google email is not verified", 401);
@@ -149,6 +151,21 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string) {
     if (user.status === "suspended") throw new AppError("Account is suspended", 403);
     if (referralCode) {
       await attachReferrer(user.id, referralCode, client);
+    }
+    if (storeSlug) {
+      const panel = await queryOne<{ id: string }>(
+        `SELECT id FROM resellers WHERE store_slug = $1 AND status = 'active'`,
+        [storeSlug],
+        client
+      );
+      if (panel) {
+        await query(
+          `UPDATE users SET panel_reseller_id = $2
+           WHERE id = $1 AND panel_reseller_id IS NULL AND role = 'customer'`,
+          [user.id, panel.id],
+          client
+        );
+      }
     }
     const token = signToken({ id: user.id, role: user.role, email: user.email });
     return { user, token, created };

@@ -13,6 +13,17 @@ export type User = {
   created_at: string;
 };
 
+export type PanelStore = {
+  id: string;
+  store_name: string;
+  store_slug: string;
+  logo_url?: string | null;
+  brand_color: string;
+  tagline?: string | null;
+  markup_percent?: number | string;
+  status?: string;
+};
+
 export type Wallet = {
   id: string;
   user_id: string;

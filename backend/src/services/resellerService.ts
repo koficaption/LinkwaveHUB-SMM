@@ -1,6 +1,6 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { makeSlug, uniqueSlug } from "../utils.js";
+import { like, makeSlug, uniqueSlug } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -8,6 +8,92 @@ import { getResellerUpgradeSettings } from "./settingsService.js";
 import { getLoyaltyForUser } from "./loyaltyService.js";
 import { publicProductName } from "./catalogClassify.js";
 import { initiateDirectedPayment } from "./walletService.js";
+
+export type PanelStore = {
+  id: string;
+  store_name: string;
+  store_slug: string;
+  logo_url: string | null;
+  brand_color: string;
+  tagline: string | null;
+  markup_percent: number | string;
+  status: string;
+};
+
+export async function getActivePanelBySlug(slug?: string | null) {
+  const value = String(slug || "").trim().toLowerCase();
+  if (!value) return null;
+  return queryOne<PanelStore>(
+    `SELECT id, store_name, store_slug, logo_url, brand_color, tagline, markup_percent, status
+     FROM resellers WHERE store_slug = $1 AND status = 'active'`,
+    [value]
+  );
+}
+
+export async function getPanelForUser(userId: string) {
+  return queryOne<PanelStore>(
+    `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status
+     FROM users u
+     JOIN resellers r ON r.id = u.panel_reseller_id
+     WHERE u.id = $1 AND r.status = 'active'`,
+    [userId]
+  );
+}
+
+export async function attachPanelCustomer(userId: string, storeSlug?: string | null) {
+  const panel = await getActivePanelBySlug(storeSlug);
+  if (!panel) return null;
+  const user = await queryOne<{ id: string; role: string; panel_reseller_id: string | null }>(
+    `SELECT id, role, panel_reseller_id FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (!user || user.role !== "customer") return null;
+  if (user.panel_reseller_id) return getPanelForUser(userId);
+  await query(
+    `UPDATE users SET panel_reseller_id = $2
+     WHERE id = $1 AND panel_reseller_id IS NULL AND role = 'customer'`,
+    [userId, panel.id]
+  );
+  return getPanelForUser(userId);
+}
+
+export async function listResellerCustomers(userId: string) {
+  const reseller = await queryOne<{ id: string }>(`SELECT id FROM resellers WHERE user_id = $1`, [userId]);
+  if (!reseller) throw new AppError("Reseller profile not found", 404);
+  return query(
+    `SELECT u.id, u.full_name, u.email, u.phone, u.status, u.created_at, u.last_login_at,
+            COALESCE(w.balance, 0) AS balance,
+            (SELECT COUNT(*)::int FROM orders o WHERE o.user_id = u.id AND o.reseller_id = $1) AS order_count,
+            (SELECT COALESCE(SUM(o.charge), 0) FROM orders o WHERE o.user_id = u.id AND o.reseller_id = $1) AS spent
+     FROM users u
+     LEFT JOIN wallets w ON w.user_id = u.id
+     WHERE u.panel_reseller_id = $1
+     ORDER BY u.created_at DESC`,
+    [reseller.id]
+  );
+}
+
+export async function getResellerCustomer(userId: string, customerId: string) {
+  const reseller = await queryOne<{ id: string }>(`SELECT id FROM resellers WHERE user_id = $1`, [userId]);
+  if (!reseller) throw new AppError("Reseller profile not found", 404);
+  const customer = await queryOne(
+    `SELECT u.id, u.full_name, u.email, u.phone, u.status, u.created_at, u.last_login_at,
+            COALESCE(w.balance, 0) AS balance
+     FROM users u
+     LEFT JOIN wallets w ON w.user_id = u.id
+     WHERE u.id = $1 AND u.panel_reseller_id = $2`,
+    [customerId, reseller.id]
+  );
+  if (!customer) throw new AppError("Customer not found", 404);
+  const orders = await query(
+    `SELECT o.public_id, o.status, o.charge, o.quantity, o.target, o.created_at, p.name AS product_name
+     FROM orders o JOIN products p ON p.id = o.product_id
+     WHERE o.user_id = $1 AND o.reseller_id = $2
+     ORDER BY o.created_at DESC LIMIT 50`,
+    [customerId, reseller.id]
+  );
+  return { customer, orders };
+}
 
 export async function listResellers(status?: string) {
   const params: unknown[] = [];
@@ -49,16 +135,60 @@ export async function getReseller(id: string) {
   return { reseller, products, orders };
 }
 
-export async function getPublicStorefront(slug: string) {
+export async function getPublicStorefront(slug: string, opts: {
+  page?: number;
+  limit?: number;
+  platformId?: string;
+  categoryId?: string;
+  search?: string;
+} = {}) {
   const reseller = await queryOne(
     `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status
      FROM resellers r WHERE r.store_slug = $1`,
     [slug]
   );
   if (!reseller || reseller.status !== "active") throw new AppError("Storefront not found", 404);
+
+  const params: unknown[] = [reseller.id];
+  const where = [
+    `p.status = 'active'`,
+    `pl.is_active = TRUE`,
+    `p.reseller_available IS NOT FALSE`,
+    `(rp.is_enabled IS NULL OR rp.is_enabled = TRUE)`,
+    `p.name ~* '[A-Za-z]{3,}'`,
+  ];
+  if (opts.platformId) {
+    params.push(opts.platformId);
+    where.push(`(p.platform_id::text = $${params.length} OR pl.slug = $${params.length})`);
+  }
+  if (opts.categoryId) {
+    params.push(opts.categoryId);
+    where.push(`(p.category_id::text = $${params.length} OR c.slug = $${params.length})`);
+  }
+  const search = like(opts.search);
+  if (search) {
+    params.push(search);
+    where.push(`(p.name ILIKE $${params.length} OR p.description ILIKE $${params.length})`);
+  }
+
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const countRow = await queryOne<{ count: string }>(
+    `SELECT COUNT(*) FROM products p
+     JOIN platforms pl ON pl.id = p.platform_id
+     JOIN categories c ON c.id = p.category_id
+     JOIN resellers r ON r.id = $1
+     LEFT JOIN reseller_products rp ON rp.reseller_id = r.id AND rp.product_id = p.id
+     ${whereSql}`,
+    params
+  );
+
+  const limit = Math.min(50, Math.max(1, Number(opts.limit ?? 24) || 24));
+  const page = Math.max(1, Number(opts.page ?? 1) || 1);
+  params.push(limit, (page - 1) * limit);
   const products = await query(
     `SELECT p.id, p.name, p.slug, p.description, p.min_quantity, p.max_quantity,
-            p.avg_delivery_time, p.delivery_type, p.features, p.image_url,
+            p.avg_delivery_time, p.delivery_type, p.features, p.image_url, p.price_unit,
+            p.refill_supported, p.refill_days, p.platform_id, p.category_id,
             pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon, pl.color AS platform_color,
             c.name AS category_name, c.slug AS category_slug,
             COALESCE(rp.selling_price,
@@ -69,16 +199,22 @@ export async function getPublicStorefront(slug: string) {
      JOIN categories c ON c.id = p.category_id
      JOIN resellers r ON r.id = $1
      LEFT JOIN reseller_products rp ON rp.reseller_id = r.id AND rp.product_id = p.id
-     WHERE p.status = 'active' AND pl.is_active = TRUE AND (rp.is_enabled IS NULL OR rp.is_enabled = TRUE)
-     ORDER BY pl.sort_order, p.name`,
-    [reseller.id]
+     ${whereSql}
+     ORDER BY pl.sort_order, c.sort_order, p.name
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
+  const items = products.map((product) => ({
+    ...product,
+    name: publicProductName(String(product.name || "")),
+  }));
   return {
     store: reseller,
-    products: products.map((product) => ({
-      ...product,
-      name: publicProductName(String(product.name || "")),
-    })),
+    products: items,
+    items,
+    total: Number(countRow?.count ?? 0),
+    page,
+    limit,
   };
 }
 
@@ -165,7 +301,11 @@ export async function resellerStats(userId: string) {
      FROM orders WHERE reseller_id = $1`,
     [reseller.id]
   );
-  return { reseller, stats };
+  const customers = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM users WHERE panel_reseller_id = $1`,
+    [reseller.id]
+  );
+  return { reseller, stats: { ...stats, customers: Number(customers?.count ?? 0) } };
 }
 
 const applicationSelect = `
@@ -218,6 +358,8 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   returnUrl?: string;
 }) {
   if (user.role === "admin") throw new AppError("Admins cannot apply for a reseller upgrade");
+  const panel = await getPanelForUser(user.id);
+  if (panel) throw new AppError("This account belongs to a child panel. Ask your panel owner if you need a storefront.");
   const settings = await getResellerUpgradeSettings();
   if (!settings.upgradeEnabled) throw new AppError("Reseller upgrades are not available right now");
 

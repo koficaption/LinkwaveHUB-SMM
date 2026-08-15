@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Ticket } from "lucide-react";
 import { api, formatDate, money } from "@/api/client";
@@ -11,6 +11,8 @@ import { usePublicSettings } from "@/components/ContactLinks";
 import { cn } from "@/utils/cn";
 
 export function ApiAccessPage() {
+  const { me } = useAuth();
+  if (me?.panel) return <Navigate to="/app" replace />;
   return <ApiPortalPage />;
 }
 
@@ -90,6 +92,8 @@ export function LoyaltyPage() {
   const loading = wallet.isLoading || orders.isLoading || loyalty.isLoading;
   const data = loyalty.data;
   const whatsapp = waLink(settings.data?.whatsappNumber);
+
+  if (me?.panel) return <Navigate to="/app" replace />;
 
   return (
     <div className="space-y-5">

@@ -133,6 +133,8 @@ export async function getLoyaltyForUser(userId: string) {
 
 export async function customerLoyaltyDiscountPercent(user?: { id: string; role: string } | null) {
   if (!user || user.role !== "customer") return 0;
+  const panel = await queryOne(`SELECT panel_reseller_id FROM users WHERE id = $1`, [user.id]);
+  if (panel?.panel_reseller_id) return 0;
   const loyalty = await getLoyaltyForUser(user.id);
   return loyalty.discountPercent;
 }

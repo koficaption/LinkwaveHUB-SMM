@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Link2, Plug, RefreshCcw, Settings, ShoppingCart, Store, Ticket, Users, Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { AppShell, PublicLayout, type AppNavItem } from "@/layouts/Shells";
+import { AppShell, PublicLayout, StoreLayout, type AppNavItem } from "@/layouts/Shells";
 import { Skeleton } from "@/components/ui";
 
 export function Guard({ roles, children }: { roles?: string[]; children?: React.ReactNode }) {
@@ -17,30 +17,48 @@ export function Guard({ roles, children }: { roles?: string[]; children?: React.
 
 export function CustomerLayout() {
   const { me } = useAuth();
+  const panel = me?.panel;
   const items: AppNavItem[] = [
     { to: "/app", label: "New Order", icon: <ShoppingCart className="h-5 w-5" />, end: true },
     { to: "/app/orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" /> },
     { to: "/app/services", label: "Services", icon: <Boxes className="h-5 w-5" /> },
     { to: "/app/wallet", label: "Add Funds", icon: <CreditCard className="h-5 w-5" /> },
     { to: "/app/support", label: "Support Tickets", icon: <Ticket className="h-5 w-5" /> },
-    {
-      to: me?.user.role === "reseller" ? "/app/reseller" : "/app/become-reseller",
-      label: "Child Panels",
-      icon: <Users className="h-5 w-5" />,
-    },
-    { to: "/app/affiliates", label: "Affiliate Program", icon: <Handshake className="h-5 w-5" /> },
-    { to: "/app/api", label: "API", icon: <Link2 className="h-5 w-5" /> },
-    { to: "/app/loyalty", label: "Loyalty Program", icon: <Gift className="h-5 w-5" /> },
-    { to: "/app/refund-policy", label: "Refund Policy", icon: <Banknote className="h-5 w-5" /> },
-    { to: "/app/terms", label: "Terms of Service", icon: <BookOpen className="h-5 w-5" /> },
   ];
   if (me?.user.role === "reseller") {
-    items.splice(6, 0,
+    items.push(
+      { to: "/app/reseller", label: "Child Panels", icon: <Users className="h-5 w-5" /> },
       { to: "/app/reseller/storefront", label: "Storefront", icon: <Store className="h-5 w-5" /> },
       { to: "/app/reseller/pricing", label: "Pricing", icon: <Wallet className="h-5 w-5" /> },
+      { to: "/app/reseller/customers", label: "Customers", icon: <Users className="h-5 w-5" /> },
     );
   }
-  return <AppShell title="LinkBoost Growth SMM" items={items} home="/app" />;
+  if (!panel) {
+    if (me?.user.role !== "reseller") {
+      items.push({
+        to: "/app/become-reseller",
+        label: "Child Panels",
+        icon: <Users className="h-5 w-5" />,
+      });
+    }
+    items.push(
+      { to: "/app/affiliates", label: "Affiliate Program", icon: <Handshake className="h-5 w-5" /> },
+      { to: "/app/api", label: "API", icon: <Link2 className="h-5 w-5" /> },
+      { to: "/app/loyalty", label: "Loyalty Program", icon: <Gift className="h-5 w-5" /> },
+    );
+  }
+  items.push(
+    { to: "/app/refund-policy", label: "Refund Policy", icon: <Banknote className="h-5 w-5" /> },
+    { to: "/app/terms", label: "Terms of Service", icon: <BookOpen className="h-5 w-5" /> },
+  );
+  return (
+    <AppShell
+      title={panel?.store_name || "LinkBoost Growth SMM"}
+      items={items}
+      home="/app"
+      brand={panel ? { name: panel.store_name, color: panel.brand_color, logoutTo: `/store/${panel.store_slug}` } : null}
+    />
+  );
 }
 
 export function AdminLayout() {
@@ -97,4 +115,4 @@ export function AdminLayout() {
   );
 }
 
-export { PublicLayout };
+export { PublicLayout, StoreLayout };

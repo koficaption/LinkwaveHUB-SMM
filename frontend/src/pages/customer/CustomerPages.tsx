@@ -42,6 +42,11 @@ export function CustomerHome() {
   return (
     <div className="space-y-6">
       <MobileActionButtons />
+      {me?.panel && (
+        <div className="rounded-2xl px-4 py-3 text-sm text-white" style={{ background: me.panel.brand_color }}>
+          You’re ordering on <strong>{me.panel.store_name}</strong>. Prices shown are this reseller’s panel prices.
+        </div>
+      )}
       <div className="grid gap-4 [perspective:1000px] lg:grid-cols-4">
         <WelcomeCard name={handle} verified={me?.user.status === "active"} loading={loading} />
         <SpentCard amount={spent} loading={loading} />
@@ -410,7 +415,7 @@ export function ProfilePage() {
         <h2 className="font-bold">Change password</h2>
         <PasswordForm />
       </Card>
-      {me?.user.role === "customer" && (
+      {me?.user.role === "customer" && !me.panel && (
         <Card className="lg:col-span-2">
           <h2 className="font-bold">Become a reseller / child panel</h2>
           <p className="mt-1 text-sm text-slate-500">Pay the upgrade fee by Mobile Money. After an admin confirms payment, your dashboard switches to reseller.</p>
@@ -578,8 +583,9 @@ export function BecomeResellerPage() {
   const cardCheckout = isCardMethod(selected?.adapter);
 
   useEffect(() => {
+    if (me?.panel) navigate("/app", { replace: true });
     if (me?.user.role === "reseller") navigate("/app/reseller", { replace: true });
-  }, [me?.user.role, navigate]);
+  }, [me?.panel, me?.user.role, navigate]);
 
   useEffect(() => {
     if (offer.data?.application?.status === "approved") {

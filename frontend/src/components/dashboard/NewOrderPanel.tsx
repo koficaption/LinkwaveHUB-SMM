@@ -45,7 +45,7 @@ export function NewOrderPanel() {
   const loyalty = useQuery({
     queryKey: ["loyalty-me"],
     queryFn: () => api<LoyaltyMe>("/loyalty/me"),
-    enabled: me?.user.role === "customer",
+    enabled: me?.user.role === "customer" && !me.panel,
   });
 
   const categoryOptions = useMemo(() => {
@@ -89,7 +89,12 @@ export function NewOrderPanel() {
     mutationFn: () =>
       api("/orders", {
         method: "POST",
-        body: JSON.stringify({ productId: selected?.id, quantity: qty, target }),
+        body: JSON.stringify({
+          productId: selected?.id,
+          quantity: qty,
+          target,
+          storeSlug: me?.panel?.store_slug,
+        }),
       }),
     onSuccess: async () => {
       toast.success("Order placed successfully");
@@ -243,7 +248,7 @@ export function NewOrderPanel() {
                 ? `${money(unit)} per 1 × ${qty.toLocaleString()} = ${money(total)}. Quantity 1 costs ${money(unit)}, not ${money(unit / 1000)}.`
                 : `${money(unit)} per 1,000 × ${qty.toLocaleString()} = ${money(total)}.`}
             </p>
-            {me?.user.role === "customer" && (loyalty.data?.discountPercent ?? 0) > 0 && (
+            {me?.user.role === "customer" && !me.panel && (loyalty.data?.discountPercent ?? 0) > 0 && (
               <p className="sm:col-span-2 text-brand-800 dark:text-brand-300">
                 {loyalty.data?.current.name} {loyalty.data?.discountPercent}% off is already included in this price.
               </p>

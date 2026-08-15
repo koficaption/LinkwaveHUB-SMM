@@ -8,6 +8,7 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { getPublicSettings } from "./settingsService.js";
+import { attachPanelCustomer, getPanelForUser } from "./resellerService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `
@@ -23,6 +24,7 @@ export async function registerUser(input: {
   asReseller?: boolean;
   storeName?: string;
   referralCode?: string;
+  storeSlug?: string;
   ip?: string;
 }) {
   const existing = await queryOne(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [input.email]);
@@ -45,6 +47,20 @@ export async function registerUser(input: {
     if (input.referralCode) {
       await attachReferrer(user.id, input.referralCode, client);
     }
+    if (!input.asReseller && input.storeSlug) {
+      const panel = await queryOne<{ id: string }>(
+        `SELECT id FROM resellers WHERE store_slug = $1 AND status = 'active'`,
+        [input.storeSlug],
+        client
+      );
+      if (panel) {
+        await query(
+          `UPDATE users SET panel_reseller_id = $2 WHERE id = $1 AND role = 'customer'`,
+          [user.id, panel.id],
+          client
+        );
+      }
+    }
 
     if (input.asReseller) {
       const storeName = input.storeName || `${input.fullName}'s Store`;
@@ -60,16 +76,19 @@ export async function registerUser(input: {
     return { user, token };
   });
 
+  const panel = input.asReseller ? null : await attachPanelCustomer(result.user.id, input.storeSlug);
   await notify({
     userId: result.user.id,
-    title: "Welcome to LinkBoost Growth",
-    body: "Your account is ready. Add funds to your wallet to start placing orders.",
+    title: panel ? `Welcome to ${panel.store_name}` : "Welcome to LinkBoost Growth",
+    body: panel
+      ? `Your account is ready on ${panel.store_name}. Add funds to order this panel's services.`
+      : "Your account is ready. Add funds to your wallet to start placing orders.",
     type: "account",
   });
   return result;
 }
 
-export async function loginUser(email: string, password: string, ip?: string, userAgent?: string) {
+export async function loginUser(email: string, password: string, ip?: string, userAgent?: string, storeSlug?: string) {
   const user = await queryOne<{
     id: string;
     email: string;
@@ -106,6 +125,7 @@ export async function loginUser(email: string, password: string, ip?: string, us
 
   const { password_hash: _, ...safe } = user;
   const token = signToken({ id: user.id, role: user.role, email: user.email });
+  if (storeSlug) await attachPanelCustomer(user.id, storeSlug);
   return { user: safe, token };
 }
 
@@ -128,7 +148,8 @@ export async function getMe(userId: string) {
      LIMIT 1`,
     [userId]
   );
-  return { user, wallet, reseller, resellerApplication };
+  const panel = await getPanelForUser(userId);
+  return { user, wallet, reseller, resellerApplication, panel };
 }
 
 export async function updateProfile(userId: string, input: { fullName: string; phone?: string | null; whatsappNumber?: string | null }) {

@@ -47,7 +47,7 @@ import * as affiliates from "../services/affiliateService.js";
 import * as loyalty from "../services/loyaltyService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest } from "../utils.js";
+import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest, storeSlugFromQuery, storeSlugFromRequest, setPanelCookie } from "../utils.js";
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
@@ -92,7 +92,10 @@ router.get("/categories", optionalAuth, asyncHandler(async (req, res) => {
 }));
 router.get("/products", optionalAuth, asyncHandler(async (req, res) => {
   const admin = req.user?.role === "admin";
-  const loyaltyDiscountPercent = await loyalty.customerLoyaltyDiscountPercent(req.user);
+  const panel = req.user ? await resellers.getPanelForUser(req.user.id) : null;
+  const guestStore = !panel ? await resellers.getActivePanelBySlug(storeSlugFromQuery(req)) : null;
+  const panelResellerId = panel?.id || guestStore?.id;
+  const loyaltyDiscountPercent = panelResellerId ? 0 : await loyalty.customerLoyaltyDiscountPercent(req.user);
   res.json(ok(await catalog.listProducts({
     platformId: req.query.platformId as string | undefined,
     categoryId: req.query.categoryId as string | undefined,
@@ -105,30 +108,48 @@ router.get("/products", optionalAuth, asyncHandler(async (req, res) => {
     resellerPrice: req.user?.role === "reseller",
     refill: req.query.refill as string | undefined,
     loyaltyDiscountPercent,
+    panelResellerId,
   })));
 }));
 router.get("/products/:id", optionalAuth, asyncHandler(async (req, res) => {
+  const panel = req.user ? await resellers.getPanelForUser(req.user.id) : null;
+  const guestStore = !panel ? await resellers.getActivePanelBySlug(storeSlugFromQuery(req)) : null;
+  const panelResellerId = panel?.id || guestStore?.id;
   res.json(ok(await catalog.getProduct(req.params.id, {
     admin: req.user?.role === "admin",
     reseller: req.user?.role === "reseller",
-    loyaltyDiscountPercent: await loyalty.customerLoyaltyDiscountPercent(req.user),
+    loyaltyDiscountPercent: panelResellerId ? 0 : await loyalty.customerLoyaltyDiscountPercent(req.user),
+    panelResellerId,
   })));
 }));
 router.get("/store/:slug", asyncHandler(async (req, res) => {
-  res.json(ok(await resellers.getPublicStorefront(req.params.slug)));
+  const payload = await resellers.getPublicStorefront(req.params.slug, {
+    page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 24),
+    platformId: req.query.platformId as string | undefined,
+    categoryId: req.query.categoryId as string | undefined,
+    search: req.query.search as string | undefined,
+  });
+  setPanelCookie(res, req.params.slug);
+  res.json(ok(payload));
 }));
 
 router.post("/auth/register", authLimit, validate(registerSchema), asyncHandler(async (req, res) => {
+  const storeSlug = req.body.storeSlug || storeSlugFromRequest(req);
   const result = await auth.registerUser({
     ...req.body,
+    storeSlug,
     referralCode: req.body.referralCode || referralCodeFromRequest(req),
     ip: clientIp(req),
   });
+  if (storeSlug) setPanelCookie(res, storeSlug);
   setAuthCookie(res, result.token, req);
   res.status(201).json(ok(result, "Account created successfully"));
 }));
 router.post("/auth/login", authLimit, validate(loginSchema), asyncHandler(async (req, res) => {
-  const result = await auth.loginUser(req.body.email, req.body.password, clientIp(req), req.get("user-agent") || undefined);
+  const storeSlug = storeSlugFromRequest(req, { includeCookie: false });
+  const result = await auth.loginUser(req.body.email, req.body.password, clientIp(req), req.get("user-agent") || undefined, storeSlug);
+  if (storeSlug) setPanelCookie(res, storeSlug);
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in successfully"));
 }));
@@ -162,7 +183,8 @@ router.get("/auth/google/start", authLimit, (req, res) => {
   const redirectUri = googleCallbackUri(req);
   const queryRef = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
   const cookieRef = typeof req.cookies?.lwh_ref === "string" ? String(req.cookies.lwh_ref).trim() : "";
-  const state = googleAuth.createGoogleState(redirectUri, queryRef || cookieRef);
+  const storeSlug = storeSlugFromQuery(req);
+  const state = googleAuth.createGoogleState(redirectUri, queryRef || cookieRef, storeSlug);
   res.redirect(googleAuth.googleRedirectUrl(state, redirectUri));
 });
 router.get("/auth/google/callback", asyncHandler(async (req, res) => {
@@ -179,10 +201,15 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
   try {
     const googleState = googleAuth.verifyGoogleState(state);
     const referralCode = googleState.referralCode || referralCodeFromRequest(req);
-    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, referralCode);
+    const storeSlug = googleState.storeSlug || "";
+    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, referralCode, storeSlug);
     if (referralCode) {
       await affiliates.attachReferrer(result.user.id, referralCode);
       await affiliates.settleMissedCommissionsForDepositor(result.user.id);
+    }
+    if (storeSlug) {
+      await resellers.attachPanelCustomer(result.user.id, storeSlug);
+      setPanelCookie(res, storeSlug);
     }
     setAuthCookie(res, result.token, req);
     return res.redirect(`${origin}/auth/callback?token=${encodeURIComponent(result.token)}`);
@@ -196,18 +223,24 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
     code: z.string().optional(),
     accessToken: z.string().optional(),
     referralCode: z.string().max(40).optional(),
+    storeSlug: z.string().max(80).optional(),
   }).parse(req.body);
+  const storeSlug = body.storeSlug || storeSlugFromQuery(req);
   const result = body.accessToken
-    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken, body.referralCode)
+    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken, body.referralCode, storeSlug)
     : body.credential
-      ? await googleAuth.loginWithGoogleIdToken(body.credential, body.referralCode)
+      ? await googleAuth.loginWithGoogleIdToken(body.credential, body.referralCode, storeSlug)
       : body.code
-        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode)
+        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode, storeSlug)
         : (() => { throw new AppError("Google credential is required", 400); })();
   const referralCode = body.referralCode || referralCodeFromRequest(req);
   if (referralCode) {
     await affiliates.attachReferrer(result.user.id, referralCode);
     await affiliates.settleMissedCommissionsForDepositor(result.user.id);
+  }
+  if (storeSlug) {
+    await resellers.attachPanelCustomer(result.user.id, storeSlug);
+    setPanelCookie(res, storeSlug);
   }
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in with Google"));
@@ -340,6 +373,12 @@ router.get("/reseller/orders", requireAuth, requireRole("reseller", "admin"), as
     status: req.query.status as string | undefined,
     page: Number(req.query.page || 1),
   })));
+}));
+router.get("/reseller/customers", requireAuth, requireRole("reseller", "admin"), asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.listResellerCustomers(req.user!.id)));
+}));
+router.get("/reseller/customers/:id", requireAuth, requireRole("reseller", "admin"), asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.getResellerCustomer(req.user!.id, req.params.id)));
 }));
 
 const admin = Router();

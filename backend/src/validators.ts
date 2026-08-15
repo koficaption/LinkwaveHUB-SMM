@@ -18,11 +18,13 @@ export const registerSchema = z.object({
   asReseller: z.boolean().optional(),
   storeName: optionalText(80, 2),
   referralCode: optionalText(40),
+  storeSlug: optionalText(80, 2),
 });
 
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  storeSlug: optionalText(80, 2),
 });
 
 export const changePasswordSchema = z.object({

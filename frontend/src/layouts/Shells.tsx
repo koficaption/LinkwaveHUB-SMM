@@ -1,12 +1,16 @@
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChevronDown, Menu, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui";
+import { Button, Skeleton } from "@/components/ui";
 import { HelpBar, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AccountMenu, CurrencyButton } from "@/components/dashboard/AccountMenu";
 import { cn } from "@/utils/cn";
+import { api } from "@/api/client";
+import { panelAuthPath, persistPanelSlug } from "@/utils/panel";
+import type { PanelStore } from "@/types";
 
 const publicLinks = [
   { to: "/", label: "Home" },
@@ -21,15 +25,33 @@ export function PublicLayout() {
   const { dark, setDark } = useTheme();
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const [params] = useSearchParams();
   const settings = usePublicSettings();
+  const storeSlug = params.get("store") || location.pathname.match(/^\/store\/([a-z0-9-]{2,80})/i)?.[1] || "";
+  const store = useQuery({
+    queryKey: ["store-preview", storeSlug],
+    queryFn: async () => (await api<{ store: PanelStore }>(`/store/${storeSlug}?limit=1`)).store,
+    enabled: Boolean(storeSlug) && ["/login", "/register"].includes(location.pathname),
+  });
+  const panel = store.data;
+  const homeTo = panel ? `/store/${panel.store_slug}` : "/";
+  const links = panel
+    ? [{ to: `/store/${panel.store_slug}`, label: "Services" }]
+    : publicLinks;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6FAF9] dark:bg-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-100 bg-white shadow-nav dark:border-slate-800 dark:bg-slate-900">
         <div className="container-page flex h-[4.25rem] items-center justify-between">
-          <BrandLogo />
+          {panel ? (
+            <Link to={homeTo} className="truncate text-lg font-extrabold" style={{ color: panel.brand_color }}>
+              {panel.store_name}
+            </Link>
+          ) : (
+            <BrandLogo />
+          )}
           <nav className="hidden items-center gap-6 text-sm font-semibold md:flex">
-            {publicLinks.map((l) => (
+            {links.map((l) => (
               <Link key={l.label} to={l.to} className="text-slate-600 hover:text-brand-700 dark:text-slate-300">
                 {l.label}
               </Link>
@@ -46,8 +68,8 @@ export function PublicLayout() {
               </Link>
             ) : (
               <>
-                <Link to="/login" className="hidden sm:block"><Button variant="ghost">Login</Button></Link>
-                <Link to="/register"><Button>Get Started</Button></Link>
+                <Link to={panelAuthPath("/login", storeSlug)} className="hidden sm:block"><Button variant="ghost">Login</Button></Link>
+                <Link to={panelAuthPath("/register", storeSlug)}><Button>Get Started</Button></Link>
               </>
             )}
             <button className="rounded-xl p-2 text-slate-700 md:hidden dark:text-slate-200" onClick={() => setOpen((v) => !v)} aria-label="Open menu">
@@ -57,7 +79,7 @@ export function PublicLayout() {
         </div>
         {open && (
           <div className="border-t border-slate-100 bg-white p-4 md:hidden dark:border-slate-800 dark:bg-slate-900">
-            {publicLinks.map((l) => (
+            {links.map((l) => (
               <Link key={l.label} to={l.to} className="block py-2.5 text-sm font-semibold" onClick={() => setOpen(false)}>{l.label}</Link>
             ))}
           </div>
@@ -67,9 +89,13 @@ export function PublicLayout() {
       <footer className="border-t border-slate-100 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
         <div className="container-page flex flex-col gap-4 text-sm text-muted sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <BrandLogo className="mb-3" />
-            <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "LinkBoost Growth SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
-            {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
+            {panel ? (
+              <p className="mb-3 text-lg font-extrabold text-slate-800 dark:text-white">{panel.store_name}</p>
+            ) : (
+              <BrandLogo className="mb-3" />
+            )}
+            <p>© {new Date().getFullYear()} {panel?.store_name || String(settings.data?.siteName || "LinkBoost Growth SMM")}{panel ? "" : `. Developed by ${String(settings.data?.developer || "OB CodeLab")}.`}</p>
+            {!panel && settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
             <p className="mt-3 flex flex-wrap gap-3">
               <Link to="/refund-policy" className="font-semibold text-brand-700 hover:underline">Refund Policy</Link>
               <Link to="/terms" className="font-semibold text-brand-700 hover:underline">Terms of Service</Link>
@@ -82,18 +108,95 @@ export function PublicLayout() {
   );
 }
 
+export function StoreLayout() {
+  const { slug } = useParams();
+  const { me } = useAuth();
+  const { dark, setDark } = useTheme();
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  if (slug) persistPanelSlug(slug);
+  const store = useQuery({
+    queryKey: ["store-preview", slug],
+    queryFn: async () => (await api<{ store: PanelStore }>(`/store/${slug}?limit=1`)).store,
+    enabled: Boolean(slug),
+  });
+  const panel = store.data;
+
+  if (store.isLoading) {
+    return <div className="container-page py-16"><Skeleton className="h-40" /></div>;
+  }
+
+  return (
+    <div className="min-h-screen overflow-x-hidden bg-[#F6FAF9] dark:bg-slate-950">
+      <header className="sticky top-0 z-40 border-b border-slate-100 bg-white shadow-nav dark:border-slate-800 dark:bg-slate-900">
+        <div className="container-page flex h-[4.25rem] items-center justify-between">
+          <Link to={`/store/${slug}`} className="truncate text-lg font-extrabold" style={{ color: panel?.brand_color || "#0D9488" }}>
+            {panel?.store_name || "Store"}
+          </Link>
+          <nav className="hidden items-center gap-6 text-sm font-semibold md:flex">
+            <Link to={`/store/${slug}`} className="text-slate-600 hover:text-brand-700 dark:text-slate-300">Services</Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            {me?.wallet && <CurrencyButton />}
+            <button onClick={() => setDark(!dark)} className="rounded-xl p-2 text-slate-600 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Toggle theme">
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            {me ? (
+              <Link to={me.user.role === "admin" ? "/admin" : "/app"}>
+                <Button>Dashboard</Button>
+              </Link>
+            ) : (
+              <>
+                <Link to={panelAuthPath("/login", slug)} className="hidden sm:block"><Button variant="ghost">Login</Button></Link>
+                <Link to={panelAuthPath("/register", slug)}><Button>Create account</Button></Link>
+              </>
+            )}
+            <button className="rounded-xl p-2 text-slate-700 md:hidden dark:text-slate-200" onClick={() => setOpen((v) => !v)} aria-label="Open menu">
+              {open ? <X /> : <Menu />}
+            </button>
+          </div>
+        </div>
+        {open && (
+          <div className="border-t border-slate-100 bg-white p-4 md:hidden dark:border-slate-800 dark:bg-slate-900">
+            <Link to={`/store/${slug}`} className="block py-2.5 text-sm font-semibold" onClick={() => setOpen(false)}>Services</Link>
+            {!me && (
+              <>
+                <Link to={panelAuthPath("/login", slug)} className="block py-2.5 text-sm font-semibold" onClick={() => setOpen(false)}>Login</Link>
+                <Link to={panelAuthPath("/register", slug)} className="block py-2.5 text-sm font-semibold" onClick={() => setOpen(false)}>Create account</Link>
+              </>
+            )}
+          </div>
+        )}
+      </header>
+      <Outlet key={location.pathname} />
+      <footer className="border-t border-slate-100 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
+        <div className="container-page text-sm text-muted">
+          <p className="text-lg font-extrabold text-slate-800 dark:text-white">{panel?.store_name}</p>
+          <p className="mt-2">© {new Date().getFullYear()} {panel?.store_name || "Storefront"}</p>
+          <p className="mt-3 flex flex-wrap gap-3">
+            <Link to="/refund-policy" className="font-semibold text-brand-700 hover:underline">Refund Policy</Link>
+            <Link to="/terms" className="font-semibold text-brand-700 hover:underline">Terms of Service</Link>
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 export function AppShell({
   title,
   items,
   groups,
   home,
   dense,
+  brand,
 }: {
   title: string;
   items?: AppNavItem[];
   groups?: AppNavGroup[];
   home: string;
   dense?: boolean;
+  brand?: { name: string; color?: string; logoutTo?: string } | null;
 }) {
   const { me, logout } = useAuth();
   const { dark, setDark } = useTheme();
@@ -105,7 +208,13 @@ export function AppShell({
     <div className="flex h-dvh flex-col overflow-hidden bg-[#F6FAF9] dark:bg-slate-950">
       <header className="z-50 flex h-[4.25rem] shrink-0 items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <BrandLogo to={home} />
+          {brand ? (
+            <Link to={home} className="truncate text-lg font-extrabold" style={{ color: brand.color || "#0D9488" }}>
+              {brand.name}
+            </Link>
+          ) : (
+            <BrandLogo to={home} />
+          )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {me?.wallet && <CurrencyButton />}
@@ -116,7 +225,7 @@ export function AppShell({
           <Button
             variant="outline"
             className="hidden h-10 rounded-full sm:inline-flex"
-            onClick={async () => { await logout(); navigate("/"); }}
+            onClick={async () => { await logout(); navigate(brand?.logoutTo || "/"); }}
           >
             Logout
           </Button>
@@ -164,7 +273,7 @@ export function AppShell({
             )}
             <button
               className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-medium hover:bg-white/10"
-              onClick={async () => { setOpen(false); await logout(); navigate("/"); }}
+              onClick={async () => { setOpen(false); await logout(); navigate(brand?.logoutTo || "/"); }}
             >
               Logout
             </button>

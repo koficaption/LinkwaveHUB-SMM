@@ -208,6 +208,41 @@ export function referralCodeFromRequest(req: { body?: { referralCode?: string };
   );
 }
 
+export function normalizeStoreSlug(slug?: string | null) {
+  if (!slug || typeof slug !== "string") return "";
+  const cleaned = slug.trim().toLowerCase().replace(/^\/store\//, "").split(/[/?#]/)[0];
+  if (!/^[a-z0-9-]{2,80}$/.test(cleaned)) return "";
+  return cleaned;
+}
+
+export function storeSlugFromQuery(req: { query?: Record<string, unknown> }) {
+  const queryStore = typeof req.query?.store === "string" ? req.query.store : "";
+  const querySlug = typeof req.query?.storeSlug === "string" ? req.query.storeSlug : "";
+  return normalizeStoreSlug(queryStore) || normalizeStoreSlug(querySlug);
+}
+
+export function storeSlugFromRequest(
+  req: { body?: { storeSlug?: string }; query?: Record<string, unknown>; cookies?: Record<string, string> },
+  opts?: { includeCookie?: boolean }
+) {
+  const includeCookie = opts?.includeCookie !== false;
+  const body = typeof req.body?.storeSlug === "string" ? req.body.storeSlug : "";
+  const cookie = includeCookie && typeof req.cookies?.lwh_panel === "string" ? req.cookies.lwh_panel : "";
+  return normalizeStoreSlug(body) || storeSlugFromQuery(req) || normalizeStoreSlug(cookie);
+}
+
+export function setPanelCookie(res: { cookie: (name: string, value: string, opts: Record<string, unknown>) => void }, slug: string) {
+  const value = normalizeStoreSlug(slug);
+  if (!value) return;
+  res.cookie("lwh_panel", value, {
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    sameSite: "lax",
+    httpOnly: false,
+    secure: config.frontendUrl.startsWith("https"),
+  });
+}
+
 export function setReferralCookie(res: { cookie: (name: string, value: string, opts: Record<string, unknown>) => void }, code: string) {
   const value = normalizeReferralCode(code);
   if (!value) return;

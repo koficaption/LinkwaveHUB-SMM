@@ -1,10 +1,11 @@
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatDate, money } from "@/api/client";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { useAuth } from "@/contexts/AuthContext";
 
 type AffiliateMe = {
   code: string;
@@ -18,7 +19,9 @@ type AffiliateMe = {
 };
 
 export function AffiliatePage() {
+  const { me } = useAuth();
   const data = useQuery({ queryKey: ["affiliate-me"], queryFn: () => api<AffiliateMe>("/affiliates/me") });
+  if (me?.panel) return <Navigate to="/app" replace />;
   if (data.isLoading) return <Skeleton className="h-64" />;
   const a = data.data;
   if (!a) return <EmptyState title="Affiliates unavailable" body="Try again in a moment." />;

@@ -10,6 +10,8 @@ import { Button, Card, Input, PasswordInput } from "@/components/ui";
 import { ApiError, api, errorMessage } from "@/api/client";
 import { storedReferralCode, persistReferralCode } from "@/pages/customer/AffiliatePages";
 import { BrandLogo } from "@/components/BrandLogo";
+import { activeStoreSlug, persistPanelSlug, storedPanelSlug, panelAuthPath } from "@/utils/panel";
+import type { PanelStore } from "@/types";
 
 const loginSchema = z.object({ email: z.string().email("Enter a valid email"), password: z.string().min(1, "Password is required") });
 const registerSchema = z.object({
@@ -27,6 +29,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const form = useForm({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "" } });
+  const storeSlug = params.get("store") || activeStoreSlug();
+  if (storeSlug) persistPanelSlug(storeSlug);
+  const store = useStorePreview(storeSlug);
 
   useEffect(() => {
     const google = params.get("google");
@@ -36,7 +41,16 @@ export function LoginPage() {
   }, [params]);
 
   return (
-    <AuthCard title="Welcome back" subtitle="Sign in to LinkBoost Growth SMM">
+    <AuthCard
+      title={store.data ? `Sign in to ${store.data.store_name}` : "Welcome back"}
+      subtitle={store.data ? "Use the account you created on this storefront." : "Sign in to LinkBoost Growth SMM"}
+      store={store.data}
+    >
+      {store.data && (
+        <p className="mb-4 rounded-xl px-3 py-2 text-sm text-white" style={{ background: store.data.brand_color }}>
+          You’re signing in as a customer of {store.data.store_name}. Services and prices on this panel belong to this reseller.
+        </p>
+      )}
       <GoogleSignIn forceHelp={["failed", "denied"].includes(params.get("google") || "")} />
       <form
         className="space-y-4"
@@ -63,7 +77,7 @@ export function LoginPage() {
           {form.formState.isSubmitting ? "Signing in..." : "Login"}
         </Button>
       </form>
-      <p className="mt-4 text-center text-sm">No account? <Link to="/register" className="font-semibold text-brand-700">Register</Link></p>
+      <p className="mt-4 text-center text-sm">No account? <Link to={panelAuthPath("/register", storeSlug)} className="font-semibold text-brand-700">Register</Link></p>
     </AuthCard>
   );
 }
@@ -184,12 +198,24 @@ export function RegisterPage() {
   const urlRef = params.get("ref");
   if (urlRef) persistReferralCode(urlRef);
   const invitedBy = urlRef || storedReferralCode();
+  const storeSlug = params.get("store") || registerStoreSlugFromPage();
+  if (storeSlug) persistPanelSlug(storeSlug);
+  const store = useStorePreview(storeSlug);
   const publicSettings = useQuery({ queryKey: ["public-settings"], queryFn: () => api<{ resellers?: { upgradeEnabled?: boolean; upgradeFee?: number } }>("/settings/public") });
   const paidUpgrade = publicSettings.data?.resellers?.upgradeEnabled !== false;
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", storeName: "" } });
   return (
-    <AuthCard title="Create your account" subtitle="Start growing in minutes">
-      {invitedBy && (
+    <AuthCard
+      title={store.data ? `Join ${store.data.store_name}` : "Create your account"}
+      subtitle={store.data ? "This account belongs to this reseller’s panel — not the main marketplace." : "Start growing in minutes"}
+      store={store.data}
+    >
+      {store.data && (
+        <p className="mb-4 rounded-xl px-3 py-2 text-sm text-white" style={{ background: store.data.brand_color }}>
+          You’re creating a customer account on {store.data.store_name}. You’ll see this reseller’s services and prices after you log in.
+        </p>
+      )}
+      {invitedBy && !store.data && (
         <p className="mb-4 rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:bg-brand-500/10 dark:text-brand-200">
           You were invited with code <span className="font-mono font-semibold">{invitedBy}</span>. You will be linked to that affiliate when you register.
         </p>
@@ -205,9 +231,10 @@ export function RegisterPage() {
               password: values.password,
               phone: values.phone?.trim() || undefined,
               whatsappNumber: values.whatsappNumber?.trim() || undefined,
-              asReseller: paidUpgrade ? false : asReseller,
+              asReseller: storeSlug || paidUpgrade ? false : asReseller,
               storeName: values.storeName?.trim() || undefined,
               referralCode: invitedBy,
+              storeSlug,
             });
             toast.success("Account created");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
@@ -224,7 +251,7 @@ export function RegisterPage() {
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
         <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional.</p>
-        {!paidUpgrade && (
+        {!storeSlug && !paidUpgrade && (
           <>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={asReseller} onChange={(e) => setAsReseller(e.target.checked)} />
@@ -237,7 +264,7 @@ export function RegisterPage() {
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
         </Button>
       </form>
-      <p className="mt-4 text-center text-sm">Already registered? <Link to="/login" className="font-semibold text-brand-700">Login</Link></p>
+      <p className="mt-4 text-center text-sm">Already registered? <Link to={panelAuthPath("/login", storeSlug)} className="font-semibold text-brand-700">Login</Link></p>
     </AuthCard>
   );
 }
@@ -291,9 +318,11 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   const urlRef = params.get("ref");
   if (urlRef) persistReferralCode(urlRef);
   const ref = urlRef || storedReferralCode();
-  const googleStart = ref
-    ? `/api/auth/google/start?ref=${encodeURIComponent(ref)}`
-    : "/api/auth/google/start";
+  const storeSlug = params.get("store") || activeStoreSlug();
+  const qs = new URLSearchParams();
+  if (ref) qs.set("ref", ref);
+  if (storeSlug) qs.set("storeSlug", storeSlug);
+  const googleStart = qs.toString() ? `/api/auth/google/start?${qs.toString()}` : "/api/auth/google/start";
 
   if (!enabled && !config.isLoading) return null;
 
@@ -338,11 +367,43 @@ function Divider() {
   );
 }
 
-function AuthCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function useStorePreview(slug?: string | null) {
+  return useQuery({
+    queryKey: ["store-preview", slug],
+    queryFn: async () => {
+      const payload = await api<{ store: PanelStore }>(`/store/${slug}?limit=1`);
+      return payload.store;
+    },
+    enabled: Boolean(slug),
+  });
+}
+
+function registerStoreSlugFromPage() {
+  return activeStoreSlug() || storedPanelSlug();
+}
+
+function AuthCard({
+  title,
+  subtitle,
+  children,
+  store,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  store?: PanelStore | null;
+}) {
   return (
     <div className="container-page flex min-h-[70vh] items-center justify-center py-16">
       <Card className="w-full max-w-md">
-        <BrandLogo className="mb-5" variant="full" to="/" />
+        {store ? (
+          <Link to={`/store/${store.store_slug}`} className="mb-5 block">
+            <p className="text-2xl font-extrabold" style={{ color: store.brand_color }}>{store.store_name}</p>
+            {store.tagline && <p className="mt-1 text-sm text-muted">{store.tagline}</p>}
+          </Link>
+        ) : (
+          <BrandLogo className="mb-5" variant="full" to="/" />
+        )}
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{title}</h1>
         <p className="mb-6 text-sm text-muted">{subtitle}</p>
         {children}

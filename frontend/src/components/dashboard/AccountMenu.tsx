@@ -38,14 +38,17 @@ export function AccountMenu() {
   }, [open]);
 
   if (!me) return null;
+  const panel = Boolean(me.panel);
   const items = [
     { to: "/app/profile", label: "Profile" },
     { to: "/app/wallet", label: "Wallet" },
     { to: "/app/wallet", label: "Transactions" },
-    { to: "/app/api", label: "API Developer" },
+    ...(!panel ? [{ to: "/app/api", label: "API Developer" }] : []),
     ...(me.user.role === "reseller" || me.user.role === "admin"
       ? [{ to: "/app/reseller", label: "Reseller Dashboard" }]
-      : [{ to: "/app/become-reseller", label: "Child Panels" }]),
+      : panel
+        ? []
+        : [{ to: "/app/become-reseller", label: "Child Panels" }]),
     { to: "/app/profile", label: "Settings" },
   ];
 
@@ -77,7 +80,7 @@ export function AccountMenu() {
             onClick={async () => {
               setOpen(false);
               await logout();
-              navigate("/");
+              navigate(me.panel ? `/store/${me.panel.store_slug}` : "/");
             }}
           >
             <LogOut className="h-4 w-4" /> Logout

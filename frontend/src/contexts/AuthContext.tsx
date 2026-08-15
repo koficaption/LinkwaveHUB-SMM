@@ -2,8 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
 import { storedReferralCode, claimStoredReferral } from "@/pages/customer/AffiliatePages";
+import { activeStoreSlug, registerStoreSlug } from "@/utils/panel";
 import { setStoredToken } from "@/api/token";
-import type { User, Wallet } from "@/types";
+import type { PanelStore, User, Wallet } from "@/types";
 
 type Me = {
   user: User;
@@ -18,6 +19,7 @@ type Me = {
     tagline?: string | null;
     markup_percent: number | string;
   } | null;
+  panel?: PanelStore | null;
   resellerApplication?: {
     id: string;
     store_name: string;
@@ -72,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async login(email, password) {
         const result = await api<{ user: User; token: string }>("/auth/login", {
           method: "POST",
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, storeSlug: activeStoreSlug() }),
         });
         const me = await finishLogin(result.token, qc);
         await claimStoredReferral();
@@ -81,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async loginWithGoogle(payload) {
         const result = await api<{ user: User; token: string }>("/auth/google", {
           method: "POST",
-          body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
+          body: JSON.stringify({ ...payload, referralCode: storedReferralCode(), storeSlug: activeStoreSlug() }),
         });
         const me = await finishLogin(result.token, qc);
         await claimStoredReferral();
@@ -95,7 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async register(payload) {
         const result = await api<{ user: User; token: string }>("/auth/register", {
           method: "POST",
-          body: JSON.stringify({ ...payload, referralCode: payload.referralCode || storedReferralCode() }),
+          body: JSON.stringify({
+            ...payload,
+            referralCode: payload.referralCode || storedReferralCode(),
+            storeSlug: payload.storeSlug || registerStoreSlug(),
+          }),
         });
         const me = await finishLogin(result.token, qc);
         await claimStoredReferral();

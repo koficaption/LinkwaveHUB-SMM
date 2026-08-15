@@ -139,7 +139,12 @@ export function ServiceDetailPage() {
   const { me } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const product = useQuery({ queryKey: ["product", slug], queryFn: () => api<Product>(`/products/${slug}`) });
+  const [params] = useSearchParams();
+  const storeSlug = params.get("store") || undefined;
+  const product = useQuery({
+    queryKey: ["product", slug, storeSlug],
+    queryFn: () => api<Product>(`/products/${slug}${storeSlug ? `?storeSlug=${encodeURIComponent(storeSlug)}` : ""}`),
+  });
   const form = useForm({ resolver: zodResolver(orderSchema), defaultValues: { quantity: 100, target: "" } });
   const quantity = form.watch("quantity");
   const unit = Number(product.data?.display_price_per_1000 ?? product.data?.price_per_1000 ?? 0);
@@ -147,7 +152,7 @@ export function ServiceDetailPage() {
 
   const mutation = useMutation({
     mutationFn: (values: { quantity: number; target: string }) =>
-      api("/orders", { method: "POST", body: JSON.stringify({ productId: product.data?.id, ...values }) }),
+      api("/orders", { method: "POST", body: JSON.stringify({ productId: product.data?.id, ...values, storeSlug }) }),
     onSuccess: async () => {
       toast.success("Order placed successfully");
       await qc.invalidateQueries({ queryKey: ["me"] });
@@ -186,7 +191,7 @@ export function ServiceDetailPage() {
       <Card className="lg:col-span-2 h-fit">
         <h2 className="text-lg font-bold">New order</h2>
         <form className="mt-4 space-y-4" onSubmit={form.handleSubmit((v) => {
-          if (!me) return navigate("/login");
+          if (!me) return navigate(storeSlug ? `/login?store=${encodeURIComponent(storeSlug)}` : "/login");
           mutation.mutate(v);
         })}>
           <label className="block"><span className="label">Quantity</span><Input type="number" {...form.register("quantity")} /></label>
@@ -206,21 +211,74 @@ export function ServiceDetailPage() {
 
 export function StorefrontPage() {
   const { slug } = useParams();
-  const store = useQuery({
-    queryKey: ["store", slug],
-    queryFn: () => api<{ store: { store_name: string; tagline?: string; brand_color: string }; products: Product[] }>(`/store/${slug}`),
+  const { me } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const platform = params.get("platform") || "";
+  const category = params.get("category") || "";
+  const search = params.get("q") || "";
+  const page = Number(params.get("page") || 1);
+  const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
+  const categories = useQuery({
+    queryKey: ["categories", platform],
+    queryFn: () => api<Category[]>(`/categories${platform ? `?platformId=${platforms.data?.find((p) => p.slug === platform)?.id || platform}` : ""}`),
   });
-  if (store.isLoading) return <div className="container-page py-16"><Skeleton className="h-64" /></div>;
+  const store = useQuery({
+    queryKey: ["store", slug, platform, category, search, page],
+    queryFn: () => api<{
+      store: { store_name: string; tagline?: string; brand_color: string; store_slug: string };
+      items: Product[];
+      products: Product[];
+      total: number;
+      limit: number;
+      page: number;
+    }>(`/store/${slug}?limit=24&page=${page}${platform ? `&platformId=${platform}` : ""}${category ? `&categoryId=${category}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+  });
+  const set = (key: string, value: string) => setParams((p) => {
+    if (value) p.set(key, value); else p.delete(key);
+    p.set("page", "1");
+    return p;
+  });
+  if (store.isLoading && !store.data) return <div className="container-page py-16"><Skeleton className="h-64" /></div>;
   if (!store.data) return <EmptyState title="Store not found" body="This reseller storefront is unavailable." />;
+  const s = store.data.store;
+  const items = store.data.items ?? store.data.products ?? [];
+  const loginTo = `/login?store=${encodeURIComponent(slug || "")}`;
+  const registerTo = `/register?store=${encodeURIComponent(slug || "")}`;
+
   return (
     <div className="container-page py-12">
-      <div className="rounded-3xl p-8 text-white" style={{ background: store.data.store.brand_color }}>
+      <div className="rounded-3xl p-8 text-white" style={{ background: s.brand_color }}>
         <p className="text-sm uppercase tracking-wide opacity-80">Reseller storefront</p>
-        <h1 className="mt-2 text-3xl font-extrabold">{store.data.store.store_name}</h1>
-        <p className="mt-2 opacity-90">{store.data.store.tagline}</p>
+        <h1 className="mt-2 text-3xl font-extrabold">{s.store_name}</h1>
+        <p className="mt-2 max-w-2xl opacity-90">{s.tagline || "Order services at this store’s prices. Create an account here so this reseller can manage your orders."}</p>
+        {!me && (
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link to={registerTo}><Button className="bg-white text-slate-900 hover:bg-white/90">Create account</Button></Link>
+            <Link to={loginTo}><Button variant="outline" className="border-white text-white hover:bg-white/10">Login</Button></Link>
+          </div>
+        )}
+        {me?.panel?.store_slug === slug && (
+          <div className="mt-6">
+            <Link to="/app"><Button className="bg-white text-slate-900 hover:bg-white/90">Go to your panel</Button></Link>
+          </div>
+        )}
       </div>
+
+      <div className="mt-8 grid gap-3 md:grid-cols-3">
+        <Input placeholder="Search services" defaultValue={search} onBlur={(e) => set("q", e.target.value)} />
+        <Select value={platform} onChange={(e) => setParams({ platform: e.target.value, category: "", page: "1" })}>
+          <option value="">All platforms</option>
+          {platforms.data?.filter((p) => Number(p.product_count ?? 1) > 0).map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
+        </Select>
+        <Select value={category} onChange={(e) => set("category", e.target.value)}>
+          <option value="">All categories</option>
+          {categories.data?.filter((c) => !isProviderCategory(c.name) && Number(c.product_count ?? 1) > 0).map((c) => <option key={c.id} value={c.slug}>{publicCategoryName(c.name)}</option>)}
+        </Select>
+      </div>
+
       <div className="mt-8 grid gap-4 md:grid-cols-3">
-        {store.data.products.map((p) => (
+        {store.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
+        {items.map((p) => (
           <Card key={p.id}>
             <p className="text-xs text-slate-500">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <h3 className="mt-2 font-bold">{publicProductName(p.name)}</h3>
@@ -229,10 +287,19 @@ export function StorefrontPage() {
               <RefillBadge {...productRefill(p)} />
               <CancelBadge supported={productCancel(p).supported} />
             </div>
-            <Link to={`/services/${p.slug}?store=${slug}`}><Button className="mt-4 w-full">Order</Button></Link>
+            <Link to={me ? `/app` : registerTo}><Button className="mt-4 w-full">{me ? "Order in panel" : "Create account to order"}</Button></Link>
           </Card>
         ))}
       </div>
+      {!store.isLoading && items.length === 0 && (
+        <EmptyState title="No services yet" body="This store has no matching services right now." />
+      )}
+      <Pagination
+        page={store.data.page}
+        total={store.data.total}
+        limit={store.data.limit}
+        onPage={(next) => setParams((p) => { p.set("page", String(next)); return p; })}
+      />
     </div>
   );
 }
