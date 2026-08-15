@@ -138,6 +138,11 @@ html {
     filter: drop-shadow(0 8px 6px rgb(15 23 42 / 0.18));
   }
 
+  .stat-icon-art img {
+    pointer-events: none;
+    user-select: none;
+  }
+
   .stat-card-copy {
     transform: translateZ(16px);
   }

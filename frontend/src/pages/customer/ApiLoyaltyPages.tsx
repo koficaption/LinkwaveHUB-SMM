@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
-import { ShoppingCart } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, money } from "@/api/client";
+import { api } from "@/api/client";
 import type { Order, Paginated, Wallet } from "@/types";
 import { Button, Card, PageHeader, Skeleton } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,7 +29,7 @@ export function LoyaltyPage() {
         <div className="grid gap-4 lg:grid-cols-3">
           <SpentCard amount={wallet.data?.total_spent ?? 0} />
           <StatCard
-            icon={<ShoppingCart className="h-8 w-8 text-brand-700" />}
+            icon={<img src="/dashboard/cart-3d.webp" alt="" className="h-[88%] w-[88%] object-contain" draggable={false} />}
             title={(orders.data?.total ?? 0).toLocaleString()}
             subtitle="Orders (All time)"
           />
