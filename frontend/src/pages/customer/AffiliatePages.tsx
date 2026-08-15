@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ export function AffiliatePage() {
       <div>
         <h1 className="page-title">Earn money with affiliations</h1>
         <p className="mt-1 text-slate-500">
-          Invite friends with your personal link. You earn {a.config.commissionPercent}% for life on the funds they add to their wallet. Commission is added to your wallet and can be used to order services.
+          Invite friends with your personal link. When they register with that link and add funds, you earn {a.config.commissionPercent}% for life on those deposits. Commission is added to your wallet and can be used to order services. Signing up with someone else’s link pays them — it does not pay you.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
@@ -137,12 +138,23 @@ export function AdminAffiliates() {
 }
 
 export function ReferralCapture() {
-  const [done] = useState(() => {
-    const ref = new URLSearchParams(window.location.search).get("ref");
-    if (ref) localStorage.setItem("lwh_ref", ref);
-    return true;
-  });
-  return done ? null : null;
+  const location = useLocation();
+  useEffect(() => {
+    const ref = new URLSearchParams(location.search).get("ref");
+    if (ref) persistReferralCode(ref);
+  }, [location.search]);
+  return null;
+}
+
+export function persistReferralCode(ref: string) {
+  const value = ref.trim();
+  if (!value) return;
+  try {
+    localStorage.setItem("lwh_ref", value);
+    document.cookie = `lwh_ref=${encodeURIComponent(value)};path=/;max-age=${60 * 60 * 24 * 30};SameSite=Lax`;
+  } catch {
+    /* ignore */
+  }
 }
 
 export function storedReferralCode() {
@@ -150,5 +162,15 @@ export function storedReferralCode() {
     return localStorage.getItem("lwh_ref") || undefined;
   } catch {
     return undefined;
+  }
+}
+
+export async function claimStoredReferral() {
+  const code = storedReferralCode();
+  if (!code) return;
+  try {
+    await api("/affiliates/claim", { method: "POST", body: JSON.stringify({ referralCode: code }) });
+  } catch {
+    /* ignore if not signed in yet or code is invalid */
   }
 }

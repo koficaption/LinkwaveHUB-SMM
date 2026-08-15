@@ -70,6 +70,10 @@ export function PublicLayout() {
             <BrandLogo className="mb-3" />
             <p>© {new Date().getFullYear()} {String(settings.data?.siteName || "LinkBoost Growth SMM")}. Developed by {String(settings.data?.developer || "OB CodeLab")}.</p>
             {settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
+            <p className="mt-3 flex flex-wrap gap-3">
+              <Link to="/refund-policy" className="font-semibold text-brand-700 hover:underline">Refund Policy</Link>
+              <Link to="/terms" className="font-semibold text-brand-700 hover:underline">Terms of Service</Link>
+            </p>
           </div>
         </div>
       </footer>

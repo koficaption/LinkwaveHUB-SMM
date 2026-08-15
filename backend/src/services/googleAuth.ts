@@ -4,7 +4,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
-import { newReferralCode } from "./affiliateService.js";
+import { attachReferrer, newReferralCode } from "./affiliateService.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, role, status, avatar_url, last_login_at, created_at`;
 
@@ -25,14 +25,21 @@ export function googleRedirectUrl(state: string, redirectUri = config.googleRedi
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export function createGoogleState(redirectUri: string) {
-  return jwt.sign({ typ: "google_oauth", redirectUri }, config.jwtSecret, { expiresIn: "10m" });
+export function createGoogleState(redirectUri: string, referralCode?: string) {
+  return jwt.sign(
+    { typ: "google_oauth", redirectUri, referralCode: referralCode || undefined },
+    config.jwtSecret,
+    { expiresIn: "10m" }
+  );
 }
 
 export function verifyGoogleState(state: string) {
-  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string };
+  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string; referralCode?: string };
   if (payload.typ !== "google_oauth") throw new AppError("Invalid Google sign-in state", 400);
-  return payload.redirectUri || config.googleRedirectUri;
+  return {
+    redirectUri: payload.redirectUri || config.googleRedirectUri,
+    referralCode: payload.referralCode || "",
+  };
 }
 
 type GoogleProfile = {
@@ -43,7 +50,7 @@ type GoogleProfile = {
   picture?: string;
 };
 
-export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri) {
+export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string) {
   if (!config.googleClientId || !config.googleClientSecret) {
     throw new AppError("Google sign-in is not configured", 501);
   }
@@ -64,7 +71,7 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
     throw new AppError(tokenJson.error_description || "Google sign-in failed", 401);
   }
   if (tokenJson.id_token) {
-    return loginWithGoogleIdToken(tokenJson.id_token);
+    return loginWithGoogleIdToken(tokenJson.id_token, referralCode);
   }
   if (!tokenJson.access_token) throw new AppError("Google did not return a user token", 401);
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -74,10 +81,10 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile);
+  return upsertGoogleUser(profile, referralCode);
 }
 
-export async function loginWithGoogleAccessToken(accessToken: string) {
+export async function loginWithGoogleAccessToken(accessToken: string, referralCode?: string) {
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -85,10 +92,10 @@ export async function loginWithGoogleAccessToken(accessToken: string) {
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile);
+  return upsertGoogleUser(profile, referralCode);
 }
 
-export async function loginWithGoogleIdToken(idToken: string) {
+export async function loginWithGoogleIdToken(idToken: string, referralCode?: string) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   const payload = (await res.json()) as GoogleProfile & { aud?: string; error?: string };
   if (!res.ok || payload.error || !payload.email || !payload.sub) {
@@ -97,10 +104,10 @@ export async function loginWithGoogleIdToken(idToken: string) {
   if (config.googleClientId && payload.aud !== config.googleClientId) {
     throw new AppError("Google credential does not match this app", 401);
   }
-  return upsertGoogleUser(payload);
+  return upsertGoogleUser(payload, referralCode);
 }
 
-async function upsertGoogleUser(profile: GoogleProfile) {
+async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string) {
   const email = profile.email.toLowerCase();
   const verified = profile.email_verified !== false && profile.email_verified !== "false";
   if (!verified) throw new AppError("Google email is not verified", 401);
@@ -140,6 +147,9 @@ async function upsertGoogleUser(profile: GoogleProfile) {
 
     if (!user) throw new AppError("Unable to sign in with Google", 500);
     if (user.status === "suspended") throw new AppError("Account is suspended", 403);
+    if (referralCode) {
+      await attachReferrer(user.id, referralCode, client);
+    }
     const token = signToken({ id: user.id, role: user.role, email: user.email });
     return { user, token, created };
   });

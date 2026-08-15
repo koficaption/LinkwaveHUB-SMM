@@ -283,13 +283,17 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   });
   const enabled = Boolean(config.data?.enabled);
   const redirectUri = config.data?.redirectUri || LIVE_GOOGLE_CALLBACK;
+  const ref = storedReferralCode();
+  const googleStart = ref
+    ? `/api/auth/google/start?ref=${encodeURIComponent(ref)}`
+    : "/api/auth/google/start";
 
   if (!enabled && !config.isLoading) return null;
 
   return (
     <>
       <a
-        href="/api/auth/google/start"
+        href={googleStart}
         className="btn flex w-full items-center justify-center gap-3 border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
       >
         <GoogleMark />

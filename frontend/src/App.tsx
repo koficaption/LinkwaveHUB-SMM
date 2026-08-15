@@ -12,6 +12,7 @@ import {
 } from "@/pages/customer/CustomerPages";
 import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
+import { RefundPolicyPage, TermsOfServicePage } from "@/pages/legal/LegalPages";
 import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage } from "@/pages/reseller/ResellerPages";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
@@ -44,6 +45,8 @@ export default function App() {
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                <Route path="/refund-policy" element={<RefundPolicyPage />} />
+                <Route path="/terms" element={<TermsOfServicePage />} />
               </Route>
               <Route element={<Guard />}>
                 <Route element={<CustomerLayout />}>
@@ -55,6 +58,8 @@ export default function App() {
                   <Route path="/app/affiliates" element={<AffiliatePage />} />
                   <Route path="/app/api" element={<ApiAccessPage />} />
                   <Route path="/app/loyalty" element={<LoyaltyPage />} />
+                  <Route path="/app/refund-policy" element={<RefundPolicyPage />} />
+                  <Route path="/app/terms" element={<TermsOfServicePage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
                   <Route path="/app/become-reseller" element={<BecomeResellerPage />} />
                   <Route path="/app/support" element={<SupportPage />} />

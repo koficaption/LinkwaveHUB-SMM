@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
-import { storedReferralCode } from "@/pages/customer/AffiliatePages";
+import { storedReferralCode, claimStoredReferral } from "@/pages/customer/AffiliatePages";
 import { setStoredToken } from "@/api/token";
 import type { User, Wallet } from "@/types";
 
@@ -74,24 +74,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
-        return finishLogin(result.token, qc);
+        const me = await finishLogin(result.token, qc);
+        await claimStoredReferral();
+        return me;
       },
       async loginWithGoogle(payload) {
         const result = await api<{ user: User; token: string }>("/auth/google", {
           method: "POST",
           body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
         });
-        return finishLogin(result.token, qc);
+        const me = await finishLogin(result.token, qc);
+        await claimStoredReferral();
+        return me;
       },
       async completeTokenLogin(token: string) {
-        return finishLogin(token, qc);
+        const me = await finishLogin(token, qc);
+        await claimStoredReferral();
+        return me;
       },
       async register(payload) {
         const result = await api<{ user: User; token: string }>("/auth/register", {
           method: "POST",
           body: JSON.stringify({ ...payload, referralCode: payload.referralCode || storedReferralCode() }),
         });
-        return finishLogin(result.token, qc);
+        const me = await finishLogin(result.token, qc);
+        await claimStoredReferral();
+        return me;
       },
       async logout() {
         setStoredToken(null);

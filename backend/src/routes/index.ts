@@ -152,7 +152,9 @@ router.get("/auth/google/start", authLimit, (req, res) => {
     return res.redirect(`${origin}/login?google=unconfigured`);
   }
   const redirectUri = googleCallbackUri(req);
-  const state = googleAuth.createGoogleState(redirectUri);
+  const queryRef = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
+  const cookieRef = typeof req.cookies?.lwh_ref === "string" ? String(req.cookies.lwh_ref).trim() : "";
+  const state = googleAuth.createGoogleState(redirectUri, queryRef || cookieRef);
   res.redirect(googleAuth.googleRedirectUrl(state, redirectUri));
 });
 router.get("/auth/google/callback", asyncHandler(async (req, res) => {
@@ -167,8 +169,8 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
     return res.redirect(`${origin}/login?google=failed`);
   }
   try {
-    const redirectUri = googleAuth.verifyGoogleState(state);
-    const result = await googleAuth.loginWithGoogleCode(code, redirectUri);
+    const googleState = googleAuth.verifyGoogleState(state);
+    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, googleState.referralCode);
     setAuthCookie(res, result.token, req);
     return res.redirect(`${origin}/auth/callback?token=${encodeURIComponent(result.token)}`);
   } catch {
@@ -183,14 +185,15 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
     referralCode: z.string().max(40).optional(),
   }).parse(req.body);
   const result = body.accessToken
-    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken)
+    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken, body.referralCode)
     : body.credential
-      ? await googleAuth.loginWithGoogleIdToken(body.credential)
+      ? await googleAuth.loginWithGoogleIdToken(body.credential, body.referralCode)
       : body.code
-        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage")
+        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode)
         : (() => { throw new AppError("Google credential is required", 400); })();
   if (body.referralCode) {
     await affiliates.attachReferrer(result.user.id, body.referralCode);
+    await affiliates.settleMissedCommissionsForDepositor(result.user.id);
   }
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in with Google"));
@@ -211,6 +214,12 @@ router.post("/auth/password", requireAuth, validate(changePasswordSchema), async
 }));
 router.get("/affiliates/me", requireAuth, asyncHandler(async (req, res) => {
   res.json(ok(await affiliates.getMyAffiliate(req.user!.id)));
+}));
+router.post("/affiliates/claim", requireAuth, asyncHandler(async (req, res) => {
+  const body = z.object({ referralCode: z.string().min(1).max(40) }).parse(req.body);
+  const attached = await affiliates.attachReferrer(req.user!.id, body.referralCode);
+  if (attached) await affiliates.settleMissedCommissionsForDepositor(req.user!.id);
+  res.json(ok({ attached: Boolean(attached) }));
 }));
 router.get("/affiliates/public", asyncHandler(async (_req, res) => {
   res.json(ok(await affiliates.affiliateConfig()));

@@ -26,23 +26,30 @@ export async function ensureReferralCode(userId: string): Promise<string> {
   throw new Error("Could not allocate a referral code");
 }
 
-export async function findReferrerByCode(code?: string | null) {
+export async function findReferrerByCode(code?: string | null, client?: Queryable) {
   if (!code || !code.trim()) return null;
+  const cleaned = code.trim().replace(/^.*[?&]ref=/i, "").split(/[/?#]/)[0];
+  if (!cleaned) return null;
   return queryOne<{ id: string; full_name: string; referral_code: string }>(
     `SELECT id, full_name, referral_code FROM users WHERE UPPER(referral_code) = UPPER($1)`,
-    [code.trim()]
+    [cleaned],
+    client
   );
 }
 
 export async function attachReferrer(userId: string, code?: string | null, client?: Queryable) {
-  const referrer = await findReferrerByCode(code);
+  const referrer = await findReferrerByCode(code, client);
   if (!referrer || referrer.id === userId) return null;
-  await query(
-    `UPDATE users SET referred_by_id = $2 WHERE id = $1 AND referred_by_id IS NULL`,
+  const updated = await queryOne<{ id: string }>(
+    `UPDATE users SET referred_by_id = $2
+     WHERE id = $1
+       AND referred_by_id IS NULL
+       AND created_at > NOW() - INTERVAL '14 days'
+     RETURNING id`,
     [userId, referrer.id],
     client
   );
-  return referrer;
+  return updated ? referrer : null;
 }
 
 export async function affiliateConfig() {
@@ -96,13 +103,22 @@ export async function payReferralCommission(input: {
       [depositor.referred_by_id],
       client
     );
-    if (!wallet) return;
-    const next = Number((Number(wallet.balance) + commission).toFixed(4));
-    await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, next], client);
+    let walletRow = wallet;
+    if (!walletRow) {
+      await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [depositor.referred_by_id], client);
+      walletRow = await queryOne<{ id: string; balance: string }>(
+        `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
+        [depositor.referred_by_id],
+        client
+      );
+    }
+    if (!walletRow) throw new Error("Referrer wallet missing");
+    const next = Number((Number(walletRow.balance) + commission).toFixed(4));
+    await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [walletRow.id, next], client);
     await query(
       `INSERT INTO wallet_transactions (wallet_id, user_id, type, amount, balance_after, reference, description)
        VALUES ($1,$2,'affiliate_commission',$3,$4,$5,$6)`,
-      [wallet.id, depositor.referred_by_id, commission, next, input.reference ?? null, `Affiliate commission (${cfg.commissionPercent}%) from a referred deposit`],
+      [walletRow.id, depositor.referred_by_id, commission, next, input.reference ?? null, `Affiliate commission (${cfg.commissionPercent}%) from a referred deposit`],
       client
     );
     });
@@ -120,8 +136,56 @@ export async function payReferralCommission(input: {
   return commission;
 }
 
+export async function settleMissedCommissionsForDepositor(depositorId: string) {
+  const deposits = await query<{ id: string; amount: string; reference: string | null }>(
+    `SELECT p.id, p.amount, p.reference
+     FROM payments p
+     WHERE p.user_id = $1
+       AND p.status = 'completed'
+       AND COALESCE(p.metadata->>'purpose', 'deposit') <> 'reseller_upgrade'
+       AND NOT EXISTS (SELECT 1 FROM affiliate_commissions c WHERE c.payment_id = p.id)`,
+    [depositorId]
+  );
+  let paid = 0;
+  for (const row of deposits) {
+    const amount = await payReferralCommission({
+      depositorId,
+      depositAmount: Number(row.amount),
+      paymentId: row.id,
+      reference: row.reference ?? undefined,
+    });
+    if (amount) paid += amount;
+  }
+  return paid;
+}
+
+export async function settleMissedCommissionsForReferrer(referrerId: string) {
+  const deposits = await query<{ id: string; amount: string; reference: string | null; user_id: string }>(
+    `SELECT p.id, p.amount, p.reference, p.user_id
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE u.referred_by_id = $1
+       AND p.status = 'completed'
+       AND COALESCE(p.metadata->>'purpose', 'deposit') <> 'reseller_upgrade'
+       AND NOT EXISTS (SELECT 1 FROM affiliate_commissions c WHERE c.payment_id = p.id)`,
+    [referrerId]
+  );
+  let paid = 0;
+  for (const row of deposits) {
+    const amount = await payReferralCommission({
+      depositorId: row.user_id,
+      depositAmount: Number(row.amount),
+      paymentId: row.id,
+      reference: row.reference ?? undefined,
+    });
+    if (amount) paid += amount;
+  }
+  return paid;
+}
+
 export async function getMyAffiliate(userId: string) {
   const code = await ensureReferralCode(userId);
+  await settleMissedCommissionsForReferrer(userId);
   const cfg = await affiliateConfig();
   const stats = await queryOne<{
     referred: string;

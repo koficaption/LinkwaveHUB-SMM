@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import {
-  BarChart3, Bell, Boxes, Code2, CreditCard, Gift, Globe, Handshake,
+  Banknote, BarChart3, Bell, BookOpen, Boxes, Code2, CreditCard, Gift, Globe, Handshake,
   LayoutDashboard, Link2, Plug, RefreshCcw, Settings, ShoppingCart, Store, Ticket, Users, Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,6 +31,8 @@ export function CustomerLayout() {
     { to: "/app/affiliates", label: "Affiliate Program", icon: <Handshake className="h-5 w-5" /> },
     { to: "/app/api", label: "API", icon: <Link2 className="h-5 w-5" /> },
     { to: "/app/loyalty", label: "Loyalty Program", icon: <Gift className="h-5 w-5" /> },
+    { to: "/app/refund-policy", label: "Refund Policy", icon: <Banknote className="h-5 w-5" /> },
+    { to: "/app/terms", label: "Terms of Service", icon: <BookOpen className="h-5 w-5" /> },
   ];
   if (me?.user.role === "reseller") {
     items.splice(6, 0,
