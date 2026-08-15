@@ -31,6 +31,7 @@ export function CustomerLayout() {
       { to: "/app/reseller/storefront", label: "Storefront", icon: <Store className="h-5 w-5" /> },
       { to: "/app/reseller/pricing", label: "Pricing", icon: <Wallet className="h-5 w-5" /> },
       { to: "/app/reseller/customers", label: "Customers", icon: <Users className="h-5 w-5" /> },
+      { to: "/app/reseller/withdraw", label: "Withdraw", icon: <Banknote className="h-5 w-5" /> },
     );
   }
   if (!panel) {
@@ -97,6 +98,7 @@ export function AdminLayout() {
           label: "Finance",
           items: [
             { to: "/admin/payments", label: "Payments", icon: <CreditCard className="h-5 w-5" /> },
+            { to: "/admin/payouts", label: "Reseller payouts", icon: <Banknote className="h-5 w-5" /> },
             { to: "/admin/wallets", label: "Wallets", icon: <Wallet className="h-5 w-5" /> },
           ],
         },

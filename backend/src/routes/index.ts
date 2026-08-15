@@ -35,6 +35,8 @@ import {
   providerSchema,
   storefrontSchema,
   resellerPriceSchema,
+  resellerWithdrawSchema,
+  resellerWithdrawalReviewSchema,
   paymentMethodSchema,
   adminBroadcastSchema,
   resellerUpgradeSchema,
@@ -380,6 +382,15 @@ router.get("/reseller/customers", requireAuth, requireRole("reseller", "admin"),
 router.get("/reseller/customers/:id", requireAuth, requireRole("reseller", "admin"), asyncHandler(async (req, res) => {
   res.json(ok(await resellers.getResellerCustomer(req.user!.id, req.params.id)));
 }));
+router.get("/reseller/withdrawals", requireAuth, requireRole("reseller", "admin"), asyncHandler(async (req, res) => {
+  res.json(ok({
+    minAmount: resellers.MIN_RESELLER_WITHDRAWAL_GHS,
+    items: await resellers.listMyWithdrawals(req.user!.id),
+  }));
+}));
+router.post("/reseller/withdrawals", requireAuth, requireRole("reseller", "admin"), validate(resellerWithdrawSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await resellers.requestResellerWithdrawal(req.user!.id, req.body), "Withdrawal submitted"));
+}));
 
 const admin = Router();
 admin.use(requireAuth, requireRole("admin"));
@@ -582,6 +593,18 @@ admin.get("/resellers/:id", asyncHandler(async (req, res) => {
 admin.post("/resellers/:id/status", asyncHandler(async (req, res) => {
   const body = z.object({ status: z.string() }).parse(req.body);
   res.json(ok(await resellers.setResellerStatus(req.params.id, body.status, req.user!, clientIp(req))));
+}));
+admin.get("/reseller-withdrawals", asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.listResellerWithdrawals(req.query.status as string | undefined)));
+}));
+admin.post("/reseller-withdrawals/:id/review", validate(resellerWithdrawalReviewSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await resellers.reviewResellerWithdrawal(
+    req.params.id,
+    req.body.status,
+    req.user!,
+    clientIp(req),
+    req.body.adminNote
+  )));
 }));
 
 admin.get("/providers", asyncHandler(async (_req, res) => res.json(ok(await providers.listProviders()))));

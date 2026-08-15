@@ -134,7 +134,8 @@ export async function getMe(userId: string) {
   if (!user) throw new AppError("User not found", 404);
   const wallet = await queryOne(`SELECT id, balance, currency FROM wallets WHERE user_id = $1`, [userId]);
   const reseller = await queryOne(
-    `SELECT id, status, store_name, store_slug, logo_url, brand_color, tagline, markup_percent
+    `SELECT id, status, store_name, store_slug, logo_url, brand_color, tagline, markup_percent,
+            support_email, contact_phone, whatsapp_number, profit_balance
      FROM resellers WHERE user_id = $1`,
     [userId]
   );

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
 import { Button, Skeleton } from "@/components/ui";
-import { HelpBar, usePublicSettings } from "@/components/ContactLinks";
+import { HelpBar, panelHelp, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AccountMenu, CurrencyButton } from "@/components/dashboard/AccountMenu";
 import { cn } from "@/utils/cn";
@@ -95,7 +95,7 @@ export function PublicLayout() {
               <BrandLogo className="mb-3" />
             )}
             <p>© {new Date().getFullYear()} {panel?.store_name || String(settings.data?.siteName || "LinkBoost Growth SMM")}{panel ? "" : `. Developed by ${String(settings.data?.developer || "OB CodeLab")}.`}</p>
-            {!panel && settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
+            {panel?.support_email ? <p className="mt-1">{panel.support_email}</p> : !panel && settings.data?.supportEmail && <p className="mt-1">{settings.data.supportEmail}</p>}
             <p className="mt-3 flex flex-wrap gap-3">
               <Link to="/refund-policy" className="font-semibold text-brand-700 hover:underline">Refund Policy</Link>
               <Link to="/terms" className="font-semibold text-brand-700 hover:underline">Terms of Service</Link>
@@ -103,7 +103,7 @@ export function PublicLayout() {
           </div>
         </div>
       </footer>
-      <HelpBar />
+      <HelpBar details={panel ? panelHelp(panel) : undefined} hideTickets={Boolean(panel)} />
     </div>
   );
 }
@@ -173,12 +173,15 @@ export function StoreLayout() {
         <div className="container-page text-sm text-muted">
           <p className="text-lg font-extrabold text-slate-800 dark:text-white">{panel?.store_name}</p>
           <p className="mt-2">© {new Date().getFullYear()} {panel?.store_name || "Storefront"}</p>
+          {panel?.support_email && <p className="mt-1">{panel.support_email}</p>}
+          {panel?.contact_phone && <p className="mt-1">{panel.contact_phone}</p>}
           <p className="mt-3 flex flex-wrap gap-3">
             <Link to="/refund-policy" className="font-semibold text-brand-700 hover:underline">Refund Policy</Link>
             <Link to="/terms" className="font-semibold text-brand-700 hover:underline">Terms of Service</Link>
           </p>
         </div>
       </footer>
+      <HelpBar details={panelHelp(panel) ?? {}} hideTickets />
     </div>
   );
 }
@@ -286,7 +289,7 @@ export function AppShell({
           </div>
         </main>
       </div>
-      <HelpBar />
+      <HelpBar details={me?.panel ? panelHelp(me.panel) : undefined} hideTickets={Boolean(me?.panel)} />
     </div>
   );
 }

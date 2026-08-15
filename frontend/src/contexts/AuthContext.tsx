@@ -18,6 +18,10 @@ type Me = {
     brand_color: string;
     tagline?: string | null;
     markup_percent: number | string;
+    support_email?: string | null;
+    contact_phone?: string | null;
+    whatsapp_number?: string | null;
+    profit_balance?: number | string;
   } | null;
   panel?: PanelStore | null;
   resellerApplication?: {

@@ -214,28 +214,11 @@ export async function placeOrder(input: {
     );
 
     if (quote.resellerId && resellerProfit > 0) {
-      const reseller = await queryOne<{ user_id: string }>(
-        `SELECT user_id FROM resellers WHERE id = $1`,
-        [quote.resellerId],
+      await query(
+        `UPDATE resellers SET profit_balance = profit_balance + $2, updated_at = NOW() WHERE id = $1`,
+        [quote.resellerId, resellerProfit],
         client
       );
-      if (reseller) {
-        const rw = await queryOne<{ id: string; balance: string }>(
-          `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
-          [reseller.user_id],
-          client
-        );
-        if (rw) {
-          const rb = Number((Number(rw.balance) + resellerProfit).toFixed(4));
-          await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [rw.id, rb], client);
-          await query(
-            `INSERT INTO wallet_transactions (wallet_id, user_id, type, amount, balance_after, reference, description)
-             VALUES ($1,$2,'reseller_commission',$3,$4,$5,$6)`,
-            [rw.id, reseller.user_id, resellerProfit, rb, publicId, `Commission for ${publicId}`],
-            client
-          );
-        }
-      }
     }
 
     await notify({

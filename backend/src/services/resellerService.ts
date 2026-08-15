@@ -7,7 +7,12 @@ import type { AuthUser } from "../middleware/auth.js";
 import { getResellerUpgradeSettings } from "./settingsService.js";
 import { getLoyaltyForUser } from "./loyaltyService.js";
 import { publicProductName } from "./catalogClassify.js";
-import { initiateDirectedPayment } from "./walletService.js";
+import { creditWallet, initiateDirectedPayment } from "./walletService.js";
+
+export const MIN_RESELLER_WITHDRAWAL_GHS = 250;
+
+const panelSelect = `id, store_name, store_slug, logo_url, brand_color, tagline, markup_percent, status,
+  support_email, contact_phone, whatsapp_number`;
 
 export type PanelStore = {
   id: string;
@@ -18,13 +23,16 @@ export type PanelStore = {
   tagline: string | null;
   markup_percent: number | string;
   status: string;
+  support_email: string | null;
+  contact_phone: string | null;
+  whatsapp_number: string | null;
 };
 
 export async function getActivePanelBySlug(slug?: string | null) {
   const value = String(slug || "").trim().toLowerCase();
   if (!value) return null;
   return queryOne<PanelStore>(
-    `SELECT id, store_name, store_slug, logo_url, brand_color, tagline, markup_percent, status
+    `SELECT ${panelSelect}
      FROM resellers WHERE store_slug = $1 AND status = 'active'`,
     [value]
   );
@@ -32,7 +40,8 @@ export async function getActivePanelBySlug(slug?: string | null) {
 
 export async function getPanelForUser(userId: string) {
   return queryOne<PanelStore>(
-    `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status
+    `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status,
+            r.support_email, r.contact_phone, r.whatsapp_number
      FROM users u
      JOIN resellers r ON r.id = u.panel_reseller_id
      WHERE u.id = $1 AND r.status = 'active'`,
@@ -143,7 +152,8 @@ export async function getPublicStorefront(slug: string, opts: {
   search?: string;
 } = {}) {
   const reseller = await queryOne(
-    `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status
+    `SELECT r.id, r.store_name, r.store_slug, r.logo_url, r.brand_color, r.tagline, r.markup_percent, r.status,
+            r.support_email, r.contact_phone, r.whatsapp_number
      FROM resellers r WHERE r.store_slug = $1`,
     [slug]
   );
@@ -257,7 +267,11 @@ export async function updateStorefront(userId: string, input: Record<string, unk
       tagline = COALESCE($4, tagline),
       brand_color = COALESCE($5, brand_color),
       logo_url = COALESCE($6, logo_url),
-      markup_percent = COALESCE($7, markup_percent)
+      markup_percent = COALESCE($7, markup_percent),
+      support_email = $8,
+      contact_phone = $9,
+      whatsapp_number = $10,
+      updated_at = NOW()
      WHERE user_id = $1 RETURNING *`,
     [
       userId,
@@ -267,6 +281,9 @@ export async function updateStorefront(userId: string, input: Record<string, unk
       input.brandColor ?? null,
       input.logoUrl ?? null,
       input.markupPercent ?? null,
+      input.supportEmail !== undefined ? (String(input.supportEmail || "").trim() || null) : current.support_email,
+      input.contactPhone !== undefined ? (String(input.contactPhone || "").trim() || null) : current.contact_phone,
+      input.whatsappNumber !== undefined ? (String(input.whatsappNumber || "").trim() || null) : current.whatsapp_number,
     ]
   );
 }
@@ -305,7 +322,15 @@ export async function resellerStats(userId: string) {
     `SELECT COUNT(*)::text AS count FROM users WHERE panel_reseller_id = $1`,
     [reseller.id]
   );
-  return { reseller, stats: { ...stats, customers: Number(customers?.count ?? 0) } };
+  return {
+    reseller,
+    stats: {
+      ...stats,
+      customers: Number(customers?.count ?? 0),
+      profit_balance: Number(reseller.profit_balance ?? 0),
+      min_withdrawal: MIN_RESELLER_WITHDRAWAL_GHS,
+    },
+  };
 }
 
 const applicationSelect = `
@@ -610,6 +635,187 @@ export async function rejectResellerApplication(id: string, actor: AuthUser, ip?
     targetType: "reseller_application",
     targetId: id,
     details: { reason },
+    ip,
+  });
+  return result;
+}
+
+export async function requestResellerWithdrawal(userId: string, input: {
+  amount: number;
+  destination: "momo" | "wallet";
+  momoNetwork?: string;
+  momoNumber?: string;
+  momoName?: string;
+}) {
+  const amount = Number(Number(input.amount).toFixed(4));
+  if (!Number.isFinite(amount) || amount < MIN_RESELLER_WITHDRAWAL_GHS) {
+    throw new AppError(`Minimum withdrawal is ₵${MIN_RESELLER_WITHDRAWAL_GHS}`);
+  }
+  if (input.destination === "momo") {
+    const network = String(input.momoNetwork || "").trim();
+    const number = String(input.momoNumber || "").replace(/\D/g, "");
+    const name = String(input.momoName || "").trim();
+    if (!network || number.length < 9 || name.length < 2) {
+      throw new AppError("Enter the MoMo network, number, and account name");
+    }
+    input = { ...input, momoNetwork: network, momoNumber: number, momoName: name };
+  }
+
+  const row = await withTransaction<Record<string, unknown>>(async (client) => {
+    const reseller = await queryOne<{ id: string; status: string; profit_balance: string; store_name: string }>(
+      `SELECT id, status, profit_balance, store_name FROM resellers WHERE user_id = $1 FOR UPDATE`,
+      [userId],
+      client
+    );
+    if (!reseller) throw new AppError("Reseller profile not found", 404);
+    if (reseller.status !== "active") throw new AppError("Reseller account is not active", 403);
+    const available = Number(reseller.profit_balance || 0);
+    if (available < amount) throw new AppError(`Available profit is ${available.toFixed(2)} GHS`);
+
+    await query(
+      `UPDATE resellers SET profit_balance = profit_balance - $2, updated_at = NOW() WHERE id = $1`,
+      [reseller.id, amount],
+      client
+    );
+
+    const instant = input.destination === "wallet";
+    const withdrawal = await queryOne<Record<string, unknown>>(
+      `INSERT INTO reseller_withdrawals (
+         reseller_id, user_id, amount, destination, status,
+         momo_network, momo_number, momo_name
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [
+        reseller.id,
+        userId,
+        amount,
+        input.destination,
+        instant ? "paid" : "pending",
+        input.destination === "momo" ? input.momoNetwork : null,
+        input.destination === "momo" ? input.momoNumber : null,
+        input.destination === "momo" ? input.momoName : null,
+      ],
+      client
+    );
+    if (instant) {
+      await query(
+        `UPDATE reseller_withdrawals SET reviewed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [withdrawal!.id],
+        client
+      );
+      await creditWallet({
+        userId,
+        amount,
+        type: "reseller_commission",
+        reference: `wd-${withdrawal!.id}`,
+        description: "Profit transferred to dashboard wallet",
+      }, client);
+    }
+    return { ...withdrawal!, store_name: reseller.store_name };
+  });
+
+  if (input.destination === "wallet") {
+    await notify({
+      userId,
+      title: "Profit added to wallet",
+      body: `₵${amount.toFixed(2)} was moved from store profit to your dashboard wallet.`,
+      type: "wallet",
+    });
+  } else {
+    await notify({
+      userId,
+      title: "MoMo withdrawal requested",
+      body: `Your ₵${amount.toFixed(2)} Mobile Money payout is pending. Admin will send it to ${input.momoNumber}.`,
+      type: "reseller",
+    });
+    const admins = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND status = 'active'`);
+    for (const admin of admins) {
+      await notify({
+        userId: admin.id,
+        title: "Reseller MoMo payout",
+        body: `${row.store_name} requested ₵${amount.toFixed(2)} to ${input.momoNetwork} ${input.momoNumber} (${input.momoName}).`,
+        type: "reseller",
+        metadata: { withdrawalId: row.id },
+      });
+    }
+  }
+  return row;
+}
+
+export async function listMyWithdrawals(userId: string) {
+  const reseller = await queryOne<{ id: string }>(`SELECT id FROM resellers WHERE user_id = $1`, [userId]);
+  if (!reseller) throw new AppError("Reseller profile not found", 404);
+  return query(
+    `SELECT * FROM reseller_withdrawals WHERE reseller_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    [reseller.id]
+  );
+}
+
+export async function listResellerWithdrawals(status?: string) {
+  const params: unknown[] = [];
+  const where = status ? (params.push(status), "WHERE w.status = $1") : "";
+  return query(
+    `SELECT w.*, r.store_name, r.store_slug, u.full_name, u.email
+     FROM reseller_withdrawals w
+     JOIN resellers r ON r.id = w.reseller_id
+     JOIN users u ON u.id = w.user_id
+     ${where}
+     ORDER BY w.created_at DESC
+     LIMIT 200`,
+    params
+  );
+}
+
+export async function reviewResellerWithdrawal(
+  id: string,
+  status: "paid" | "rejected",
+  actor: AuthUser,
+  ip?: string,
+  adminNote?: string
+) {
+  const result = await withTransaction(async (client) => {
+    const row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM reseller_withdrawals WHERE id = $1 FOR UPDATE`,
+      [id],
+      client
+    );
+    if (!row) throw new AppError("Withdrawal not found", 404);
+    if (row.status !== "pending") throw new AppError("This withdrawal was already reviewed", 400);
+    if (row.destination !== "momo") throw new AppError("Only MoMo payouts need review", 400);
+
+    if (status === "rejected") {
+      await query(
+        `UPDATE resellers SET profit_balance = profit_balance + $2, updated_at = NOW() WHERE id = $1`,
+        [row.reseller_id, row.amount],
+        client
+      );
+    }
+
+    const updated = await queryOne(
+      `UPDATE reseller_withdrawals
+       SET status = $2, admin_note = $3, reviewed_by = $4, reviewed_at = NOW(), updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, status, adminNote?.trim() || null, actor.id],
+      client
+    );
+    return updated!;
+  });
+
+  await notify({
+    userId: String(result.user_id),
+    title: status === "paid" ? "MoMo payout sent" : "Withdrawal declined",
+    body: status === "paid"
+      ? `₵${Number(result.amount).toFixed(2)} was sent to your Mobile Money number.`
+      : `Your ₵${Number(result.amount).toFixed(2)} withdrawal was declined${adminNote ? `: ${adminNote}` : "."} The profit was returned to your balance.`,
+    type: "reseller",
+  });
+  await writeAudit({
+    actor,
+    action: status === "paid" ? "reseller.withdrawal.paid" : "reseller.withdrawal.reject",
+    targetType: "reseller_withdrawal",
+    targetId: id,
+    details: { amount: result.amount, adminNote },
     ip,
   });
   return result;

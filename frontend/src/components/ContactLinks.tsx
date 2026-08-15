@@ -5,6 +5,13 @@ import { Headphones, LifeBuoy, Mail, MessageCircle, Phone, Send, Users, X } from
 import { api } from "@/api/client";
 import type { ChannelLink, PublicSettings } from "@/types";
 
+export type HelpDetails = {
+  supportEmail?: string | null;
+  contactPhone?: string | null;
+  whatsappNumber?: string | null;
+  channels?: ChannelLink[];
+};
+
 export function usePublicSettings() {
   return useQuery({
     queryKey: ["public-settings"],
@@ -13,11 +20,11 @@ export function usePublicSettings() {
   });
 }
 
-function digits(value?: string) {
+function digits(value?: string | null) {
   return (value || "").replace(/\D/g, "");
 }
 
-function waLink(value?: string) {
+function waLink(value?: string | null) {
   const n = digits(value);
   return n ? `https://wa.me/${n}` : undefined;
 }
@@ -38,7 +45,7 @@ function isTelegram(channel: ChannelLink) {
   return /telegram|t\.me/i.test(`${channel.kind || ""} ${channel.name} ${channel.url}`);
 }
 
-function helpItems(s?: PublicSettings) {
+function helpItems(s?: HelpDetails | PublicSettings | null) {
   const channels = s?.channels ?? [];
   const whatsapp = waLink(s?.whatsappNumber);
   const used = new Set<string>();
@@ -70,7 +77,7 @@ function helpItems(s?: PublicSettings) {
     push({
       href: whatsapp,
       label: "WhatsApp",
-      detail: s?.whatsappNumber,
+      detail: s?.whatsappNumber || undefined,
       icon: <MessageCircle className="h-4 w-4" />,
     });
   }
@@ -97,9 +104,30 @@ function helpItems(s?: PublicSettings) {
   return items;
 }
 
-export function ContactLinks({ className = "", tone = "dark" }: { className?: string; tone?: "dark" | "light" }) {
+export function panelHelp(store?: {
+  support_email?: string | null;
+  contact_phone?: string | null;
+  whatsapp_number?: string | null;
+} | null): HelpDetails | undefined {
+  if (!store) return undefined;
+  return {
+    supportEmail: store.support_email,
+    contactPhone: store.contact_phone,
+    whatsappNumber: store.whatsapp_number,
+  };
+}
+
+export function ContactLinks({
+  className = "",
+  tone = "dark",
+  details,
+}: {
+  className?: string;
+  tone?: "dark" | "light";
+  details?: HelpDetails | null;
+}) {
   const settings = usePublicSettings();
-  const s = settings.data;
+  const s = details ?? settings.data;
   if (!s) return null;
   const items = helpItems(s).filter((item) => item.label !== "Email");
   const emailClass = tone === "dark" ? "text-white" : "text-slate-800 dark:text-slate-100";
@@ -132,11 +160,17 @@ export function ContactLinks({ className = "", tone = "dark" }: { className?: st
   );
 }
 
-export function HelpBar() {
+export function HelpBar({
+  details,
+  hideTickets,
+}: {
+  details?: HelpDetails | null;
+  hideTickets?: boolean;
+}) {
   const settings = usePublicSettings();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const s = settings.data;
+  const s = details !== undefined ? details : settings.data;
   const items = helpItems(s);
 
   useEffect(() => {
@@ -154,6 +188,8 @@ export function HelpBar() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  if (!items.length && hideTickets) return null;
 
   return (
     <div ref={root} className="pointer-events-none fixed bottom-5 right-4 z-50 flex flex-col items-end gap-3 sm:right-5">
@@ -182,19 +218,24 @@ export function HelpBar() {
                 </span>
               </a>
             ))}
-            <Link
-              to="/app/support"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
-                <LifeBuoy className="h-4 w-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-semibold">Support tickets</span>
-                <span className="block text-xs text-slate-500">Open a request in your account</span>
-              </span>
-            </Link>
+            {!hideTickets && (
+              <Link
+                to="/app/support"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-brand-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                  <LifeBuoy className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-semibold">Support tickets</span>
+                  <span className="block text-xs text-slate-500">Open a request in your account</span>
+                </span>
+              </Link>
+            )}
+            {!items.length && hideTickets && (
+              <p className="px-3 py-2 text-sm text-slate-500">This store has not added contact details yet.</p>
+            )}
           </div>
         </div>
       )}

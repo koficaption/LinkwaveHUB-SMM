@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Link, useParams } from "react-router-dom";
 import { api, money, formatDate, ApiError } from "@/api/client";
 import type { Product } from "@/types";
-import { Button, Card, EmptyState, Input, PageHeader, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import { publicProductName, isEachPrice, priceUnitSuffix } from "@/utils/catalog";
@@ -22,6 +22,14 @@ export function ResellerDashboard() {
         <Card><p className="text-sm text-muted">Sales</p><p className="text-2xl font-extrabold text-brand-700">{money(Number(s?.sales ?? 0))}</p></Card>
         <Card><p className="text-sm text-muted">Profit</p><p className="text-2xl font-extrabold text-brand-700">{money(Number(s?.profit ?? 0))}</p></Card>
         <Card><p className="text-sm text-muted">Today</p><p className="text-2xl font-extrabold text-brand-700">{Number(s?.today_orders ?? 0)}</p></Card>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <p className="text-sm text-muted">Withdrawable profit</p>
+          <p className="text-2xl font-extrabold text-brand-700">{money(Number(s?.profit_balance ?? r?.profit_balance ?? 0))}</p>
+          <p className="mt-1 text-sm text-slate-500">Minimum withdrawal ₵{Number(s?.min_withdrawal ?? 250)}. Send to Mobile Money or move it into your dashboard wallet.</p>
+          <Link to="/app/reseller/withdraw"><Button className="mt-3">Withdraw profit</Button></Link>
+        </Card>
       </div>
       {link && (
         <Card>
@@ -45,6 +53,9 @@ export function ResellerStorefrontPage() {
   const [tagline, setTagline] = useState(r?.tagline ?? "");
   const [brandColor, setBrandColor] = useState(r?.brand_color ?? "#0D9488");
   const [markup, setMarkup] = useState(String(r?.markup_percent ?? 20));
+  const [supportEmail, setSupportEmail] = useState(r?.support_email ?? "");
+  const [contactPhone, setContactPhone] = useState(r?.contact_phone ?? "");
+  const [whatsappNumber, setWhatsappNumber] = useState(r?.whatsapp_number ?? "");
   const link = r ? `${window.location.origin}/store/${r.store_slug}` : "";
   return (
     <Card className="max-w-xl">
@@ -58,9 +69,22 @@ export function ResellerStorefrontPage() {
         <label className="block"><span className="label">Tagline</span><Input value={tagline} onChange={(e) => setTagline(e.target.value)} /></label>
         <label className="block"><span className="label">Brand color</span><Input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} /></label>
         <label className="block"><span className="label">Default markup %</span><Input type="number" value={markup} onChange={(e) => setMarkup(e.target.value)} /></label>
+        <h2 className="pt-2 font-bold">Help details</h2>
+        <p className="text-sm text-slate-500">These appear on your storefront Help button, footer, and your customers’ panel — the same way the main site shows admin contacts.</p>
+        <label className="block"><span className="label">Support email</span><Input type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="you@example.com" /></label>
+        <label className="block"><span className="label">Customer service number</span><Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+233 24 000 0000" /></label>
+        <label className="block"><span className="label">WhatsApp number</span><Input value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="233240000000" /></label>
         <Button onClick={async () => {
           try {
-            await api("/reseller/storefront", { method: "PATCH", body: JSON.stringify({ storeName, tagline, brandColor, markupPercent: Number(markup) }) });
+            await api("/reseller/storefront", { method: "PATCH", body: JSON.stringify({
+              storeName,
+              tagline,
+              brandColor,
+              markupPercent: Number(markup),
+              supportEmail,
+              contactPhone,
+              whatsappNumber,
+            }) });
             await refresh();
             toast.success("Storefront updated");
           } catch (e) { toast.error(e instanceof ApiError ? e.message : "Failed"); }
@@ -200,3 +224,131 @@ export function ResellerCustomerDetailPage() {
     </div>
   );
 }
+
+type WithdrawalRow = {
+  id: string;
+  amount: number | string;
+  destination: string;
+  status: string;
+  momo_network?: string | null;
+  momo_number?: string | null;
+  momo_name?: string | null;
+  admin_note?: string | null;
+  created_at: string;
+};
+
+export function ResellerWithdrawPage() {
+  const { refresh } = useAuth();
+  const qc = useQueryClient();
+  const stats = useQuery({ queryKey: ["reseller-me"], queryFn: () => api<{ reseller: Record<string, unknown>; stats: Record<string, unknown> }>("/reseller/me") });
+  const history = useQuery({
+    queryKey: ["reseller-withdrawals"],
+    queryFn: () => api<{ minAmount: number; items: WithdrawalRow[] }>("/reseller/withdrawals"),
+  });
+  const available = Number(stats.data?.stats?.profit_balance ?? stats.data?.reseller?.profit_balance ?? 0);
+  const minAmount = Number(history.data?.minAmount ?? stats.data?.stats?.min_withdrawal ?? 250);
+  const [amount, setAmount] = useState(String(minAmount));
+  const [destination, setDestination] = useState<"momo" | "wallet">("momo");
+  const [momoNetwork, setMomoNetwork] = useState("MTN");
+  const [momoNumber, setMomoNumber] = useState("");
+  const [momoName, setMomoName] = useState("");
+
+  const submit = useMutation({
+    mutationFn: () => api("/reseller/withdrawals", {
+      method: "POST",
+      body: JSON.stringify({
+        amount: Number(amount),
+        destination,
+        momoNetwork: destination === "momo" ? momoNetwork : undefined,
+        momoNumber: destination === "momo" ? momoNumber : undefined,
+        momoName: destination === "momo" ? momoName : undefined,
+      }),
+    }),
+    onSuccess: async () => {
+      toast.success(destination === "wallet" ? "Profit added to your dashboard wallet" : "MoMo payout requested");
+      setMomoNumber("");
+      await refresh();
+      await qc.invalidateQueries({ queryKey: ["reseller-me"] });
+      await qc.invalidateQueries({ queryKey: ["reseller-withdrawals"] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.invalidateQueries({ queryKey: ["wallet"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Withdrawal failed"),
+  });
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Withdraw profit" subtitle={`Send store profit to Mobile Money or your dashboard wallet. Minimum ₵${minAmount}.`} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <p className="text-sm text-muted">Available profit</p>
+          <p className="text-3xl font-extrabold text-brand-700">{money(available)}</p>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit.mutate();
+            }}
+          >
+            <label className="block">
+              <span className="label">Amount (GHS)</span>
+              <Input type="number" min={minAmount} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </label>
+            <label className="block">
+              <span className="label">Send to</span>
+              <Select value={destination} onChange={(e) => setDestination(e.target.value as "momo" | "wallet")}>
+                <option value="momo">Mobile Money</option>
+                <option value="wallet">Dashboard wallet</option>
+              </Select>
+            </label>
+            {destination === "momo" && (
+              <>
+                <label className="block">
+                  <span className="label">Network</span>
+                  <Select value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value)}>
+                    <option value="MTN">MTN</option>
+                    <option value="Telecel">Telecel</option>
+                    <option value="AirtelTigo">AirtelTigo</option>
+                  </Select>
+                </label>
+                <label className="block">
+                  <span className="label">MoMo number</span>
+                  <Input value={momoNumber} onChange={(e) => setMomoNumber(e.target.value)} placeholder="0240000000" />
+                </label>
+                <label className="block">
+                  <span className="label">Account name</span>
+                  <Input value={momoName} onChange={(e) => setMomoName(e.target.value)} placeholder="Name on the MoMo wallet" />
+                </label>
+              </>
+            )}
+            {destination === "wallet" && (
+              <p className="text-sm text-slate-500">The amount is added to your dashboard wallet immediately so you can place orders.</p>
+            )}
+            <Button disabled={submit.isPending || available < minAmount}>
+              {submit.isPending ? "Submitting…" : destination === "wallet" ? "Move to dashboard" : "Request MoMo payout"}
+            </Button>
+          </form>
+        </Card>
+        <Card>
+          <h2 className="font-bold">Recent withdrawals</h2>
+          {!history.data?.items.length && <p className="mt-2 text-sm text-slate-500">No withdrawals yet.</p>}
+          <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+            {history.data?.items.map((w) => (
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                <div>
+                  <p className="font-semibold">{w.destination === "wallet" ? "Dashboard wallet" : `MoMo · ${w.momo_network || ""} ${w.momo_number || ""}`}</p>
+                  <p className="text-muted">{formatDate(w.created_at)}{w.admin_note ? ` · ${w.admin_note}` : ""}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold">{money(Number(w.amount))}</p>
+                  <p className="capitalize text-muted">{w.status}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}
+

@@ -6,11 +6,11 @@ import { usePublicSettings } from "@/components/ContactLinks";
 import { useDisplayCurrency } from "@/contexts/CurrencyContext";
 import { cn } from "@/utils/cn";
 
-function digits(value?: string) {
+function digits(value?: string | null) {
   return (value || "").replace(/\D/g, "");
 }
 
-function waLink(value?: string) {
+function waLink(value?: string | null) {
   const n = digits(value);
   return n ? `https://wa.me/${n}` : undefined;
 }
@@ -210,10 +210,11 @@ export function CurrencyButton() {
 }
 
 export function MobileActionButtons() {
+  const { me } = useAuth();
   const settings = usePublicSettings();
   const channel = settings.data?.channels?.find((c) => /whatsapp|channel|telegram/i.test(`${c.kind} ${c.name}`))
     ?? settings.data?.channels?.[0];
-  const whatsapp = waLink(settings.data?.whatsappNumber) || channel?.url;
+  const whatsapp = waLink(me?.panel?.whatsapp_number) || waLink(settings.data?.whatsappNumber) || channel?.url;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:hidden">

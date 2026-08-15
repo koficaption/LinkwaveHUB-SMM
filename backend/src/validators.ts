@@ -239,6 +239,22 @@ export const storefrontSchema = z.object({
   brandColor: z.string().max(20).optional(),
   logoUrl: z.string().max(500).optional().nullable(),
   markupPercent: z.number().min(0).max(500).optional(),
+  supportEmail: z.string().max(160).optional().nullable(),
+  contactPhone: z.string().max(40).optional().nullable(),
+  whatsappNumber: z.string().max(30).optional().nullable(),
+});
+
+export const resellerWithdrawSchema = z.object({
+  amount: z.number().positive(),
+  destination: z.enum(["momo", "wallet"]),
+  momoNetwork: optionalText(40),
+  momoNumber: optionalText(30),
+  momoName: optionalText(80, 2),
+});
+
+export const resellerWithdrawalReviewSchema = z.object({
+  status: z.enum(["paid", "rejected"]),
+  adminNote: z.string().max(500).optional(),
 });
 
 export const resellerPriceSchema = z.object({

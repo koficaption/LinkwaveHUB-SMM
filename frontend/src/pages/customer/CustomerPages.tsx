@@ -10,7 +10,7 @@ import { publicProductName } from "@/utils/catalog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { ContactLinks } from "@/components/ContactLinks";
+import { ContactLinks, panelHelp } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
 import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
 import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
@@ -446,6 +446,7 @@ function PasswordForm() {
 }
 
 export function SupportPage() {
+  const { me } = useAuth();
   const qc = useQueryClient();
   const tickets = useQuery({ queryKey: ["tickets"], queryFn: () => api<Record<string, unknown>[]>("/support") });
   const [open, setOpen] = useState(false);
@@ -454,8 +455,12 @@ export function SupportPage() {
       <PageHeader title="Support Tickets" subtitle="Get help with an order or deposit." actions={<Button onClick={() => setOpen(true)}>New ticket</Button>} />
       <Card className="mt-4">
         <p className="text-sm font-semibold">Customer service</p>
-        <p className="mt-1 text-sm text-slate-500">Call, WhatsApp, or join a community using the links set by the admin.</p>
-        <ContactLinks className="mt-3" tone="light" />
+        <p className="mt-1 text-sm text-slate-500">
+          {me?.panel
+            ? "Call or WhatsApp this store using the contacts set by the reseller."
+            : "Call, WhatsApp, or join a community using the links set by the admin."}
+        </p>
+        <ContactLinks className="mt-3" tone="light" details={me?.panel ? panelHelp(me.panel) : undefined} />
       </Card>
       <Card className="mt-4">
         {!tickets.data?.length && <EmptyState title="No tickets yet" body="Create a ticket if you need help with an order or deposit." />}

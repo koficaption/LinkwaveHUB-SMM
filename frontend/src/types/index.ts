@@ -22,6 +22,10 @@ export type PanelStore = {
   tagline?: string | null;
   markup_percent?: number | string;
   status?: string;
+  support_email?: string | null;
+  contact_phone?: string | null;
+  whatsapp_number?: string | null;
+  profit_balance?: number | string;
 };
 
 export type Wallet = {

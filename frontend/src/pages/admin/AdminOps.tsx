@@ -428,7 +428,7 @@ export function AdminResellers() {
       <Card className="overflow-x-auto">
         <h2 className="font-bold">Reseller accounts</h2>
         <table className="mt-3 w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Store","Owner","Status","Orders","Profit","Wallet","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Store","Owner","Status","Orders","Profit","Available","Wallet","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {list.data?.map((r) => (
               <tr key={String(r.id)} className="border-t border-slate-100 dark:border-slate-800">
@@ -437,6 +437,7 @@ export function AdminResellers() {
                 <td className="p-2"><Badge className={statusTone[String(r.status)]}>{String(r.status)}</Badge></td>
                 <td className="p-2">{String(r.order_count)}</td>
                 <td className="p-2">{money(Number(r.total_profit))}</td>
+                <td className="p-2">{money(Number(r.profit_balance))}</td>
                 <td className="p-2">{money(Number(r.wallet_balance))}</td>
                 <td className="p-2 space-x-2">
                   {["active","suspended"].map((s) => (
@@ -445,6 +446,65 @@ export function AdminResellers() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+export function AdminResellerPayouts() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("");
+  const list = useQuery({
+    queryKey: ["admin-reseller-withdrawals", status],
+    queryFn: () => api<Record<string, unknown>[]>(`/admin/reseller-withdrawals${status ? `?status=${status}` : ""}`),
+  });
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-extrabold">Reseller payouts</h1>
+      <p className="text-sm text-slate-500">MoMo withdrawals wait for you to send the money. Dashboard-wallet transfers are automatic.</p>
+      <Select value={status} onChange={(e) => setStatus(e.target.value)} className="max-w-xs">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="paid">Paid</option>
+        <option value="rejected">Rejected</option>
+      </Select>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="text-slate-500">{["Reseller", "Amount", "To", "MoMo", "Status", "Requested", "Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {(list.data ?? []).map((w) => (
+              <tr key={String(w.id)} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="p-2">{String(w.store_name)}<div className="text-xs text-slate-500">{String(w.full_name)} · {String(w.email)}</div></td>
+                <td className="p-2 whitespace-nowrap">{money(Number(w.amount))}</td>
+                <td className="p-2 capitalize">{String(w.destination)}</td>
+                <td className="p-2 text-xs">{[w.momo_network, w.momo_number, w.momo_name].filter(Boolean).map(String).join(" · ") || "—"}</td>
+                <td className="p-2"><Badge className={statusTone[String(w.status)]}>{prettyStatus(String(w.status))}</Badge></td>
+                <td className="p-2 whitespace-nowrap">{formatDate(String(w.created_at))}</td>
+                <td className="p-2 space-x-2">
+                  {String(w.status) === "pending" && String(w.destination) === "momo" && (
+                    <>
+                      <button className="font-semibold text-brand-700" onClick={async () => {
+                        await api(`/admin/reseller-withdrawals/${w.id}/review`, { method: "POST", body: JSON.stringify({ status: "paid" }) });
+                        toast.success("Marked as paid");
+                        qc.invalidateQueries({ queryKey: ["admin-reseller-withdrawals"] });
+                      }}>Mark paid</button>
+                      <button className="font-semibold text-rose-600" onClick={async () => {
+                        await api(`/admin/reseller-withdrawals/${w.id}/review`, { method: "POST", body: JSON.stringify({ status: "rejected" }) });
+                        toast.success("Returned to profit balance");
+                        qc.invalidateQueries({ queryKey: ["admin-reseller-withdrawals"] });
+                      }}>Reject</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!list.data?.length && (
+              <tr><td className="p-2 text-slate-500" colSpan={7}>No payouts yet.</td></tr>
+            )}
           </tbody>
         </table>
       </Card>

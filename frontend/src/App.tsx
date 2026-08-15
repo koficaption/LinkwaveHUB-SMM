@@ -13,12 +13,12 @@ import {
 import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
 import { AffiliatePage, AdminAffiliates, ReferralCapture } from "@/pages/customer/AffiliatePages";
 import { RefundPolicyPage, TermsOfServicePage } from "@/pages/legal/LegalPages";
-import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage, ResellerCustomersPage, ResellerCustomerDetailPage } from "@/pages/reseller/ResellerPages";
+import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage, ResellerCustomersPage, ResellerCustomerDetailPage, ResellerWithdrawPage } from "@/pages/reseller/ResellerPages";
 import { StoreCapture } from "@/components/StoreCapture";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
 import {
-  AdminAudit, AdminNotifications, AdminOrders, AdminPayments, AdminResellers, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
+  AdminAudit, AdminNotifications, AdminOrders, AdminPayments, AdminResellers, AdminResellerPayouts, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
 } from "@/pages/admin/AdminOps";
 import { AdminRefills } from "@/pages/admin/AdminRefills";
 import { AdminApiPage } from "@/pages/admin/AdminApiPage";
@@ -73,6 +73,7 @@ export default function App() {
                   <Route path="/app/reseller/pricing" element={<Guard roles={["reseller", "admin"]}><ResellerPricingPage /></Guard>} />
                   <Route path="/app/reseller/customers" element={<Guard roles={["reseller", "admin"]}><ResellerCustomersPage /></Guard>} />
                   <Route path="/app/reseller/customers/:id" element={<Guard roles={["reseller", "admin"]}><ResellerCustomerDetailPage /></Guard>} />
+                  <Route path="/app/reseller/withdraw" element={<Guard roles={["reseller", "admin"]}><ResellerWithdrawPage /></Guard>} />
                 </Route>
               </Route>
               <Route element={<Guard roles={["admin"]} />}>
@@ -90,6 +91,7 @@ export default function App() {
                   <Route path="/admin/api" element={<AdminApiPage />} />
                   <Route path="/admin/affiliates" element={<AdminAffiliates />} />
                   <Route path="/admin/payments" element={<AdminPayments />} />
+                  <Route path="/admin/payouts" element={<AdminResellerPayouts />} />
                   <Route path="/admin/wallets" element={<AdminWallets />} />
                   <Route path="/admin/support" element={<AdminSupport />} />
                   <Route path="/admin/notifications" element={<AdminNotifications />} />
