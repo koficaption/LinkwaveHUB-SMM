@@ -8,7 +8,7 @@ import { HomePage } from "@/pages/public/HomePage";
 import { LoginPage, RegisterPage, AuthCallbackPage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/auth/AuthPages";
 import { ServiceDetailPage, ServicesPage, StorefrontPage } from "@/pages/public/ServicesPages";
 import {
-  CustomerHome, BecomeResellerPage, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
+  CustomerHome, NotificationsPage, OrderDetailPage, OrdersPage, ProfilePage, SupportPage, WalletPage,
 } from "@/pages/customer/CustomerPages";
 import { ChildPanelsPage } from "@/pages/customer/ChildPanelsPage";
 import { ApiAccessPage, LoyaltyPage } from "@/pages/customer/ApiLoyaltyPages";
@@ -67,7 +67,7 @@ export default function App() {
                   <Route path="/app/refund-policy" element={<RefundPolicyPage />} />
                   <Route path="/app/terms" element={<TermsOfServicePage />} />
                   <Route path="/app/profile" element={<ProfilePage />} />
-                  <Route path="/app/become-reseller" element={<BecomeResellerPage />} />
+                  <Route path="/app/become-reseller" element={<Navigate to="/app/child-panels" replace />} />
                   <Route path="/app/child-panels" element={<ChildPanelsPage />} />
                   <Route path="/app/support" element={<SupportPage />} />
                   <Route path="/app/notifications" element={<NotificationsPage />} />

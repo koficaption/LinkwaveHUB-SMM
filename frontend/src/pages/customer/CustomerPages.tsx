@@ -394,7 +394,7 @@ export function ProfilePage() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2">
-        <PageHeader title="Account" subtitle="Profile, password, reseller upgrade, and child panel." />
+        <PageHeader title="Account" subtitle="Profile, password, and child panel." />
       </div>
       <Card>
         <h2 className="font-bold">Profile</h2>
@@ -415,13 +415,6 @@ export function ProfilePage() {
         <h2 className="font-bold">Change password</h2>
         <PasswordForm />
       </Card>
-      {me?.user.role === "customer" && !me.panel && (
-        <Card className="lg:col-span-2">
-          <h2 className="font-bold">Become a reseller</h2>
-          <p className="mt-1 text-sm text-slate-500">Pay the upgrade fee by Mobile Money. After an admin confirms payment, your dashboard switches to reseller with a storefront on this site.</p>
-          <Link to="/app/become-reseller"><Button className="mt-3">Start upgrade</Button></Link>
-        </Card>
-      )}
       {!me?.panel && (
         <Card className="lg:col-span-2">
           <h2 className="font-bold">Child Panel</h2>

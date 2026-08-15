@@ -40,13 +40,6 @@ export function CustomerLayout() {
       label: "Child Panels",
       icon: <Globe className="h-5 w-5" />,
     });
-    if (me?.user.role !== "reseller") {
-      items.push({
-        to: "/app/become-reseller",
-        label: "Become a reseller",
-        icon: <Users className="h-5 w-5" />,
-      });
-    }
     items.push(
       { to: "/app/affiliates", label: "Affiliate Program", icon: <Handshake className="h-5 w-5" /> },
       { to: "/app/api", label: "API", icon: <Link2 className="h-5 w-5" /> },

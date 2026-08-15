@@ -194,15 +194,12 @@ export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [asReseller, setAsReseller] = useState(false);
   const urlRef = params.get("ref");
   if (urlRef) persistReferralCode(urlRef);
   const invitedBy = urlRef || storedReferralCode();
   const storeSlug = params.get("store") || registerStoreSlugFromPage();
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
-  const publicSettings = useQuery({ queryKey: ["public-settings"], queryFn: () => api<{ resellers?: { upgradeEnabled?: boolean; upgradeFee?: number } }>("/settings/public") });
-  const paidUpgrade = publicSettings.data?.resellers?.upgradeEnabled !== false;
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", storeName: "" } });
   return (
     <AuthCard
@@ -231,7 +228,7 @@ export function RegisterPage() {
               password: values.password,
               phone: values.phone?.trim() || undefined,
               whatsappNumber: values.whatsappNumber?.trim() || undefined,
-              asReseller: storeSlug || paidUpgrade ? false : asReseller,
+              asReseller: false,
               storeName: values.storeName?.trim() || undefined,
               referralCode: invitedBy,
               storeSlug,
@@ -251,15 +248,6 @@ export function RegisterPage() {
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
         <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional.</p>
-        {!storeSlug && !paidUpgrade && (
-          <>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={asReseller} onChange={(e) => setAsReseller(e.target.checked)} />
-              Register as a reseller
-            </label>
-            {asReseller && <Field label="Store name"><Input {...form.register("storeName")} /></Field>}
-          </>
-        )}
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
         </Button>

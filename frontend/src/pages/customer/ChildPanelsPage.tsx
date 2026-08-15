@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Shuffle } from "lucide-react";
 import { toast } from "sonner";
@@ -103,7 +103,7 @@ export function ChildPanelsPage() {
     <div className="mx-auto max-w-xl space-y-4">
       <div>
         <h1 className="page-title">Child Panel</h1>
-        <p className="page-subtitle">Order a hosted panel on your own domain. This is not a reseller storefront on this site.</p>
+        <p className="page-subtitle">Order a hosted panel on your own domain.</p>
       </div>
 
       {offer.isLoading && <Skeleton className="h-[32rem]" />}
@@ -249,12 +249,6 @@ export function ChildPanelsPage() {
         </Card>
       )}
 
-      {me?.user.role === "customer" && (
-        <p className="text-center text-sm text-slate-500">
-          Need a storefront on this site instead?{" "}
-          <Link to="/app/become-reseller" className="font-semibold text-brand-700">Become a reseller</Link>
-        </p>
-      )}
     </div>
   );
 }

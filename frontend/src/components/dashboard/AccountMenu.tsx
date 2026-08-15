@@ -46,9 +46,7 @@ export function AccountMenu() {
     ...(!panel ? [{ to: "/app/api", label: "API Developer" }] : []),
     ...(me.user.role === "reseller" || me.user.role === "admin"
       ? [{ to: "/app/reseller", label: "Reseller Dashboard" }]
-      : panel
-        ? []
-        : [{ to: "/app/become-reseller", label: "Become a reseller" }]),
+      : []),
     ...(!panel ? [{ to: "/app/child-panels", label: "Child Panels" }] : []),
     { to: "/app/profile", label: "Settings" },
   ];
