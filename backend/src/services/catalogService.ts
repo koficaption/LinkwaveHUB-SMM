@@ -428,7 +428,21 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.apiPricePer1000 === undefined ? null : input.apiPricePer1000,
       input.apiMinQuantity === undefined ? null : input.apiMinQuantity,
       input.apiMaxQuantity === undefined ? null : input.apiMaxQuantity,
-      input.priceUnit === undefined ? null : input.priceUnit,
+      looksLikePerUnitProduct(
+        String(input.name ?? current.name ?? ""),
+        Number(input.minQuantity ?? current.min_quantity),
+        Number(input.maxQuantity ?? current.max_quantity),
+        {
+          cost: Number(input.costPer1000 ?? current.cost_per_1000),
+          providerServiceId: input.providerServiceId === undefined
+            ? String(current.provider_service_id ?? "")
+            : String(input.providerServiceId ?? ""),
+        }
+      )
+        ? "each"
+        : input.priceUnit === undefined
+          ? null
+          : input.priceUnit,
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -546,6 +560,7 @@ export function toApiService(product: Record<string, unknown>) {
     min: Number(product.api_min_quantity || product.min_quantity),
     max: Number(product.api_max_quantity || product.max_quantity),
     price,
+    price_unit: product.price_unit === "each" ? "each" : "per_1000",
     currency: "GHS",
     delivery: product.avg_delivery_time,
     delivery_type: product.delivery_type,

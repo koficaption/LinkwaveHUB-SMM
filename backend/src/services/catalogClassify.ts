@@ -154,8 +154,9 @@ export function looksLikePerUnitProduct(
   maxQty: number,
   opts?: { cost?: number; providerServiceId?: string | null }
 ) {
-  if (!Number.isFinite(minQty) || minQty > 10 || !Number.isFinite(maxQty) || maxQty > 10) return false;
+  // Netflix-style packages are sold per 1 (₵120 for qty 1), never per 1,000.
   if (/netflix/i.test(name)) return true;
+  if (!Number.isFinite(minQty) || minQty > 10 || !Number.isFinite(maxQty) || maxQty > 10) return false;
   const providerId = String(opts?.providerServiceId || "").trim();
   return !providerId && Number(opts?.cost ?? 0) === 0;
 }

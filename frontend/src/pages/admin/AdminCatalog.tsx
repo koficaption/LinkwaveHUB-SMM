@@ -6,6 +6,7 @@ import type { Category, Paginated, Platform, Product } from "@/types";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone } from "@/utils/cn";
 import { productRefill } from "@/utils/refill";
+import { priceUnitSuffix } from "@/utils/catalog";
 
 function round4(value: number) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(4));
@@ -94,7 +95,7 @@ export function AdminProducts() {
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Provider","Provider cost","Your %","Sell / 1k","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Provider","Provider cost","Your %","Sell","Profit","Refill","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -106,7 +107,7 @@ export function AdminProducts() {
                 <td className="p-2">{p.provider_name || "—"}</td>
                 <td className="p-2">{money(p.cost_per_1000)}</td>
                 <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
-                <td className="p-2">{money(p.price_per_1000)}</td>
+                <td className="p-2 whitespace-nowrap">{money(p.price_per_1000)} <span className="text-xs text-slate-500">{priceUnitSuffix(p)}</span></td>
                 <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
                 <td className="p-2">{productRefill(p).supported ? <Badge className={statusTone.available}>{productRefill(p).days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
                 <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
@@ -192,7 +193,10 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block"><span className="label">Platform</span><Select value={form.platformId} onChange={(e) => set("platformId", e.target.value)}>{platforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
         <label className="block"><span className="label">Category</span><Select value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></label>
-        <label className="block sm:col-span-2"><span className="label">Product name</span><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></label>
+        <label className="block sm:col-span-2"><span className="label">Product name</span><Input value={form.name} onChange={(e) => {
+          const name = e.target.value;
+          setForm((f) => ({ ...f, name, priceUnit: /netflix/i.test(name) ? "each" : f.priceUnit }));
+        }} /></label>
         <div className="sm:col-span-2 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-500/10">
           <p className="text-sm font-semibold">Your price</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
@@ -214,7 +218,7 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
             <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">{form.priceUnit === "each" ? `Qty 1 costs the customer ${money(form.pricePer1000)}` : `On 1000 units you keep ${money(profit)} after paying the provider ${money(form.costPer1000)}`}</div>
           </div>
         </div>
-        <label className="block"><span className="label">Reseller price / 1000 (optional)</span><Input type="number" step="0.01" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
+        <label className="block"><span className="label">{form.priceUnit === "each" ? "Reseller price per 1 (optional)" : "Reseller price / 1,000 (optional)"}</span><Input type="number" step="0.01" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Min qty</span><Input type="number" value={form.minQuantity} onChange={(e) => set("minQuantity", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Max qty</span><Input type="number" value={form.maxQuantity} onChange={(e) => set("maxQuantity", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Status</span><Select value={form.status} onChange={(e) => set("status", e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></Select></label>
@@ -252,7 +256,7 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
           </div>
           {form.apiAvailable && (
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <label className="block"><span className="label">API price / 1000</span><Input type="number" step="0.01" value={form.apiPricePer1000} onChange={(e) => set("apiPricePer1000", Number(e.target.value))} /></label>
+              <label className="block"><span className="label">{form.priceUnit === "each" ? "API price per 1" : "API price / 1,000"}</span><Input type="number" step="0.01" value={form.apiPricePer1000} onChange={(e) => set("apiPricePer1000", Number(e.target.value))} /></label>
               <label className="block"><span className="label">API min qty</span><Input type="number" value={form.apiMinQuantity} onChange={(e) => set("apiMinQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
               <label className="block"><span className="label">API max qty</span><Input type="number" value={form.apiMaxQuantity} onChange={(e) => set("apiMaxQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
             </div>

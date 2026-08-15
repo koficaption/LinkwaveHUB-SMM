@@ -218,21 +218,21 @@ export function NewOrderPanel() {
             <Input placeholder="https://..." value={target} onChange={(e) => setTarget(e.target.value)} />
           </label>
           <label className="block">
-            <span className="label">Quantity</span>
+            <span className="label">{each ? "Quantity (packages)" : "Quantity"}</span>
             <Input type="number" min={selected.min_quantity} max={selected.max_quantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </label>
           <div className="grid gap-3 rounded-2xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
             <p>
               <span className="text-muted">Price</span><br />
-              <strong>{money(unit)} {each ? "per 1" : "/ 1,000"}</strong>
+              <strong>{money(unit)} {each ? "per 1" : "per 1,000"}</strong>
             </p>
             <p><span className="text-muted">Current Balance</span><br /><strong>{me?.wallet ? money(me.wallet.available_balance ?? me.wallet.balance) : "—"}</strong></p>
             <p><span className="text-muted">Estimated Delivery</span><br /><strong>{selected.avg_delivery_time || "—"}</strong></p>
             <p><span className="text-muted">Total</span><br /><strong className="text-lg text-brand-700">{money(total)}</strong></p>
             <p className="sm:col-span-2 text-xs text-muted">
               {each
-                ? `${money(unit)} per 1 × ${qty.toLocaleString()} = ${money(total)}`
-                : `${money(unit)} per 1,000 × ${qty.toLocaleString()} = ${money(total)}. This is not ${money(unit)} per 1.`}
+                ? `${money(unit)} per 1 × ${qty.toLocaleString()} = ${money(total)}. Quantity 1 costs ${money(unit)}, not ${money(unit / 1000)}.`
+                : `${money(unit)} per 1,000 × ${qty.toLocaleString()} = ${money(total)}.`}
             </p>
             {me?.user.role === "customer" && (loyalty.data?.discountPercent ?? 0) > 0 && (
               <p className="sm:col-span-2 text-brand-800 dark:text-brand-300">

@@ -25,9 +25,7 @@ export function isEachPrice(product?: {
 } | null) {
   if (!product) return false;
   if (product.price_unit === "each") return true;
-  const min = Number(product.min_quantity ?? 0);
-  const max = Number(product.max_quantity ?? 0);
-  return /netflix/i.test(product.name || "") && min <= 10 && max <= 10;
+  return /netflix/i.test(product.name || "");
 }
 
 export function orderTotal(unit: number, quantity: number, priceUnit?: string) {

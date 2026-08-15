@@ -5,7 +5,7 @@ import type { Product } from "@/types";
 import { Button, Card, Input, PageHeader } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
-import { publicProductName } from "@/utils/catalog";
+import { publicProductName, isEachPrice, priceUnitSuffix } from "@/utils/catalog";
 
 export function ResellerDashboard() {
   const stats = useQuery({ queryKey: ["reseller-me"], queryFn: () => api<{ reseller: Record<string, unknown>; stats: Record<string, unknown> }>("/reseller/me") });
@@ -82,8 +82,8 @@ function PriceRow({ product, onSaved }: { product: Product; onSaved: () => void 
   return (
     <tr className="border-t border-slate-100 dark:border-slate-800">
       <td className="p-3">{publicProductName(product.name)}</td>
-      <td className="p-3">{money(floor)}</td>
-      <td className="p-3"><Input value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-32" /></td>
+      <td className="p-3 whitespace-nowrap">{money(floor)} {priceUnitSuffix(product)}</td>
+      <td className="p-3"><Input value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-32" aria-label={isEachPrice(product) ? "Price per 1" : "Price per 1,000"} /></td>
       <td className="p-3"><Button onClick={() => save.mutate()}>Save</Button></td>
     </tr>
   );

@@ -73,6 +73,7 @@ type ApiService = {
   min: number;
   max: number;
   price: number;
+  price_unit?: "per_1000" | "each";
   delivery?: string | null;
   status: string;
 };
@@ -366,14 +367,14 @@ function ServicesSection() {
       <p className="mt-1 text-sm text-muted">Only products an administrator marked as API available. Prices use the API price when set, otherwise the account-type price.</p>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead><tr className="text-muted"><th className="py-2">Service</th><th>Platform</th><th>Qty</th><th>Price / 1000</th><th>Delivery</th></tr></thead>
+          <thead><tr className="text-muted"><th className="py-2">Service</th><th>Platform</th><th>Qty</th><th>Price</th><th>Delivery</th></tr></thead>
           <tbody>
             {services.data?.items.map((s) => (
               <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="py-2"><p className="font-semibold">{publicProductName(s.name)}</p><p className="font-mono text-xs text-muted">{s.id}</p></td>
                 <td>{s.platform} · {s.category}</td>
                 <td>{s.min}–{s.max}</td>
-                <td>{money(s.price)}</td>
+                <td>{money(s.price)} {s.price_unit === "each" ? "per 1" : "/ 1,000"}</td>
                 <td>{s.delivery || "—"}</td>
               </tr>
             ))}
