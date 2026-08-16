@@ -126,8 +126,8 @@ router.get("/products/:id", optionalAuth, asyncHandler(async (req, res) => {
     panelResellerId,
   })));
 }));
-router.post("/products/:id/contact-admin", optionalAuth, validate(contactAdminSchema), asyncHandler(async (req, res) => {
-  res.json(ok(await catalog.contactAdminForProduct(req.params.id, req.body, req.user), "Contact admin"));
+router.post("/products/:id/contact-admin", requireAuth, validate(contactAdminSchema), asyncHandler(async (req, res) => {
+  res.status(201).json(ok(await catalog.contactAdminForProduct(req.params.id, req.body, req.user), "Paid. Admin has your order."));
 }));
 router.get("/store/:slug", asyncHandler(async (req, res) => {
   const payload = await resellers.getPublicStorefront(req.params.slug, {

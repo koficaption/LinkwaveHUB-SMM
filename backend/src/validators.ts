@@ -191,8 +191,8 @@ export const ticketSchema = z.object({
 });
 
 export const contactAdminSchema = z.object({
-  quantity: z.number().int().positive().optional(),
-  details: z.string().max(1000).optional(),
+  quantity: z.number().int().positive(),
+  details: z.string().min(3).max(1000),
 });
 
 export const ticketReplySchema = z.object({

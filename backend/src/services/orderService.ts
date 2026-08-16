@@ -130,9 +130,15 @@ export async function placeOrder(input: {
   storeSlug?: string;
   viaApi?: boolean;
   apiKeyId?: string;
+  manual?: boolean;
 }) {
   const target = input.target.trim();
-  if (!/^https?:\/\//i.test(target) && !target.startsWith("@") && target.length < 3) {
+  const isManual = Boolean(input.manual);
+  if (isManual) {
+    if (target.length < 3) {
+      throw new AppError("Enter the number, username, or details admin needs");
+    }
+  } else if (!/^https?:\/\//i.test(target) && !target.startsWith("@") && target.length < 3) {
     throw new AppError("Enter a valid profile, post URL, or username");
   }
 
@@ -140,8 +146,15 @@ export async function placeOrder(input: {
     const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug, {
       viaApi: input.viaApi,
     });
-    if (quote.product.contact_admin || looksLikeContactAdminProduct(String(quote.product.name || ""))) {
-      throw new AppError("This is a manual service. Contact admin instead of placing an automatic order.", 400);
+    const contactAdmin = Boolean(quote.product.contact_admin) || looksLikeContactAdminProduct(String(quote.product.name || ""));
+    if (contactAdmin && !isManual) {
+      throw new AppError("This is a manual service. Pay with Contact admin so the order goes to admin.", 400);
+    }
+    if (isManual && !contactAdmin) {
+      throw new AppError("This service is ordered from the catalog, not as a manual admin order", 400);
+    }
+    if (isManual && input.viaApi) {
+      throw new AppError("Manual services cannot be ordered through the API. Use the dashboard.", 400);
     }
     const wallet = await queryOne<{ id: string; balance: string }>(
       `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
@@ -182,7 +195,7 @@ export async function placeOrder(input: {
         quote.cost,
         quote.resellerId ? platformProfit : quote.profit,
         resellerProfit,
-        quote.product.provider_id,
+        isManual ? null : quote.product.provider_id,
         input.viaApi ? "api" : "dashboard",
         input.apiKeyId ?? null,
       ],
@@ -211,7 +224,7 @@ export async function placeOrder(input: {
         newBalance,
         publicId,
         `Order ${publicId}`,
-        JSON.stringify({ orderId: order!.id, productId: input.productId }),
+        JSON.stringify({ orderId: order!.id, productId: input.productId, manual: isManual }),
       ],
       client
     );
@@ -226,23 +239,27 @@ export async function placeOrder(input: {
 
     await notify({
       userId: input.user.id,
-      title: "Order placed",
-      body: `Order ${publicId} was created and is pending processing.`,
+      title: isManual ? "Manual order paid" : "Order placed",
+      body: isManual
+        ? `Order ${publicId} was paid from your wallet. Admin will fulfill it.`
+        : `Order ${publicId} was created and is pending processing.`,
       type: "order",
       metadata: { orderId: order!.id, publicId },
     });
     await notify({
       userId: null,
-      title: "New order",
-      body: `${input.user.full_name} placed ${publicId} for ${quote.product.name}.`,
+      title: isManual ? "Manual order to fulfill" : "New order",
+      body: isManual
+        ? `${input.user.full_name} paid for ${quote.product.name}. Qty ${input.quantity}. ${target}`
+        : `${input.user.full_name} placed ${publicId} for ${quote.product.name}.`,
       type: "order",
-      metadata: { orderId: order!.id, publicId },
+      metadata: { orderId: order!.id, publicId, manual: isManual },
     });
 
     return getOrderById(order!.id, client);
   });
 
-  if (created?.id && (await shouldAutoSendOrders())) {
+  if (created?.id && !isManual && (await shouldAutoSendOrders())) {
     try {
       await submitOrderToProvider(String(created.id), input.user);
     } catch (err) {
@@ -697,6 +714,7 @@ async function shouldAutoSendOrders() {
 async function loadOrderForProvider(id: string) {
   return queryOne<Record<string, unknown>>(
     `SELECT o.*, p.provider_service_id, p.provider_id AS product_provider_id,
+            p.contact_admin, p.name AS product_name,
             pr.adapter, pr.api_url, pr.api_key_encrypted, pr.status AS provider_status
      FROM orders o
      JOIN products p ON p.id = o.product_id
@@ -730,6 +748,9 @@ function livePanelAdapter(order: Record<string, unknown>, apiKey: string | undef
 async function submitOrderToProvider(id: string, actor: AuthUser, ip?: string) {
   const order = await loadOrderForProvider(id);
   if (!order) throw new AppError("Order not found", 404);
+  if (order.contact_admin || looksLikeContactAdminProduct(String(order.product_name || ""))) {
+    throw new AppError("This is a manual order. Fulfill it yourself from Admin → Orders.");
+  }
 
   const existingId = order.provider_order_id ? String(order.provider_order_id) : "";
   const alreadyLive = Boolean(existingId) && !isMockProviderOrderId(existingId);

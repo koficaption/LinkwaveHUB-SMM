@@ -4,9 +4,6 @@ import { like, makeSlug, uniqueSlug } from "../utils.js";
 import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, resolveContactAdmin } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
-import { notify } from "./notificationService.js";
-import { createTicket } from "./supportService.js";
-import { getPublicSettings } from "./settingsService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const productSelect = `
@@ -383,9 +380,10 @@ export async function getProduct(idOrSlug: string, opts: { admin?: boolean; rese
 
 export async function contactAdminForProduct(
   productId: string,
-  input: { quantity?: number; details?: string },
+  input: { quantity: number; details: string },
   user?: AuthUser | null
 ) {
+  if (!user) throw new AppError("Sign in to pay for this service", 401);
   const product = await queryOne<Record<string, unknown>>(
     `SELECT p.id, p.name, p.status, p.contact_admin, p.min_quantity, pl.name AS platform_name, c.name AS category_name
      FROM products p
@@ -396,54 +394,26 @@ export async function contactAdminForProduct(
   );
   if (!product || product.status !== "active") throw new AppError("Product not found", 404);
   const contact = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
-  if (!contact) throw new AppError("This service is ordered from the catalog, not by messaging admin", 400);
+  if (!contact) throw new AppError("This service is ordered from the catalog, not as a manual admin order", 400);
 
-  const name = publicProductName(String(product.name || ""));
-  const qty = Number(input.quantity || product.min_quantity || 1);
   const details = String(input.details || "").trim();
-  const lines = [
-    `Hi, I want ${name}`,
-    `Platform: ${product.platform_name}`,
-    `Category: ${product.category_name}`,
-    `Quantity: ${qty}`,
-    details ? `Details: ${details}` : "",
-    user?.full_name ? `My name: ${user.full_name}` : "",
-    user?.email ? `Email: ${user.email}` : "",
-  ].filter(Boolean);
-  const text = lines.join("\n");
+  if (details.length < 3) throw new AppError("Enter the number, username, or details admin needs");
+  const qty = Number(input.quantity || product.min_quantity || 1);
 
-  const settings = await getPublicSettings();
-  const digits = String(settings.whatsappNumber || "").replace(/\D/g, "");
-  const whatsappUrl = digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : null;
-
-  let ticket = null;
-  if (user) {
-    const created = await createTicket(user, {
-      subject: `${name} — contact admin`,
-      category: "orders",
-      message: text,
-      priority: "high",
-    });
-    ticket = created.ticket;
-    await notify({
-      userId: null,
-      title: "Manual service request",
-      body: `${user.full_name} wants ${name}.`,
-      type: "order",
-      metadata: { productId: product.id, ticketId: ticket?.id },
-    });
-  }
-
-  if (!user && !whatsappUrl) {
-    throw new AppError("Sign in to contact admin for this service", 401);
-  }
+  const { placeOrder } = await import("./orderService.js");
+  const order = await placeOrder({
+    user,
+    productId: String(product.id),
+    quantity: qty,
+    target: details,
+    manual: true,
+  });
 
   return {
-    whatsappUrl,
-    ticket,
-    message: whatsappUrl
-      ? "Admin has been notified. Continue on WhatsApp."
-      : "Admin has been notified. Open Support to follow up.",
+    order,
+    charge: order?.charge ?? null,
+    publicId: order?.public_id ?? null,
+    message: "Paid from your wallet. Admin has the order.",
   };
 }
 
