@@ -72,6 +72,27 @@ export function orderGuide(product: Product): OrderGuide {
   const refill = productRefill(product);
   const cancel = productCancel(product);
   const extra = publicProductDescription(product.description);
+
+  if (product.contact_admin) {
+    const notes = [
+      extra,
+      ...(product.features || []).filter((item) => item && !/^imported/i.test(item)),
+      extra ? null : "Pay from your wallet. Admin fulfills this manually.",
+      extra ? null : "Enter your WhatsApp number or email so we can reach you.",
+    ].filter((item): item is string => Boolean(item && item.trim()));
+    return {
+      facts: [
+        { label: "Category", value: `${product.platform_name} · ${publicCategoryName(product.category_name)}` },
+        { label: "Start Time", value: product.avg_delivery_time || "After admin confirms" },
+        { label: "Provide", value: "WhatsApp number or email" },
+        { label: "Quantity", value: "Any quantity from 1" },
+        { label: "Refill Time", value: "No refill" },
+        { label: "Cancel", value: cancel.supported ? "Anytime" : "No" },
+      ],
+      notes: [...new Set(notes)],
+    };
+  }
+
   const notes = [
     extra,
     ...(product.features || []).filter((item) => item && !/^imported/i.test(item) && !/^cancel (available|anytime)/i.test(item)),

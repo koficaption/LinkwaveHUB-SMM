@@ -294,7 +294,11 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
           clearable={false}
           options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
         />
-        <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
+        <label className="block sm:col-span-2">
+          <span className="label">Description</span>
+          <p className="mb-1.5 text-xs text-slate-500">Customers see this on New Order. For Netflix and verification numbers, write how to buy (WhatsApp, email, what they receive).</p>
+          <Textarea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Place the order with your WhatsApp number or email…" />
+        </label>
         <OrderSelect
           label="Provider"
           value={form.providerId}
