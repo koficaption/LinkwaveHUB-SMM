@@ -13,14 +13,16 @@ function resolvePlatform(platforms: Platform[], value: string) {
 export function categoryMatchesPlatform(category: Category, platformValue: string, platforms: Platform[]) {
   if (!platformValue) return true;
   const platform = resolvePlatform(platforms, platformValue);
-  const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids : [];
+  const counts = category.platform_counts || {};
   if (platform) {
-    if (linkedIds.includes(platform.id) || linkedIds.includes(platform.slug)) return true;
-    const count = Number(category.platform_counts?.[platform.id] ?? category.platform_counts?.[platform.slug] ?? 0);
-    if (category.platform_counts && Object.keys(category.platform_counts).length > 0) return count > 0;
-    return linkedIds.length === 0;
+    const onPlatform = Number(counts[platform.id] ?? counts[platform.slug] ?? 0);
+    if (onPlatform > 0) return true;
+    const linkedIds = Array.isArray(category.platform_ids) ? category.platform_ids.map(String) : [];
+    // Empty brand categories (Netflix with no products yet) stay on the platforms they were linked to.
+    return onPlatform === 0 && Object.keys(counts).length === 0
+      && (linkedIds.includes(platform.id) || linkedIds.includes(platform.slug));
   }
-  return linkedIds.includes(platformValue) || Number(category.platform_counts?.[platformValue] ?? 0) > 0;
+  return Number(counts[platformValue] ?? 0) > 0;
 }
 
 export function ServiceCatalogFilters({
@@ -94,7 +96,7 @@ export function ServiceCatalogFilters({
         {visibleCategories.map((c) => {
           const plat = resolvePlatform(platforms, platform);
           const count = plat
-            ? Number(c.platform_counts?.[plat.id] ?? c.platform_counts?.[plat.slug] ?? c.product_count ?? 0)
+            ? Number(c.platform_counts?.[plat.id] ?? c.platform_counts?.[plat.slug] ?? 0)
             : Number(c.product_count ?? 0);
           return (
             <option key={c.id} value={optionValue(c)}>

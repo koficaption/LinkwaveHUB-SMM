@@ -32,7 +32,10 @@ export function NewOrderPanel() {
   }, [search]);
 
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
-  const categories = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/categories") });
+  const categories = useQuery({
+    queryKey: ["categories", platformId],
+    queryFn: () => api<Category[]>(`/categories${platformId ? `?platformId=${platformId}` : ""}`),
+  });
   const canLoadServices = Boolean(platformId && categoryId) || Boolean(debounced);
   const products = useQuery({
     queryKey: ["order-products", platformId, categoryId, debounced],

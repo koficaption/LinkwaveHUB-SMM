@@ -132,8 +132,11 @@ async function linkCategoryToRelatedPlatforms(categoryId: string, name: string) 
   const related = platforms.filter((platform) => {
     const blob = `${platform.name} ${platform.slug}`.toLowerCase();
     if (/netflix|subscri/.test(needle)) return /netflix|subscri/.test(blob);
-    if (/verif|dating/.test(needle)) return /whatsapp|tiktok|dating|verif/.test(blob);
-    if (/international/.test(needle) && /tiktok|account/.test(needle)) return /tiktok/.test(blob);
+    if (/verif|sms/.test(needle) && /number|sms|verif/.test(needle)) return /verif|sms|number/.test(blob);
+    if (/dating/.test(needle)) return /dating/.test(blob);
+    if (/international/.test(needle) && /tiktok|account/.test(needle)) {
+      return /tiktok|account|premium/.test(blob);
+    }
     return blob.includes(needle) || needle.includes(platform.slug.replace(/-/g, " "));
   });
   for (const platform of related) {
@@ -150,11 +153,19 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
   if (!opts.includeInactive) where.push("c.is_active = TRUE");
   if (opts.platformId) {
     params.push(opts.platformId);
-    where.push(`EXISTS (
-      SELECT 1 FROM platform_categories pc
-      JOIN platforms pl ON pl.id = pc.platform_id
-      WHERE pc.category_id = c.id
-        AND (pc.platform_id::text = $${params.length} OR pl.slug = $${params.length})
+    where.push(`(
+      EXISTS (
+        SELECT 1 FROM platform_categories pc
+        JOIN platforms pl ON pl.id = pc.platform_id
+        WHERE pc.category_id = c.id
+          AND (pc.platform_id::text = $${params.length} OR pl.slug = $${params.length})
+      )
+      OR EXISTS (
+        SELECT 1 FROM products x
+        JOIN platforms pl ON pl.id = x.platform_id
+        WHERE x.category_id = c.id AND x.status = 'active'
+          AND (x.platform_id::text = $${params.length} OR pl.slug = $${params.length})
+      )
     )`);
   }
   const countSql = opts.platformId
@@ -165,16 +176,22 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
     : `(SELECT COUNT(*)::int FROM products x WHERE x.category_id = c.id AND x.status = 'active')`;
   const sql = `SELECT c.*,
     ${countSql} AS product_count,
-    COALESCE((SELECT json_agg(pc.platform_id) FROM platform_categories pc WHERE pc.category_id = c.id), '[]'::json) AS platform_ids,
     COALESCE((
-      SELECT jsonb_object_agg(pc.platform_id::text, cnt.c)
-      FROM platform_categories pc
-      JOIN LATERAL (
-        SELECT COUNT(*)::int AS c
-        FROM products x
-        WHERE x.platform_id = pc.platform_id AND x.category_id = c.id AND x.status = 'active'
-      ) cnt ON TRUE
-      WHERE pc.category_id = c.id
+      SELECT json_agg(DISTINCT pid)
+      FROM (
+        SELECT pc.platform_id AS pid FROM platform_categories pc WHERE pc.category_id = c.id
+        UNION
+        SELECT x.platform_id AS pid FROM products x WHERE x.category_id = c.id AND x.status = 'active'
+      ) ids
+    ), '[]'::json) AS platform_ids,
+    COALESCE((
+      SELECT jsonb_object_agg(x.platform_id::text, x.c)
+      FROM (
+        SELECT platform_id, COUNT(*)::int AS c
+        FROM products
+        WHERE category_id = c.id AND status = 'active'
+        GROUP BY platform_id
+      ) x
     ), '{}'::jsonb) AS platform_counts
     FROM categories c ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY c.sort_order, c.name`;
@@ -182,7 +199,7 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
   return rows
     .filter((row) => opts.includeInactive || isPublicStorefrontCategory(String(row.name || ""), String(row.slug || "")))
     .filter((row) => opts.includeInactive || !looksLikeProviderCategory(String(row.name || "")))
-    .filter((row) => opts.includeInactive || Number(row.product_count || 0) > 0 || isCustomStorefrontCategory(String(row.name || ""), String(row.slug || "")))
+    .filter((row) => opts.includeInactive || Number(row.product_count || 0) > 0 || (!opts.platformId && isCustomStorefrontCategory(String(row.name || ""), String(row.slug || ""))))
     .map((row) => opts.includeInactive ? row : ({ ...row, name: publicCategoryName(String(row.name || "")) }));
 }
 
@@ -199,7 +216,7 @@ export async function createCategory(input: Record<string, unknown>, actor: Auth
       input.isActive ?? true,
     ]
   );
-  if (Array.isArray(input.platformIds) && row) {
+  if (Array.isArray(input.platformIds) && (input.platformIds as string[]).length && row) {
     for (const platformId of input.platformIds as string[]) {
       await query(
         `INSERT INTO platform_categories (platform_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,

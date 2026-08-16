@@ -59,6 +59,19 @@ export function isCanonicalCategorySlug(slug?: string | null) {
   return CANONICAL_CATEGORIES.some((type) => type.slug === slug);
 }
 
+/** Admin-sold brand categories (Netflix, SMS verification numbers, accounts). */
+export function isManualBrandCategory(name?: string | null, slug?: string | null) {
+  const text = `${name || ""} ${String(slug || "").replace(/-/g, " ")}`;
+  if (!text.trim()) return false;
+  return (
+    /netflix/i.test(text)
+    || /verif/i.test(text)
+    || (/sms/i.test(text) && /number/i.test(text))
+    || (/international/i.test(text) && /tiktok|account/i.test(text))
+    || /dating/i.test(text)
+  );
+}
+
 /** Brand categories such as Netflix — not Followers/Likes and not provider junk. */
 export function isCustomStorefrontCategory(name?: string | null, slug?: string | null) {
   const label = String(name || "").trim();
@@ -66,6 +79,7 @@ export function isCustomStorefrontCategory(name?: string | null, slug?: string |
   if (!label && !value) return false;
   if (looksLikeProviderCategory(label)) return false;
   if (isCanonicalCategorySlug(value)) return false;
+  if (isManualBrandCategory(label, value)) return true;
   return !earliestServiceType(`${label} ${value.replace(/-/g, " ")}`);
 }
 
@@ -188,7 +202,8 @@ export function looksLikeContactAdminProduct(name?: string | null) {
     /netflix/i.test(text)
     || /verif/i.test(text)
     || /dating/i.test(text)
-    || /international.{0,40}tiktok/i.test(text)
+    || /international.{0,40}(sms|tiktok)/i.test(text)
+    || /sms.{0,24}(verif|number|otp|code)/i.test(text)
     || /tiktok.{0,40}(account|premium)/i.test(text)
     || /whatsapp.{0,24}(number|otp|verif|code)/i.test(text)
   );
