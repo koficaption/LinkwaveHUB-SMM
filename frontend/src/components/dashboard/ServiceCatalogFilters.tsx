@@ -53,19 +53,7 @@ export function ServiceCatalogFilters({
     .filter((p) => Number(p.product_count ?? 1) > 0)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
   const visibleCategories = [...categories]
-    .filter((c) => {
-      if (isProviderCategory(c.name)) return false;
-      if (!categoryMatchesPlatform(c, platform, platforms)) return false;
-      if (platform) {
-        const plat = resolvePlatform(platforms, platform);
-        const count = plat
-          ? Number(c.platform_counts?.[plat.id] ?? c.platform_counts?.[plat.slug] ?? c.product_count ?? 1)
-          : Number(c.product_count ?? 1);
-        if (c.platform_counts && count <= 0) return false;
-        return count > 0;
-      }
-      return Number(c.product_count ?? 1) > 0;
-    })
+    .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platform, platforms))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
   return (

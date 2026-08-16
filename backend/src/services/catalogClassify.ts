@@ -59,6 +59,22 @@ export function isCanonicalCategorySlug(slug?: string | null) {
   return CANONICAL_CATEGORIES.some((type) => type.slug === slug);
 }
 
+/** Brand categories such as Netflix — not Followers/Likes and not provider junk. */
+export function isCustomStorefrontCategory(name?: string | null, slug?: string | null) {
+  const label = String(name || "").trim();
+  const value = String(slug || "").trim();
+  if (!label && !value) return false;
+  if (looksLikeProviderCategory(label)) return false;
+  if (isCanonicalCategorySlug(value)) return false;
+  return !earliestServiceType(`${label} ${value.replace(/-/g, " ")}`);
+}
+
+export function isPublicStorefrontCategory(name?: string | null, slug?: string | null) {
+  if (looksLikeProviderCategory(String(name || ""))) return false;
+  if (isCanonicalCategorySlug(slug)) return true;
+  return isCustomStorefrontCategory(name, slug);
+}
+
 export function looksLikeProviderCategory(name: string) {
   return PROVIDER_NOISE.test(name) || /\[(egypt|usa|canada|nigeria|brazil|uk|japan|germany)\]/i.test(name);
 }
@@ -82,7 +98,9 @@ export function publicCategoryName(name: string) {
     (type) => type.slug === slug || type.name.toLowerCase() === cleaned.toLowerCase()
   );
   if (canonical) return canonical.name;
-  return earliestServiceType(`${name} ${cleaned}`)?.name || "Other";
+  const typed = earliestServiceType(`${name} ${cleaned}`);
+  if (typed) return typed.name;
+  return cleaned || "Other";
 }
 
 export function publicProductDescription(description?: string | null) {

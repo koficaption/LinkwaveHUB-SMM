@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCanonicalCategorySlug, looksLikePerUnitProduct } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -121,6 +121,24 @@ async function setPlatformCategories(platformId: string, categoryIds: string[]) 
   }
 }
 
+async function linkCategoryToRelatedPlatforms(categoryId: string, name: string) {
+  const platforms = await query<{ id: string; name: string; slug: string }>(
+    `SELECT id, name, slug FROM platforms WHERE is_active = TRUE`
+  );
+  const needle = name.toLowerCase();
+  const related = platforms.filter((platform) => {
+    const blob = `${platform.name} ${platform.slug}`.toLowerCase();
+    if (/netflix|subscri/.test(needle)) return /netflix|subscri/.test(blob);
+    return blob.includes(needle) || needle.includes(platform.slug.replace(/-/g, " "));
+  });
+  for (const platform of related) {
+    await query(
+      `INSERT INTO platform_categories (platform_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [platform.id, categoryId]
+    );
+  }
+}
+
 export async function listCategories(opts: { includeInactive?: boolean; platformId?: string } = {}) {
   const params: unknown[] = [];
   const where: string[] = [];
@@ -157,9 +175,9 @@ export async function listCategories(opts: { includeInactive?: boolean; platform
     ORDER BY c.sort_order, c.name`;
   const rows = await query(sql, params);
   return rows
-    .filter((row) => opts.includeInactive || isCanonicalCategorySlug(String(row.slug || "")))
+    .filter((row) => opts.includeInactive || isPublicStorefrontCategory(String(row.name || ""), String(row.slug || "")))
     .filter((row) => opts.includeInactive || !looksLikeProviderCategory(String(row.name || "")))
-    .filter((row) => opts.includeInactive || Number(row.product_count || 0) > 0)
+    .filter((row) => opts.includeInactive || Number(row.product_count || 0) > 0 || isCustomStorefrontCategory(String(row.name || ""), String(row.slug || "")))
     .map((row) => opts.includeInactive ? row : ({ ...row, name: publicCategoryName(String(row.name || "")) }));
 }
 
@@ -183,6 +201,8 @@ export async function createCategory(input: Record<string, unknown>, actor: Auth
         [platformId, row.id]
       );
     }
+  } else if (row) {
+    await linkCategoryToRelatedPlatforms(row.id, String(input.name || ""));
   }
   await writeAudit({ actor, action: "category.create", targetType: "category", targetId: row?.id, ip });
   return row;
