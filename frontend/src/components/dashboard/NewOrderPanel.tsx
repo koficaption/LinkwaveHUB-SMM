@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
@@ -10,9 +10,10 @@ import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productCancel } from "@/utils/cancel";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
-import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
+import { ServiceCatalogFilters, categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
+import { OrderSelect } from "@/components/dashboard/OrderSelect";
 import { productRefill } from "@/utils/refill";
-import { publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { publicProductName, isEachPrice, isProviderCategory, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 
 export function NewOrderPanel() {
@@ -90,10 +91,25 @@ export function NewOrderPanel() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place order"),
   });
 
+  const visibleCategories = useMemo(
+    () =>
+      (categories.data ?? [])
+        .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platformId, platforms.data ?? [])),
+    [categories.data, platformId, platforms.data]
+  );
+
+  useEffect(() => {
+    if (!platformId || visibleCategories.length !== 1) return;
+    const only = visibleCategories[0].id;
+    if (categoryId !== only) {
+      setCategoryId(only);
+      setProductId("");
+    }
+  }, [platformId, visibleCategories, categoryId]);
+
   function serviceLabel(p: Product) {
-    const sid = p.provider_service_id || p.id.slice(0, 8);
     const extra = isContactAdminProduct(p) ? " · Contact admin" : "";
-    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}${extra}`;
+    return `${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}${extra}`;
   }
 
   return (
@@ -106,6 +122,7 @@ export function NewOrderPanel() {
         categories={categories.data ?? []}
         useIds
         showCounts
+        hideCategoryIfSingle
         onSearchChange={setSearch}
         onPlatform={(value) => {
           setPlatformId(value);
@@ -118,24 +135,25 @@ export function NewOrderPanel() {
         }}
       />
 
-      <label className="mt-3 block">
-        <span className="sr-only">Services</span>
+      <div className="mt-4">
         {products.isLoading ? (
-          <Skeleton className="h-12 rounded-3xl" />
+          <div>
+            <span className="label">Services</span>
+            <Skeleton className="h-12 rounded-xl" />
+          </div>
         ) : (
-          <FilterSelect
+          <OrderSelect
+            label="Services"
             value={productId}
             onChange={setProductId}
-            label="Services"
+            placeholder={canLoadServices ? "Select a service" : "Select a category first"}
             disabled={!canLoadServices}
-          >
-            <option value="">{canLoadServices ? "Select a service" : "Select a platform and category"}</option>
-            {visibleProducts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {serviceLabel(p)}
-              </option>
-            ))}
-          </FilterSelect>
+            options={visibleProducts.map((p) => ({
+              value: p.id,
+              badge: String(p.provider_service_id || p.id.slice(0, 8)),
+              label: serviceLabel(p),
+            }))}
+          />
         )}
         {!products.isLoading && canLoadServices && visibleProducts.length > 0 && (
           <p className="mt-2 text-sm text-muted">
@@ -152,7 +170,7 @@ export function NewOrderPanel() {
         {!products.isLoading && canLoadServices && visibleProducts.length === 0 && (
           <p className="mt-2 text-sm text-muted">No services match that search or category.</p>
         )}
-      </label>
+      </div>
 
       <div className="mt-4 space-y-3">
         <InstagramFollowersNotice product={selected} />

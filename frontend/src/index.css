@@ -38,7 +38,7 @@ html {
   }
 
   .label {
-    @apply mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200;
+    @apply mb-1.5 block text-[15px] font-bold text-slate-900 dark:text-slate-200;
   }
 
   .input {

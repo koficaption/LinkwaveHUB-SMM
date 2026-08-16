@@ -7,7 +7,7 @@ import { CancelBar } from "@/components/dashboard/CancelBadge";
 export function ServiceDescription({ product }: { product?: Product }) {
   if (!product) {
     return (
-      <div className="rounded-2xl bg-brand-50 px-4 py-5 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <div className="rounded-xl bg-brand-50 px-4 py-5 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         Select a service to read the link type, refill, and notes before you order.
       </div>
     );
@@ -16,7 +16,7 @@ export function ServiceDescription({ product }: { product?: Product }) {
   const guide = orderGuide(product);
   const canCancel = productCancel(product).supported;
   return (
-    <div className="rounded-2xl bg-brand-50 px-4 py-5 text-sm leading-relaxed text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+    <div className="rounded-xl bg-brand-50 px-4 py-5 text-sm leading-relaxed text-slate-800 dark:bg-slate-800 dark:text-slate-100">
       <CancelBar supported={canCancel} />
       <p className={`flex items-start gap-2 text-[15px] font-bold text-brand-800 dark:text-brand-200 ${canCancel ? "mt-3" : ""}`}>
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" aria-hidden />

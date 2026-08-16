@@ -2,9 +2,7 @@ import type { ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Category, Platform } from "@/types";
 import { publicCategoryName, isProviderCategory } from "@/utils/catalog";
-
-const fieldClass =
-  "input h-12 w-full appearance-none rounded-3xl px-4 pr-11 text-base";
+import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 
 function resolvePlatform(platforms: Platform[], value: string) {
   return platforms.find((p) => p.id === value || p.slug === value);
@@ -33,6 +31,7 @@ export function ServiceCatalogFilters({
   categories,
   useIds = false,
   showCounts = false,
+  hideCategoryIfSingle = false,
   onSearchChange,
   onSearchCommit,
   onPlatform,
@@ -45,6 +44,7 @@ export function ServiceCatalogFilters({
   categories: Category[];
   useIds?: boolean;
   showCounts?: boolean;
+  hideCategoryIfSingle?: boolean;
   onSearchChange?: (value: string) => void;
   onSearchCommit?: (value: string) => void;
   onPlatform: (value: string) => void;
@@ -57,54 +57,43 @@ export function ServiceCatalogFilters({
   const visibleCategories = [...categories]
     .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platform, platforms))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  const showType = platform
+    ? (!hideCategoryIfSingle || visibleCategories.length > 1)
+    : !hideCategoryIfSingle;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {onSearchChange ? (
-        <input
-          className={`${fieldClass} pr-4`}
-          placeholder="Search services"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          onBlur={onSearchCommit ? (e) => onSearchCommit(e.target.value) : undefined}
-          onKeyDown={onSearchCommit ? (e) => {
-            if (e.key === "Enter") onSearchCommit((e.target as HTMLInputElement).value);
-          } : undefined}
-          aria-label="Search services"
-        />
+        <SearchField value={search} onChange={onSearchChange} onCommit={onSearchCommit} />
       ) : (
-        <input
-          key={search}
-          className={`${fieldClass} pr-4`}
-          placeholder="Search services"
-          defaultValue={search}
-          onBlur={onSearchCommit ? (e) => onSearchCommit(e.target.value) : undefined}
-          onKeyDown={onSearchCommit ? (e) => {
-            if (e.key === "Enter") onSearchCommit((e.target as HTMLInputElement).value);
-          } : undefined}
-          aria-label="Search services"
-        />
+        <SearchField key={search} defaultValue={search} onCommit={onSearchCommit} />
       )}
-      <FilterSelect value={platform} onChange={onPlatform} label="All platforms">
-        <option value="">All platforms</option>
-        {visiblePlatforms.map((p) => (
-          <option key={p.id} value={optionValue(p)}>{p.name}</option>
-        ))}
-      </FilterSelect>
-      <FilterSelect value={category} onChange={onCategory} label="All categories">
-        <option value="">All categories</option>
-        {visibleCategories.map((c) => {
-          const plat = resolvePlatform(platforms, platform);
-          const count = plat
-            ? Number(c.platform_counts?.[plat.id] ?? c.platform_counts?.[plat.slug] ?? 0)
-            : Number(c.product_count ?? 0);
-          return (
-            <option key={c.id} value={optionValue(c)}>
-              {publicCategoryName(c.name)}{showCounts && count ? ` (${count.toLocaleString()})` : ""}
-            </option>
-          );
-        })}
-      </FilterSelect>
+      <OrderSelect
+        label="Category"
+        value={platform}
+        onChange={onPlatform}
+        placeholder="Select a category"
+        leadingCheck
+        options={visiblePlatforms.map((p) => ({ value: optionValue(p), label: p.name }))}
+      />
+      {showType ? (
+        <OrderSelect
+          label="Type"
+          value={category}
+          onChange={onCategory}
+          placeholder="All types"
+          options={visibleCategories.map((c) => {
+            const plat = resolvePlatform(platforms, platform);
+            const count = plat
+              ? Number(c.platform_counts?.[plat.id] ?? c.platform_counts?.[plat.slug] ?? 0)
+              : Number(c.product_count ?? 0);
+            return {
+              value: optionValue(c),
+              label: `${publicCategoryName(c.name)}${showCounts && count ? ` (${count.toLocaleString()})` : ""}`,
+            };
+          })}
+        />
+      ) : null}
     </div>
   );
 }
@@ -115,25 +104,30 @@ export function FilterSelect({
   label,
   children,
   disabled,
+  showLabel = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   children: ReactNode;
   disabled?: boolean;
+  showLabel?: boolean;
 }) {
   return (
-    <div className="relative">
-      <select
-        aria-label={label}
-        className={`${fieldClass} ${value ? "border-brand-600 bg-white" : ""}`}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-    </div>
+    <label className="block">
+      {showLabel ? <span className="label">{label}</span> : <span className="sr-only">{label}</span>}
+      <div className="relative">
+        <select
+          aria-label={label}
+          className={`input h-12 appearance-none rounded-xl px-3.5 pr-11 text-[15px] ${value ? "border-brand-600 bg-white" : ""}`}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      </div>
+    </label>
   );
 }

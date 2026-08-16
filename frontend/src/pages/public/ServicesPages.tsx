@@ -58,7 +58,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
           onCategory={(value) => set("category", value)}
         />
         <div className="mt-3">
-          <FilterSelect value={refill} onChange={(value) => set("refill", value)} label="Refill filter">
+          <FilterSelect value={refill} onChange={(value) => set("refill", value)} label="Refill" showLabel>
             <option value="">Refill: All</option>
             <option value="yes">Refill supported</option>
             <option value="no">No refill</option>
