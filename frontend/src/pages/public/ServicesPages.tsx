@@ -18,6 +18,7 @@ import { publicCategoryName, publicProductName, isEachPrice, orderTotal, priceUn
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
 import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
+import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -193,7 +194,10 @@ export function ServiceDetailPage() {
         </div>
       </div>
       <Card className="lg:col-span-2 h-fit">
-        <h2 className="text-lg font-bold">New order</h2>
+        <h2 className="text-lg font-bold">{isContactAdminProduct(p) ? "Contact admin" : "New order"}</h2>
+        {isContactAdminProduct(p) ? (
+          <ContactAdminPanel product={p} />
+        ) : (
         <form className="mt-4 space-y-4" onSubmit={form.handleSubmit((v) => {
           if (!me) return navigate(storeSlug ? `/login?store=${encodeURIComponent(storeSlug)}` : "/login");
           mutation.mutate(v);
@@ -208,6 +212,7 @@ export function ServiceDetailPage() {
           </div>
           <Button className="w-full" disabled={mutation.isPending}>{me ? "Place order" : "Login to order"}</Button>
         </form>
+        )}
       </Card>
     </div>
   );

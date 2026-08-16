@@ -174,7 +174,37 @@ export function looksLikePerUnitProduct(
 ) {
   // Netflix-style packages are sold per 1 (₵120 for qty 1), never per 1,000.
   if (/netflix/i.test(name)) return true;
+  if (looksLikeContactAdminProduct(name)) return true;
   if (!Number.isFinite(minQty) || minQty > 10 || !Number.isFinite(maxQty) || maxQty > 10) return false;
   const providerId = String(opts?.providerServiceId || "").trim();
   return !providerId && Number(opts?.cost ?? 0) === 0;
+}
+
+/** Manual items such as Netflix, verification numbers, and accounts — customers message admin. */
+export function looksLikeContactAdminProduct(name?: string | null) {
+  const text = String(name || "");
+  if (!text.trim()) return false;
+  return (
+    /netflix/i.test(text)
+    || /verif/i.test(text)
+    || /dating/i.test(text)
+    || /international.{0,40}tiktok/i.test(text)
+    || /tiktok.{0,40}(account|premium)/i.test(text)
+    || /whatsapp.{0,24}(number|otp|verif|code)/i.test(text)
+  );
+}
+
+export function resolveContactAdmin(input: {
+  contactAdmin?: unknown;
+  providerId?: unknown;
+  name?: unknown;
+}, current?: { contact_admin?: unknown; provider_id?: unknown; name?: unknown }) {
+  if (typeof input.contactAdmin === "boolean") return input.contactAdmin;
+  if (current && input.contactAdmin === undefined && current.contact_admin != null) {
+    return Boolean(current.contact_admin);
+  }
+  const providerId = input.providerId !== undefined ? input.providerId : current?.provider_id;
+  if (providerId) return false;
+  const name = String(input.name ?? current?.name ?? "");
+  return looksLikeContactAdminProduct(name) || !providerId;
 }

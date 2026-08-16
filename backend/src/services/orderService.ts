@@ -6,7 +6,7 @@ import { notify } from "./notificationService.js";
 import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
 import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
-import { publicProductName, looksLikePerUnitProduct } from "./catalogClassify.js";
+import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -140,6 +140,9 @@ export async function placeOrder(input: {
     const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug, {
       viaApi: input.viaApi,
     });
+    if (quote.product.contact_admin || looksLikeContactAdminProduct(String(quote.product.name || ""))) {
+      throw new AppError("This is a manual service. Contact admin instead of placing an automatic order.", 400);
+    }
     const wallet = await queryOne<{ id: string; balance: string }>(
       `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
       [input.user.id],

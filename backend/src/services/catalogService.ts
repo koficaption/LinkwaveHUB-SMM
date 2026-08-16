@@ -1,9 +1,12 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, resolveContactAdmin } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
+import { notify } from "./notificationService.js";
+import { createTicket } from "./supportService.js";
+import { getPublicSettings } from "./settingsService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const productSelect = `
@@ -13,7 +16,7 @@ const productSelect = `
   p.features, p.created_at, p.updated_at, p.platform_id, p.category_id, p.provider_id,
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
-  p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit,
+  p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit, p.contact_admin,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -129,6 +132,8 @@ async function linkCategoryToRelatedPlatforms(categoryId: string, name: string) 
   const related = platforms.filter((platform) => {
     const blob = `${platform.name} ${platform.slug}`.toLowerCase();
     if (/netflix|subscri/.test(needle)) return /netflix|subscri/.test(blob);
+    if (/verif|dating/.test(needle)) return /whatsapp|tiktok|dating|verif/.test(blob);
+    if (/international/.test(needle) && /tiktok|account/.test(needle)) return /tiktok/.test(blob);
     return blob.includes(needle) || needle.includes(platform.slug.replace(/-/g, " "));
   });
   for (const platform of related) {
@@ -359,10 +364,77 @@ export async function getProduct(idOrSlug: string, opts: { admin?: boolean; rese
   return sanitizeProduct(priced, Boolean(opts.reseller), Boolean(opts.admin), opts.panelResellerId ? 0 : opts.loyaltyDiscountPercent);
 }
 
+export async function contactAdminForProduct(
+  productId: string,
+  input: { quantity?: number; details?: string },
+  user?: AuthUser | null
+) {
+  const product = await queryOne<Record<string, unknown>>(
+    `SELECT p.id, p.name, p.status, p.contact_admin, p.min_quantity, pl.name AS platform_name, c.name AS category_name
+     FROM products p
+     JOIN platforms pl ON pl.id = p.platform_id
+     JOIN categories c ON c.id = p.category_id
+     WHERE p.id::text = $1 OR p.slug = $1`,
+    [productId]
+  );
+  if (!product || product.status !== "active") throw new AppError("Product not found", 404);
+  const contact = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
+  if (!contact) throw new AppError("This service is ordered from the catalog, not by messaging admin", 400);
+
+  const name = publicProductName(String(product.name || ""));
+  const qty = Number(input.quantity || product.min_quantity || 1);
+  const details = String(input.details || "").trim();
+  const lines = [
+    `Hi, I want ${name}`,
+    `Platform: ${product.platform_name}`,
+    `Category: ${product.category_name}`,
+    `Quantity: ${qty}`,
+    details ? `Details: ${details}` : "",
+    user?.full_name ? `My name: ${user.full_name}` : "",
+    user?.email ? `Email: ${user.email}` : "",
+  ].filter(Boolean);
+  const text = lines.join("\n");
+
+  const settings = await getPublicSettings();
+  const digits = String(settings.whatsappNumber || "").replace(/\D/g, "");
+  const whatsappUrl = digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : null;
+
+  let ticket = null;
+  if (user) {
+    const created = await createTicket(user, {
+      subject: `${name} — contact admin`,
+      category: "orders",
+      message: text,
+      priority: "high",
+    });
+    ticket = created.ticket;
+    await notify({
+      userId: null,
+      title: "Manual service request",
+      body: `${user.full_name} wants ${name}.`,
+      type: "order",
+      metadata: { productId: product.id, ticketId: ticket?.id },
+    });
+  }
+
+  if (!user && !whatsappUrl) {
+    throw new AppError("Sign in to contact admin for this service", 401);
+  }
+
+  return {
+    whatsappUrl,
+    ticket,
+    message: whatsappUrl
+      ? "Admin has been notified. Continue on WhatsApp."
+      : "Admin has been notified. Open Support to follow up.",
+  };
+}
+
 export async function createProduct(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
   if (Number(input.maxQuantity) < Number(input.minQuantity)) {
     throw new AppError("Maximum quantity must be greater than or equal to minimum quantity");
   }
+  const contactAdmin = resolveContactAdmin(input);
   const row = await queryOne(
     `INSERT INTO products (
       platform_id, category_id, provider_id, name, slug, description,
@@ -370,8 +442,8 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       status, delivery_type, avg_delivery_time, provider_service_id, image_url, features,
       refill_supported, refill_days, refill_type, refill_service_id, refill_instructions,
       refill_limit, provider_refill_supported, reseller_available, api_available,
-      api_price_per_1000, api_min_quantity, api_max_quantity, price_unit
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+      api_price_per_1000, api_min_quantity, api_max_quantity, price_unit, contact_admin
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
     RETURNING *`,
     [
       input.platformId,
@@ -409,6 +481,7 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       })
         ? "each"
         : "per_1000",
+      contactAdmin,
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: input.name } });
@@ -448,7 +521,8 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       api_price_per_1000 = COALESCE($27, api_price_per_1000),
       api_min_quantity = COALESCE($28, api_min_quantity),
       api_max_quantity = COALESCE($29, api_max_quantity),
-      price_unit = COALESCE($30, price_unit)
+      price_unit = COALESCE($30, price_unit),
+      contact_admin = COALESCE($31, contact_admin)
      WHERE id = $1`,
     [
       id,
@@ -495,6 +569,7 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
         : input.priceUnit === undefined
           ? null
           : input.priceUnit,
+      input.contactAdmin === undefined ? resolveContactAdmin(input, current) : Boolean(input.contactAdmin),
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -620,6 +695,7 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   }
   product.display_price_per_1000 = display;
   product.price_unit = perUnit ? "each" : "per_1000";
+  product.contact_admin = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
   return product;
 }
 

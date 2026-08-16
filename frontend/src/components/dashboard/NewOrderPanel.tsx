@@ -13,6 +13,7 @@ import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollow
 import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
 import { productRefill } from "@/utils/refill";
 import { publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -88,7 +89,8 @@ export function NewOrderPanel() {
 
   function serviceLabel(p: Product) {
     const sid = p.provider_service_id || p.id.slice(0, 8);
-    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`;
+    const extra = isContactAdminProduct(p) ? " · Contact admin" : "";
+    return `[${sid}] — ${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}${extra}`;
   }
 
   return (
@@ -157,7 +159,9 @@ export function NewOrderPanel() {
         </div>
       </div>
 
-      {selected && (
+      {selected && isContactAdminProduct(selected) && <ContactAdminPanel product={selected} />}
+
+      {selected && !isContactAdminProduct(selected) && (
         <form
           className="mt-5 space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800"
           onSubmit={(e) => {

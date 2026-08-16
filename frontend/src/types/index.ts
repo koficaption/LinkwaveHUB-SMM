@@ -112,6 +112,7 @@ export type Product = {
   api_max_quantity?: number | null;
   loyalty_discount_percent?: number;
   price_unit?: "per_1000" | "each";
+  contact_admin?: boolean;
 };
 
 export type RefillSummary = {

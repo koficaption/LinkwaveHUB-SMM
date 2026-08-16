@@ -102,6 +102,7 @@ export const productSchema = z.object({
   apiMinQuantity: z.number().int().positive().optional().nullable(),
   apiMaxQuantity: z.number().int().positive().optional().nullable(),
   priceUnit: z.enum(["per_1000", "each"]).optional(),
+  contactAdmin: z.boolean().optional(),
 });
 
 export const API_SCOPES = [
@@ -187,6 +188,11 @@ export const ticketSchema = z.object({
   category: z.string().min(2).max(40),
   message: z.string().min(5).max(4000),
   priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+});
+
+export const contactAdminSchema = z.object({
+  quantity: z.number().int().positive().optional(),
+  details: z.string().max(1000).optional(),
 });
 
 export const ticketReplySchema = z.object({

@@ -176,6 +176,7 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     resellerAvailable: product?.reseller_available !== false,
     apiAvailable: Boolean(product?.api_available),
     priceUnit: product?.price_unit === "each" ? "each" : "per_1000",
+    contactAdmin: product?.contact_admin ?? !product?.provider_id,
   });
   const profit = round4(form.pricePer1000 - form.costPer1000);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
@@ -226,8 +227,15 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
         <label className="block"><span className="label">Max qty</span><Input type="number" value={form.maxQuantity} onChange={(e) => set("maxQuantity", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Status</span><Select value={form.status} onChange={(e) => set("status", e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></Select></label>
         <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
-        <label className="block"><span className="label">Provider</span><Select value={form.providerId} onChange={(e) => set("providerId", e.target.value)}><option value="">None</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
+        <label className="block"><span className="label">Provider</span><Select value={form.providerId} onChange={(e) => {
+          const providerId = e.target.value;
+          setForm((f) => ({ ...f, providerId, contactAdmin: !providerId }));
+        }}><option value="">None — you fulfill this (contact admin)</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
         <label className="block"><span className="label">Provider service ID</span><Input value={form.providerServiceId} onChange={(e) => set("providerServiceId", e.target.value)} /></label>
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" checked={form.contactAdmin} onChange={(e) => set("contactAdmin", e.target.checked)} />
+          Customers contact you for this (Netflix, verification numbers, accounts — not sent to a provider)
+        </label>
         <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
           <p className="text-sm font-semibold">Refill settings</p>
           <p className="mt-1 text-xs text-slate-500">Only enable refill when this service actually offers it. Do not turn this on just because an order completed.</p>

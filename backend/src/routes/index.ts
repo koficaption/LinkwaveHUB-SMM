@@ -30,6 +30,7 @@ import {
   walletDepositSchema,
   ticketSchema,
   ticketReplySchema,
+  contactAdminSchema,
   userCreateSchema,
   userUpdateSchema,
   providerSchema,
@@ -124,6 +125,9 @@ router.get("/products/:id", optionalAuth, asyncHandler(async (req, res) => {
     loyaltyDiscountPercent: panelResellerId ? 0 : await loyalty.customerLoyaltyDiscountPercent(req.user),
     panelResellerId,
   })));
+}));
+router.post("/products/:id/contact-admin", optionalAuth, validate(contactAdminSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await catalog.contactAdminForProduct(req.params.id, req.body, req.user), "Contact admin"));
 }));
 router.get("/store/:slug", asyncHandler(async (req, res) => {
   const payload = await resellers.getPublicStorefront(req.params.slug, {
