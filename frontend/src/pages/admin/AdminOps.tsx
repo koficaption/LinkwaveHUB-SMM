@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, formatDate, money, ApiError } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
 import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
+import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
@@ -67,32 +68,53 @@ export function AdminOrders() {
   return (
     <div>
       <h1 className="text-2xl font-extrabold">Orders</h1>
-      <div className="mt-4 grid gap-3 md:grid-cols-4 lg:grid-cols-7">
-        <Input placeholder="Search ID, email, target" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          {["pending","processing","in_progress","completed","partial","cancelled","refunded","failed"].map((s) => <option key={s} value={s}>{prettyStatus(s)}</option>)}
-        </Select>
-        <Select value={platformId} onChange={(e) => setPlatformId(e.target.value)}>
-          <option value="">All platforms</option>
-          {platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-          <option value="">All providers</option>
-          {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select value={refill} onChange={(e) => setRefill(e.target.value)}>
-          <option value="">Refill: All</option>
-          <option value="available">Available</option>
-          <option value="supported">Supported</option>
-          <option value="unsupported">Not supported</option>
-          <option value="requested">Requested</option>
-          <option value="processing">Processing</option>
-          <option value="failed">Failed</option>
-          <option value="expired">Expired</option>
-        </Select>
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <SearchField placeholder="Search ID, email, target" value={search} onChange={setSearch} />
+        <OrderSelect
+          label="Status"
+          value={status}
+          onChange={setStatus}
+          placeholder="All statuses"
+          options={["pending","processing","in_progress","completed","partial","cancelled","refunded","failed"].map((s) => ({ value: s, label: prettyStatus(s) }))}
+        />
+        <OrderSelect
+          label="Category"
+          value={platformId}
+          onChange={setPlatformId}
+          placeholder="All categories"
+          leadingCheck
+          options={(platforms.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Provider"
+          value={providerId}
+          onChange={setProviderId}
+          placeholder="All providers"
+          options={(providers.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Refill"
+          value={refill}
+          onChange={setRefill}
+          placeholder="All"
+          options={[
+            { value: "available", label: "Available" },
+            { value: "supported", label: "Supported" },
+            { value: "unsupported", label: "Not supported" },
+            { value: "requested", label: "Requested" },
+            { value: "processing", label: "Processing" },
+            { value: "failed", label: "Failed" },
+            { value: "expired", label: "Expired" },
+          ]}
+        />
+        <label className="block">
+          <span className="label">From</span>
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="label">To</span>
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
       </div>
       {selected.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

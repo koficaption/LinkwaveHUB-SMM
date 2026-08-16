@@ -16,18 +16,20 @@ export function SearchField({
   defaultValue,
   onChange,
   onCommit,
+  placeholder = "Search",
 }: {
   value?: string;
   defaultValue?: string;
   onChange?: (value: string) => void;
   onCommit?: (value: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div className="relative">
       <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
       <input
         className="input h-12 rounded-xl pl-11 pr-4 text-[15px]"
-        placeholder="Search"
+        placeholder={placeholder}
         value={onChange ? value : undefined}
         defaultValue={onChange ? undefined : defaultValue}
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
@@ -35,7 +37,7 @@ export function SearchField({
         onKeyDown={onCommit ? (e) => {
           if (e.key === "Enter") onCommit((e.target as HTMLInputElement).value);
         } : undefined}
-        aria-label="Search"
+        aria-label={placeholder}
       />
     </div>
   );
@@ -49,6 +51,7 @@ export function OrderSelect({
   placeholder,
   disabled,
   leadingCheck = false,
+  clearable = true,
 }: {
   label: string;
   value: string;
@@ -57,6 +60,7 @@ export function OrderSelect({
   placeholder: string;
   disabled?: boolean;
   leadingCheck?: boolean;
+  clearable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -108,15 +112,17 @@ export function OrderSelect({
             role="listbox"
             className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-card dark:border-slate-700 dark:bg-slate-900"
           >
-            <SelectOption
-              selected={!value}
-              onPick={() => {
-                onChange("");
-                setOpen(false);
-              }}
-            >
-              {placeholder}
-            </SelectOption>
+            {clearable ? (
+              <SelectOption
+                selected={!value}
+                onPick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+              >
+                {placeholder}
+              </SelectOption>
+            ) : null}
             {options.map((option) => (
               <SelectOption
                 key={option.value}

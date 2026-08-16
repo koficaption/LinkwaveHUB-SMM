@@ -9,6 +9,10 @@ import { productRefill } from "@/utils/refill";
 import { priceUnitSuffix } from "@/utils/catalog";
 import { productCancel } from "@/utils/cancel";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
+import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
+import { categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
+import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
+import { isProviderCategory, publicCategoryName } from "@/utils/catalog";
 
 function round4(value: number) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(4));
@@ -66,23 +70,59 @@ export function AdminProducts() {
         </div>
         <Button onClick={() => setEditing("new")}>Add product</Button>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-7">
-        <Input placeholder="Search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-        <Select value={platformId} onChange={(e) => { setPlatformId(e.target.value); setPage(1); }}><option value="">All platforms</option>{platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
-        <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}><option value="">All categories</option>{categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
-        <Select value={providerId} onChange={(e) => { setProviderId(e.target.value); setPage(1); }}><option value="">All providers</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
-        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></Select>
-        <Select value={refill} onChange={(e) => { setRefill(e.target.value); setPage(1); }}>
-          <option value="">Refill: All</option>
-          <option value="yes">Supported</option>
-          <option value="no">Not supported</option>
-        </Select>
-        <Select value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="newest">Newest</option>
-          <option value="name">Name</option>
-          <option value="price_asc">Price ↑</option>
-          <option value="price_desc">Price ↓</option>
-        </Select>
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); }} />
+        <OrderSelect
+          label="Category"
+          value={platformId}
+          onChange={(value) => { setPlatformId(value); setCategoryId(""); setPage(1); }}
+          placeholder="All categories"
+          leadingCheck
+          options={(platforms.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Type"
+          value={categoryId}
+          onChange={(value) => { setCategoryId(value); setPage(1); }}
+          placeholder="All types"
+          options={(categories.data ?? [])
+            .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platformId, platforms.data ?? []))
+            .map((c) => ({ value: c.id, label: publicCategoryName(c.name) }))}
+        />
+        <OrderSelect
+          label="Provider"
+          value={providerId}
+          onChange={(value) => { setProviderId(value); setPage(1); }}
+          placeholder="All providers"
+          options={(providers.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Status"
+          value={status}
+          onChange={(value) => { setStatus(value); setPage(1); }}
+          placeholder="All statuses"
+          options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
+        />
+        <OrderSelect
+          label="Refill"
+          value={refill}
+          onChange={(value) => { setRefill(value); setPage(1); }}
+          placeholder="All"
+          options={[{ value: "yes", label: "Supported" }, { value: "no", label: "Not supported" }]}
+        />
+        <OrderSelect
+          label="Sort"
+          value={sort}
+          onChange={setSort}
+          placeholder="Newest"
+          clearable={false}
+          options={[
+            { value: "newest", label: "Newest" },
+            { value: "name", label: "Name" },
+            { value: "price_asc", label: "Price ↑" },
+            { value: "price_desc", label: "Price ↓" },
+          ]}
+        />
       </div>
       {selected.length > 0 && (
         <div className="mt-3 flex gap-2">
@@ -192,11 +232,32 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     setForm((f) => ({ ...f, pricePer1000: sell, markupPercent: percentFromPrices(f.costPer1000, sell) }));
   };
 
+  const visibleCategories = categories.filter((c) => {
+    if (isProviderCategory(c.name)) return false;
+    if (!form.platformId) return true;
+    return categoryMatchesPlatform(c, form.platformId, platforms);
+  });
+
   return (
     <Modal open title={product ? "Edit product" : "Add product"} onClose={onClose}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block"><span className="label">Platform</span><Select value={form.platformId} onChange={(e) => set("platformId", e.target.value)}>{platforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
-        <label className="block"><span className="label">Category</span><Select value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <OrderSelect
+          label="Category"
+          value={form.platformId}
+          onChange={(value) => setForm((f) => ({ ...f, platformId: value, categoryId: "" }))}
+          placeholder="Select a category"
+          leadingCheck
+          clearable={false}
+          options={platforms.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Type"
+          value={form.categoryId}
+          onChange={(value) => set("categoryId", value)}
+          placeholder="Select a type"
+          clearable={false}
+          options={visibleCategories.map((c) => ({ value: c.id, label: publicCategoryName(c.name) }))}
+        />
         <label className="block sm:col-span-2"><span className="label">Product name</span><Input value={form.name} onChange={(e) => {
           const name = e.target.value;
           setForm((f) => ({ ...f, name, priceUnit: /netflix/i.test(name) ? "each" : f.priceUnit }));
@@ -225,12 +286,22 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
         <label className="block"><span className="label">{form.priceUnit === "each" ? "Reseller price per 1 (optional)" : "Reseller price / 1,000 (optional)"}</span><Input type="number" step="0.01" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Min qty</span><Input type="number" value={form.minQuantity} onChange={(e) => set("minQuantity", Number(e.target.value))} /></label>
         <label className="block"><span className="label">Max qty</span><Input type="number" value={form.maxQuantity} onChange={(e) => set("maxQuantity", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Status</span><Select value={form.status} onChange={(e) => set("status", e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></Select></label>
+        <OrderSelect
+          label="Status"
+          value={form.status}
+          onChange={(value) => set("status", value)}
+          placeholder="Active"
+          clearable={false}
+          options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
+        />
         <label className="block sm:col-span-2"><span className="label">Description</span><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
-        <label className="block"><span className="label">Provider</span><Select value={form.providerId} onChange={(e) => {
-          const providerId = e.target.value;
-          setForm((f) => ({ ...f, providerId, contactAdmin: !providerId }));
-        }}><option value="">None — you fulfill this (contact admin)</option>{providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
+        <OrderSelect
+          label="Provider"
+          value={form.providerId}
+          onChange={(value) => setForm((f) => ({ ...f, providerId: value, contactAdmin: !value }))}
+          placeholder="None — you fulfill this (contact admin)"
+          options={(providers.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
         <label className="block"><span className="label">Provider service ID</span><Input value={form.providerServiceId} onChange={(e) => set("providerServiceId", e.target.value)} /></label>
         <label className="flex items-center gap-2 text-sm sm:col-span-2">
           <input type="checkbox" checked={form.contactAdmin} onChange={(e) => set("contactAdmin", e.target.checked)} />
@@ -388,6 +459,18 @@ export function AdminSimpleCrud({
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+export function AdminNewOrder() {
+  return (
+    <div>
+      <h1 className="text-2xl font-extrabold">New Order</h1>
+      <p className="mt-1 text-sm text-slate-500">Place an order with the same Category and Services form customers use.</p>
+      <div className="mt-4">
+        <NewOrderPanel />
+      </div>
     </div>
   );
 }

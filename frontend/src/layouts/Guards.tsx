@@ -75,6 +75,7 @@ export function AdminLayout() {
         {
           label: "Commerce",
           items: [
+            { to: "/admin/new-order", label: "New Order", icon: <ShoppingCart className="h-5 w-5" /> },
             { to: "/admin/orders", label: "Orders", icon: <ShoppingCart className="h-5 w-5" /> },
             { to: "/admin/refills", label: "Refills", icon: <RefreshCcw className="h-5 w-5" /> },
             { to: "/admin/products", label: "Products", icon: <Boxes className="h-5 w-5" /> },

@@ -17,7 +17,7 @@ import { RefundPolicyPage, TermsOfServicePage } from "@/pages/legal/LegalPages";
 import { ResellerDashboard, ResellerPricingPage, ResellerStorefrontPage, ResellerCustomersPage, ResellerCustomerDetailPage, ResellerWithdrawPage } from "@/pages/reseller/ResellerPages";
 import { StoreCapture } from "@/components/StoreCapture";
 import { AdminAnalytics, AdminOverview } from "@/pages/admin/AdminOverview";
-import { AdminCategories, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
+import { AdminCategories, AdminNewOrder, AdminPlatforms, AdminProducts, AdminProviders } from "@/pages/admin/AdminCatalog";
 import {
   AdminAudit, AdminNotifications, AdminOrders, AdminPayments, AdminResellers, AdminResellerPayouts, AdminSettings, AdminSupport, AdminUserDetail, AdminUsers, AdminWallets,
 } from "@/pages/admin/AdminOps";
@@ -82,6 +82,7 @@ export default function App() {
               <Route element={<Guard roles={["admin"]} />}>
                 <Route element={<AdminLayout />}>
                   <Route path="/admin" element={<AdminOverview />} />
+                  <Route path="/admin/new-order" element={<AdminNewOrder />} />
                   <Route path="/admin/orders" element={<AdminOrders />} />
                   <Route path="/admin/refills" element={<AdminRefills />} />
                   <Route path="/admin/products" element={<AdminProducts />} />

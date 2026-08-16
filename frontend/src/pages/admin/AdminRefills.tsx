@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, ApiError } from "@/api/client";
 import type { Paginated, Platform, RefillOverview, RefillRecord } from "@/types";
-import { Badge, Button, Card, Input, Modal, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Input, Modal, Pagination, Skeleton, Textarea } from "@/components/ui";
+import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 import { prettyStatus, statusTone } from "@/utils/cn";
 
 export function AdminRefills() {
@@ -52,22 +53,38 @@ export function AdminRefills() {
           </Card>
         ))}
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Input placeholder="Search refill, order, customer" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="">All statuses</option>
-          {["requested","processing","completed","failed","expired"].map((s) => <option key={s} value={s}>{prettyStatus(s)}</option>)}
-        </Select>
-        <Select value={platformId} onChange={(e) => setPlatformId(e.target.value)}>
-          <option value="">All platforms</option>
-          {platforms.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-          <option value="">All providers</option>
-          {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <SearchField placeholder="Search refill, order, customer" value={search} onChange={(value) => { setSearch(value); setPage(1); }} />
+        <OrderSelect
+          label="Status"
+          value={status}
+          onChange={(value) => { setStatus(value); setPage(1); }}
+          placeholder="All statuses"
+          options={["requested","processing","completed","failed","expired"].map((s) => ({ value: s, label: prettyStatus(s) }))}
+        />
+        <OrderSelect
+          label="Category"
+          value={platformId}
+          onChange={(value) => { setPlatformId(value); setPage(1); }}
+          placeholder="All categories"
+          leadingCheck
+          options={(platforms.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <OrderSelect
+          label="Provider"
+          value={providerId}
+          onChange={(value) => { setProviderId(value); setPage(1); }}
+          placeholder="All providers"
+          options={(providers.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <label className="block">
+          <span className="label">From</span>
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="label">To</span>
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
       </div>
       <Card className="mt-4 overflow-x-auto">
         {list.isLoading && <Skeleton className="h-40" />}
