@@ -195,6 +195,14 @@ export function looksLikePerUnitProduct(
 }
 
 /** Manual items such as Netflix, verification numbers, and accounts — customers message admin. */
+export function looksLikeWhatsAppOrEmail(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15;
+}
+
 export function looksLikeContactAdminProduct(name?: string | null) {
   const text = String(name || "");
   if (!text.trim()) return false;

@@ -12,20 +12,28 @@ export function isContactAdminProduct(product?: Product | null) {
   return Boolean(product?.contact_admin);
 }
 
+function looksLikeWhatsAppOrEmail(value: string) {
+  const text = value.trim();
+  if (!text) return false;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15;
+}
+
 export function ContactAdminPanel({ product }: { product: Product }) {
   const { me } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [quantity, setQuantity] = useState(String(product.min_quantity || 1));
+  const [quantity, setQuantity] = useState("1");
   const [details, setDetails] = useState("");
 
   useEffect(() => {
-    setQuantity(String(product.min_quantity || 1));
+    setQuantity("1");
     setDetails("");
-  }, [product.id, product.min_quantity]);
+  }, [product.id]);
 
   const unit = Number(product.display_price_per_1000 ?? product.price_per_1000 ?? 0);
-  const qty = Number(quantity || product.min_quantity || 1);
+  const qty = Number(quantity || 1);
   const each = isEachPrice(product);
   const total = orderTotal(unit, qty, each ? "each" : "per_1000");
   const balance = Number(me?.wallet?.available_balance ?? me?.wallet?.balance ?? 0);
@@ -56,12 +64,12 @@ export function ContactAdminPanel({ product }: { product: Product }) {
       navigate("/login");
       return;
     }
-    if (qty < product.min_quantity || qty > product.max_quantity) {
-      toast.error(`Quantity must be between ${product.min_quantity.toLocaleString()} and ${product.max_quantity.toLocaleString()}`);
+    if (!Number.isFinite(qty) || qty < 1) {
+      toast.error("Enter a quantity of at least 1");
       return;
     }
-    if (details.trim().length < 3) {
-      toast.error("Enter the number, username, or details admin needs");
+    if (!looksLikeWhatsAppOrEmail(details)) {
+      toast.error("Enter a WhatsApp number or email");
       return;
     }
     if (balance < total) {
@@ -81,11 +89,11 @@ export function ContactAdminPanel({ product }: { product: Product }) {
       </div>
       <label className="block">
         <span className="label">Quantity</span>
-        <Input type="number" min={product.min_quantity} max={product.max_quantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
       </label>
       <label className="block">
-        <span className="label">Details (number, username, or what you need)</span>
-        <Textarea placeholder="WhatsApp number, TikTok username, dating profile, or anything admin should know" value={details} onChange={(e) => setDetails(e.target.value)} />
+        <span className="label">WhatsApp number or email</span>
+        <Textarea placeholder="WhatsApp number or email" value={details} onChange={(e) => setDetails(e.target.value)} />
       </label>
       <div className="grid gap-3 rounded-xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
         <p>

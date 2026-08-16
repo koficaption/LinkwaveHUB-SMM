@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, resolveContactAdmin } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail, resolveContactAdmin } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -397,8 +397,8 @@ export async function contactAdminForProduct(
   if (!contact) throw new AppError("This service is ordered from the catalog, not as a manual admin order", 400);
 
   const details = String(input.details || "").trim();
-  if (details.length < 3) throw new AppError("Enter the number, username, or details admin needs");
-  const qty = Number(input.quantity || product.min_quantity || 1);
+  if (!looksLikeWhatsAppOrEmail(details)) throw new AppError("Enter a WhatsApp number or email");
+  const qty = Number(input.quantity || 1);
 
   const { placeOrder } = await import("./orderService.js");
   const order = await placeOrder({
@@ -418,10 +418,12 @@ export async function contactAdminForProduct(
 }
 
 export async function createProduct(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
-  if (Number(input.maxQuantity) < Number(input.minQuantity)) {
+  const contactAdmin = resolveContactAdmin(input);
+  const minQuantity = contactAdmin ? 1 : input.minQuantity;
+  const maxQuantity = contactAdmin ? Math.max(Number(input.maxQuantity) || 1, 1_000_000) : input.maxQuantity;
+  if (Number(maxQuantity) < Number(minQuantity)) {
     throw new AppError("Maximum quantity must be greater than or equal to minimum quantity");
   }
-  const contactAdmin = resolveContactAdmin(input);
   const row = await queryOne(
     `INSERT INTO products (
       platform_id, category_id, provider_id, name, slug, description,
@@ -439,8 +441,8 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       input.name,
       uniqueSlug(String(input.name)),
       input.description ?? null,
-      input.minQuantity,
-      input.maxQuantity,
+      minQuantity,
+      maxQuantity,
       input.pricePer1000,
       input.costPer1000,
       input.resellerPricePer1000 ?? null,
@@ -478,6 +480,11 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
 export async function updateProduct(id: string, input: Record<string, unknown>, actor: AuthUser, ip?: string) {
   const current = await queryOne(`SELECT * FROM products WHERE id = $1`, [id]);
   if (!current) throw new AppError("Product not found", 404);
+  const contactAdmin = input.contactAdmin === undefined ? resolveContactAdmin(input, current) : Boolean(input.contactAdmin);
+  const minQuantity = contactAdmin ? 1 : input.minQuantity ?? null;
+  const maxQuantity = contactAdmin
+    ? Math.max(Number(input.maxQuantity ?? current.max_quantity) || 1, 1_000_000)
+    : input.maxQuantity ?? null;
   await query(
     `UPDATE products SET
       platform_id = COALESCE($2, platform_id),
@@ -518,8 +525,8 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.providerId === undefined ? null : input.providerId,
       input.name ?? null,
       input.description ?? null,
-      input.minQuantity ?? null,
-      input.maxQuantity ?? null,
+      minQuantity,
+      maxQuantity,
       input.pricePer1000 ?? null,
       input.costPer1000 ?? null,
       input.resellerPricePer1000 === undefined ? null : input.resellerPricePer1000,
@@ -543,8 +550,8 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.apiMaxQuantity === undefined ? null : input.apiMaxQuantity,
       looksLikePerUnitProduct(
         String(input.name ?? current.name ?? ""),
-        Number(input.minQuantity ?? current.min_quantity),
-        Number(input.maxQuantity ?? current.max_quantity),
+        Number(minQuantity ?? current.min_quantity),
+        Number(maxQuantity ?? current.max_quantity),
         {
           cost: Number(input.costPer1000 ?? current.cost_per_1000),
           providerServiceId: input.providerServiceId === undefined
@@ -556,7 +563,7 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
         : input.priceUnit === undefined
           ? null
           : input.priceUnit,
-      input.contactAdmin === undefined ? resolveContactAdmin(input, current) : Boolean(input.contactAdmin),
+      contactAdmin,
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -683,6 +690,10 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   product.display_price_per_1000 = display;
   product.price_unit = perUnit ? "each" : "per_1000";
   product.contact_admin = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
+  if (product.contact_admin) {
+    product.min_quantity = 1;
+    product.max_quantity = Math.max(Number(product.max_quantity) || 1, 1_000_000);
+  }
   return product;
 }
 

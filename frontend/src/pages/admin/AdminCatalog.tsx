@@ -192,7 +192,7 @@ function ProductForm({ product, platforms, categories, onClose }: { product: Pro
     providerId: product?.provider_id ?? "",
     name: product?.name ?? "",
     description: product?.description ?? "",
-    minQuantity: product?.min_quantity ?? 100,
+    minQuantity: product?.min_quantity ?? 1,
     maxQuantity: product?.max_quantity ?? 100000,
     costPer1000: startCost,
     markupPercent: startCost > 0 && startSell > 0 ? percentFromPrices(startCost, startSell) : defaultPercent,

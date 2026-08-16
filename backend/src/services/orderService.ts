@@ -6,7 +6,7 @@ import { notify } from "./notificationService.js";
 import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
 import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
-import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct } from "./catalogClassify.js";
+import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -29,7 +29,7 @@ export async function quoteOrder(
   quantity: number,
   user?: AuthUser | null,
   storeSlug?: string,
-  options?: { viaApi?: boolean }
+  options?: { viaApi?: boolean; manual?: boolean }
 ) {
   const product = await queryOne<Record<string, unknown>>(
     `SELECT p.*, pl.name AS platform_name FROM products p
@@ -43,12 +43,17 @@ export async function quoteOrder(
     throw new AppError("This service is not available through the API", 403, "service_unavailable");
   }
 
-  const minQty = options?.viaApi && Number(product.api_min_quantity) > 0
-    ? Number(product.api_min_quantity)
-    : Number(product.min_quantity);
-  const maxQty = options?.viaApi && Number(product.api_max_quantity) > 0
-    ? Number(product.api_max_quantity)
-    : Number(product.max_quantity);
+  const contactAdmin = Boolean(options?.manual) || Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
+  const minQty = contactAdmin
+    ? 1
+    : options?.viaApi && Number(product.api_min_quantity) > 0
+      ? Number(product.api_min_quantity)
+      : Number(product.min_quantity);
+  const maxQty = contactAdmin
+    ? Math.max(Number(product.max_quantity) || 1, 1_000_000)
+    : options?.viaApi && Number(product.api_max_quantity) > 0
+      ? Number(product.api_max_quantity)
+      : Number(product.max_quantity);
   if (quantity < minQty || quantity > maxQty) {
     throw new AppError(`Quantity must be between ${minQty} and ${maxQty}`);
   }
@@ -135,8 +140,8 @@ export async function placeOrder(input: {
   const target = input.target.trim();
   const isManual = Boolean(input.manual);
   if (isManual) {
-    if (target.length < 3) {
-      throw new AppError("Enter the number, username, or details admin needs");
+    if (!looksLikeWhatsAppOrEmail(target)) {
+      throw new AppError("Enter a WhatsApp number or email");
     }
   } else if (!/^https?:\/\//i.test(target) && !target.startsWith("@") && target.length < 3) {
     throw new AppError("Enter a valid profile, post URL, or username");
@@ -145,6 +150,7 @@ export async function placeOrder(input: {
   const created = await withTransaction(async (client) => {
     const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug, {
       viaApi: input.viaApi,
+      manual: isManual,
     });
     const contactAdmin = Boolean(quote.product.contact_admin) || looksLikeContactAdminProduct(String(quote.product.name || ""));
     if (contactAdmin && !isManual) {
