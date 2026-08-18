@@ -2,7 +2,7 @@ services:
   - type: web
     name: linkboost-growth
     runtime: node
-    plan: free
+    plan: free # Free instances sleep after idle time; the custom domain then shows Render’s wake-up page. Use Starter to stay always on.
     region: frankfurt
     buildCommand: npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build
     startCommand: npm start --prefix backend

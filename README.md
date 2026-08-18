@@ -90,6 +90,8 @@ NODE_ENV=production npm start
 
 Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL=https://linkboostgrowth.site`. Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
 
+Attach **linkboostgrowth.site** as a custom domain on that same Web Service. If the domain shows a black **Render** “service waking up” screen, the **Free** instance was asleep. Wait about a minute and refresh. To stop that screen for good, in Render open the service → **Instance type** → **Starter** (always on). Do not create a second service for the domain.
+
 ## Demo logins
 
 Use these on `/login` after a fresh seed (click a row to fill the form):
