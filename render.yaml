@@ -2,7 +2,11 @@ services:
   - type: web
     name: linkboost-growth
     runtime: node
-    plan: free # Free instances sleep after idle time; the custom domain then shows Render’s wake-up page. Use Starter to stay always on.
+    # Starter (and above) stay running. Free instances sleep after 15 minutes idle
+    # and then linkboostgrowth.site shows Render’s “service waking up” page.
+    # Paying for a Render workspace (Hobby/Pro) does not change this — only the
+    # web service Instance type does. Starter is billed as compute (~$7/month).
+    plan: starter
     region: frankfurt
     buildCommand: npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build
     startCommand: npm start --prefix backend
