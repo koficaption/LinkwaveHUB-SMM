@@ -108,8 +108,7 @@ export function NewOrderPanel() {
   }, [platformId, visibleCategories, categoryId]);
 
   function serviceLabel(p: Product) {
-    const extra = isContactAdminProduct(p) ? " · Contact admin" : "";
-    return `${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}${extra}`;
+    return `${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`;
   }
 
   return (

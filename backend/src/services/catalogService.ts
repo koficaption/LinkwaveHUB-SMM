@@ -2,6 +2,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
 import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
+import { createTicket } from "./supportService.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -463,9 +464,9 @@ export async function contactAdminForProduct(
   input: { quantity: number; details: string },
   user?: AuthUser | null
 ) {
-  if (!user) throw new AppError("Sign in to pay for this service", 401);
+  if (!user) throw new AppError("Sign in to place this order", 401);
   const product = await queryOne<Record<string, unknown>>(
-    `SELECT p.id, p.name, p.status, p.contact_admin, p.min_quantity, pl.name AS platform_name, c.name AS category_name
+    `SELECT p.id, p.name, p.status, p.contact_admin, p.min_quantity, p.price_per_1000, p.price_unit, pl.name AS platform_name, c.name AS category_name
      FROM products p
      JOIN platforms pl ON pl.id = p.platform_id
      JOIN categories c ON c.id = p.category_id
@@ -489,11 +490,31 @@ export async function contactAdminForProduct(
     manual: true,
   });
 
+  const charge = Number(order?.charge ?? 0);
+  try {
+    await createTicket(user, {
+      subject: `Order request: ${product.name}`,
+      category: "orders",
+      priority: "high",
+      message: [
+        "New manual service request for customer service.",
+        `Service: ${product.platform_name} · ${product.category_name} · ${product.name}`,
+        `Quantity: ${qty}`,
+        `Quoted total: GHS ${charge.toFixed(2)}`,
+        `WhatsApp or email: ${details}`,
+        `Customer: ${user.full_name} (${user.email})`,
+        order?.public_id ? `Order ID: ${order.public_id}` : null,
+      ].filter(Boolean).join("\n"),
+    });
+  } catch {
+    /* Order is already saved for admin even if the support ticket fails. */
+  }
+
   return {
     order,
     charge: order?.charge ?? null,
     publicId: order?.public_id ?? null,
-    message: "Paid from your wallet. Admin has the order.",
+    message: "Order placed. Customer service has your request.",
   };
 }
 

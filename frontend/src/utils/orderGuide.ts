@@ -77,7 +77,6 @@ export function orderGuide(product: Product): OrderGuide {
     const notes = [
       extra,
       ...(product.features || []).filter((item) => item && !/^imported/i.test(item)),
-      extra ? null : "Pay from your wallet. Admin fulfills this manually.",
       extra ? null : "Enter your WhatsApp number or email so we can reach you.",
     ].filter((item): item is string => Boolean(item && item.trim()));
     return {

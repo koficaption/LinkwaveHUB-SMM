@@ -194,7 +194,7 @@ export function ServiceDetailPage() {
         </div>
       </div>
       <Card className="lg:col-span-2 h-fit">
-        <h2 className="text-lg font-bold">{isContactAdminProduct(p) ? "Contact admin" : "New order"}</h2>
+        <h2 className="text-lg font-bold">New order</h2>
         {isContactAdminProduct(p) ? (
           <ContactAdminPanel product={p} />
         ) : (

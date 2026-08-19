@@ -154,7 +154,7 @@ export async function placeOrder(input: {
     });
     const contactAdmin = Boolean(quote.product.contact_admin) || looksLikeContactAdminProduct(String(quote.product.name || ""));
     if (contactAdmin && !isManual) {
-      throw new AppError("This is a manual service. Pay with Contact admin so the order goes to admin.", 400);
+      throw new AppError("Place this order from the dashboard so customer service can fulfill it.", 400);
     }
     if (isManual && !contactAdmin) {
       throw new AppError("This service is ordered from the catalog, not as a manual admin order", 400);
@@ -162,19 +162,23 @@ export async function placeOrder(input: {
     if (isManual && input.viaApi) {
       throw new AppError("Manual services cannot be ordered through the API. Use the dashboard.", 400);
     }
-    const wallet = await queryOne<{ id: string; balance: string }>(
-      `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
-      [input.user.id],
-      client
-    );
-    if (!wallet) throw new AppError("Wallet not found", 400);
-    const balance = Number(wallet.balance);
-    if (balance < quote.charge) {
-      throw new AppError("Insufficient wallet balance", 400);
-    }
 
-    const newBalance = Number((balance - quote.charge).toFixed(4));
-    await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, newBalance], client);
+    let wallet: { id: string; balance: string } | null = null;
+    let newBalance: number | null = null;
+    if (!isManual) {
+      wallet = await queryOne<{ id: string; balance: string }>(
+        `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
+        [input.user.id],
+        client
+      );
+      if (!wallet) throw new AppError("Wallet not found", 400);
+      const balance = Number(wallet.balance);
+      if (balance < quote.charge) {
+        throw new AppError("Insufficient wallet balance", 400);
+      }
+      newBalance = Number((balance - quote.charge).toFixed(4));
+      await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, newBalance], client);
+    }
 
     const publicId = publicOrderId();
     const priceUnit = quote.priceUnit ?? "per_1000";
@@ -187,8 +191,8 @@ export async function placeOrder(input: {
     const order = await queryOne(
       `INSERT INTO orders (
         public_id, user_id, product_id, reseller_id, quantity, target,
-        charge, cost, profit, reseller_profit, status, provider_id, source, api_key_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13)
+        charge, cost, profit, reseller_profit, status, provider_id, source, api_key_id, admin_note
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14)
       RETURNING *`,
       [
         publicId,
@@ -198,12 +202,15 @@ export async function placeOrder(input: {
         input.quantity,
         target,
         quote.charge,
-        quote.cost,
-        quote.resellerId ? platformProfit : quote.profit,
-        resellerProfit,
+        isManual ? 0 : quote.cost,
+        isManual ? 0 : (quote.resellerId ? platformProfit : quote.profit),
+        isManual ? 0 : resellerProfit,
         isManual ? null : quote.product.provider_id,
         input.viaApi ? "api" : "dashboard",
         input.apiKeyId ?? null,
+        isManual
+          ? `Customer service request. Collect GHS ${quote.charge} via WhatsApp/email: ${target}`
+          : null,
       ],
       client
     );
@@ -220,22 +227,24 @@ export async function placeOrder(input: {
       [order!.id, input.user.id],
       client
     );
-    await query(
-      `INSERT INTO wallet_transactions (wallet_id, user_id, type, amount, balance_after, reference, description, metadata)
-       VALUES ($1,$2,'order_payment',$3,$4,$5,$6,$7::jsonb)`,
-      [
-        wallet.id,
-        input.user.id,
-        -quote.charge,
-        newBalance,
-        publicId,
-        `Order ${publicId}`,
-        JSON.stringify({ orderId: order!.id, productId: input.productId, manual: isManual }),
-      ],
-      client
-    );
+    if (wallet && newBalance != null) {
+      await query(
+        `INSERT INTO wallet_transactions (wallet_id, user_id, type, amount, balance_after, reference, description, metadata)
+         VALUES ($1,$2,'order_payment',$3,$4,$5,$6,$7::jsonb)`,
+        [
+          wallet.id,
+          input.user.id,
+          -quote.charge,
+          newBalance,
+          publicId,
+          `Order ${publicId}`,
+          JSON.stringify({ orderId: order!.id, productId: input.productId, manual: isManual }),
+        ],
+        client
+      );
+    }
 
-    if (quote.resellerId && resellerProfit > 0) {
+    if (!isManual && quote.resellerId && resellerProfit > 0) {
       await query(
         `UPDATE resellers SET profit_balance = profit_balance + $2, updated_at = NOW() WHERE id = $1`,
         [quote.resellerId, resellerProfit],
@@ -245,18 +254,18 @@ export async function placeOrder(input: {
 
     await notify({
       userId: input.user.id,
-      title: isManual ? "Manual order paid" : "Order placed",
+      title: isManual ? "Order sent to customer service" : "Order placed",
       body: isManual
-        ? `Order ${publicId} was paid from your wallet. Admin will fulfill it.`
+        ? `Order ${publicId} was sent to customer service. They will contact you on ${target}.`
         : `Order ${publicId} was created and is pending processing.`,
       type: "order",
       metadata: { orderId: order!.id, publicId },
     });
     await notify({
       userId: null,
-      title: isManual ? "Manual order to fulfill" : "New order",
+      title: isManual ? "Customer service order" : "New order",
       body: isManual
-        ? `${input.user.full_name} paid for ${quote.product.name}. Qty ${input.quantity}. ${target}`
+        ? `${input.user.full_name} requested ${quote.product.name}. Qty ${input.quantity}. Contact ${target}. Collect GHS ${quote.charge}.`
         : `${input.user.full_name} placed ${publicId} for ${quote.product.name}.`,
       type: "order",
       metadata: { orderId: order!.id, publicId, manual: isManual },
