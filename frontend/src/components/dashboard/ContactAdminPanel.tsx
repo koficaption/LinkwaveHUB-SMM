@@ -83,9 +83,6 @@ export function ContactAdminPanel({ product }: { product: Product }) {
     <div className="mt-5 space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800">
       <div className="rounded-xl bg-brand-50 p-4 text-sm dark:bg-slate-800">
         <p className="font-semibold text-brand-800 dark:text-brand-300">Contact admin for {publicProductName(product.name)}</p>
-        <p className="mt-1 text-muted">
-          This is a manual service from us, not a provider order. Paying deducts your wallet and sends the order to admin.
-        </p>
       </div>
       <label className="block">
         <span className="label">Quantity</span>
