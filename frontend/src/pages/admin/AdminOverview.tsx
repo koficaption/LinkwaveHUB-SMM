@@ -34,7 +34,7 @@ export function AdminOverview() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
         <Link to="/admin/new-order" className="rounded-2xl border border-brand-200 bg-brand-50 p-4 font-semibold text-brand-800 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-100">New Order</Link>
         <Link to="/admin/providers" className="rounded-2xl border border-brand-200 bg-brand-50 p-4 font-semibold text-brand-800 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-100">See provider prices and set your percent</Link>
-        <Link to="/admin/products" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Edit product prices</Link>
+        <Link to="/admin/products" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Add or edit services</Link>
         <Link to="/admin/settings" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">USD rate and default percent</Link>
         <Link to="/admin/wallets" className="rounded-2xl border border-slate-200 p-4 font-semibold dark:border-slate-700">Wallets</Link>
       </div>

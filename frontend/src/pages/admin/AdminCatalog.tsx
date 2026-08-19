@@ -4,15 +4,15 @@ import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import type { Category, Paginated, Platform, Product } from "@/types";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
-import { prettyStatus, statusTone } from "@/utils/cn";
+import { statusTone } from "@/utils/cn";
 import { productRefill } from "@/utils/refill";
 import { priceUnitSuffix } from "@/utils/catalog";
-import { productCancel } from "@/utils/cancel";
-import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 import { categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
 import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
 import { isProviderCategory, publicCategoryName } from "@/utils/catalog";
+import { ProductQuickAdd, QuickCell } from "@/pages/admin/ProductQuickAdd";
+import { serviceNoLabel } from "@/utils/productQuickAdd";
 
 function round4(value: number) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(4));
@@ -20,16 +20,6 @@ function round4(value: number) {
 
 function sellFromCost(cost: number, percent: number) {
   return round4(cost * (1 + percent / 100));
-}
-
-function percentFromPrices(cost: number, sell: number) {
-  if (!cost) return 0;
-  return round4(((sell - cost) / cost) * 100);
-}
-
-function markupLabel(cost: number, sell: number) {
-  if (!cost) return "—";
-  return `${percentFromPrices(cost, sell).toFixed(1)}%`;
 }
 
 export function AdminProducts() {
@@ -43,7 +33,9 @@ export function AdminProducts() {
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
-  const [editing, setEditing] = useState<Product | null | "new">(null);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [creating, setCreating] = useState<"quick" | "bulk" | null>(null);
+  const [duplicating, setDuplicating] = useState<Product | null>(null);
   const [confirm, setConfirm] = useState<Product | null>(null);
 
   const platforms = useQuery({ queryKey: ["platforms-all"], queryFn: () => api<Platform[]>("/platforms?all=1") });
@@ -56,35 +48,48 @@ export function AdminProducts() {
 
   const bulk = useMutation({
     mutationFn: (next: "active" | "inactive") => api("/admin/products/bulk-status", { method: "POST", body: JSON.stringify({ ids: selected, status: next }) }),
-    onSuccess: () => { toast.success("Products updated"); setSelected([]); qc.invalidateQueries({ queryKey: ["admin-products"] }); },
+    onSuccess: () => { toast.success("Services updated"); setSelected([]); qc.invalidateQueries({ queryKey: ["admin-products"] }); },
   });
+
+  const patchProduct = async (id: string, body: Record<string, unknown>) => {
+    await api(`/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await qc.invalidateQueries({ queryKey: ["admin-products"] });
+    toast.success("Saved");
+  };
+
+  const categoryOptions = (categories.data ?? [])
+    .filter((c) => !isProviderCategory(c.name))
+    .map((c) => ({ value: c.id, label: publicCategoryName(c.name) }));
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">Products</h1>
+          <h1 className="text-2xl font-extrabold text-brand-800 dark:text-brand-200">Services</h1>
           <p className="text-sm text-slate-500">
-            {products.data ? `${products.data.total.toLocaleString()} services in the catalog.` : "What customers buy. Set provider cost and your percent to see profit."}
+            {products.data ? `${products.data.total.toLocaleString()} services in the catalog.` : "Add a normal service in under 30 seconds. Advanced fields stay hidden until you need them."}
           </p>
         </div>
-        <Button onClick={() => setEditing("new")}>Add product</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setCreating("bulk")}>+ Add multiple services</Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCreating("quick")}>Add service</Button>
+        </div>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); }} />
         <OrderSelect
-          label="Category"
+          label="Platform"
           value={platformId}
           onChange={(value) => { setPlatformId(value); setCategoryId(""); setPage(1); }}
-          placeholder="All categories"
+          placeholder="All platforms"
           leadingCheck
           options={(platforms.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
         />
         <OrderSelect
-          label="Type"
+          label="Category"
           value={categoryId}
           onChange={(value) => { setCategoryId(value); setPage(1); }}
-          placeholder="All types"
+          placeholder="All categories"
           options={(categories.data ?? [])
             .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platformId, platforms.data ?? []))
             .map((c) => ({ value: c.id, label: publicCategoryName(c.name) }))}
@@ -132,32 +137,77 @@ export function AdminProducts() {
       )}
       <Card className="mt-4 overflow-x-auto">
         {products.isLoading && <Skeleton className="h-48" />}
-        {!products.isLoading && !products.data?.items.length && <EmptyState title="No products" body="Create your first service." />}
+        {!products.isLoading && !products.data?.items.length && <EmptyState title="No services" body="Create your first service with Quick Add." />}
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="text-slate-500">
               <th className="p-2"><input type="checkbox" onChange={(e) => setSelected(e.target.checked ? (products.data?.items.map((p) => p.id) ?? []) : [])} /></th>
-              {["Name","Platform","Provider","Provider cost","Your %","Sell","Profit","Refill","Cancel","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
+              {["Name","Platform","Category","Price","Min","Max","Refill","Status","Visibility","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {products.data?.items.map((p) => (
               <tr key={p.id} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2"><input type="checkbox" checked={selected.includes(p.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, p.id] : s.filter((id) => id !== p.id))} /></td>
-                <td className="p-2 font-medium">{p.name}</td>
+                <td className="p-2 font-medium">
+                  <button className="text-left font-semibold hover:text-brand-700" onClick={() => setEditing(p)}>{p.name}</button>
+                  {p.service_no != null && <div className="text-xs text-slate-400">{serviceNoLabel(p)}</div>}
+                </td>
                 <td className="p-2">{p.platform_name}</td>
-                <td className="p-2">{p.provider_name || "—"}</td>
-                <td className="p-2">{money(p.cost_per_1000)}</td>
-                <td className="p-2">{markupLabel(Number(p.cost_per_1000), Number(p.price_per_1000))}</td>
-                <td className="p-2 whitespace-nowrap">{money(p.price_per_1000)} <span className="text-xs text-slate-500">{priceUnitSuffix(p)}</span></td>
-                <td className="p-2 font-semibold text-emerald-700 dark:text-emerald-400">{money(Number(p.price_per_1000) - Number(p.cost_per_1000 ?? 0))}</td>
-                <td className="p-2">{productRefill(p).supported ? <Badge className={statusTone.available}>{productRefill(p).days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}</td>
-                <td className="p-2"><CancelBadge supported={productCancel(p).supported} /></td>
-                <td className="p-2"><Badge className={statusTone[p.status]}>{p.status}</Badge></td>
+                <td className="p-2">
+                  <QuickCell
+                    display={publicCategoryName(p.category_name)}
+                    value={p.category_id}
+                    type="select"
+                    options={categoryOptions}
+                    onSave={(value) => patchProduct(p.id, { categoryId: value })}
+                  />
+                </td>
+                <td className="p-2 whitespace-nowrap">
+                  <QuickCell
+                    display={<>{money(p.price_per_1000)} <span className="text-xs text-slate-500">{priceUnitSuffix(p)}</span></>}
+                    value={Number(p.price_per_1000)}
+                    type="number"
+                    onSave={(value) => patchProduct(p.id, { pricePer1000: Number(value) })}
+                  />
+                </td>
+                <td className="p-2">
+                  <QuickCell display={p.min_quantity} value={p.min_quantity} type="number" onSave={(value) => patchProduct(p.id, { minQuantity: Number(value) })} />
+                </td>
+                <td className="p-2">
+                  <QuickCell display={p.max_quantity} value={p.max_quantity} type="number" onSave={(value) => patchProduct(p.id, { maxQuantity: Number(value) })} />
+                </td>
+                <td className="p-2">
+                  <QuickCell
+                    display={productRefill(p).supported ? <Badge className={statusTone.available}>{productRefill(p).days} days</Badge> : <Badge className={statusTone.not_supported}>No</Badge>}
+                    value={productRefill(p).supported ? "yes" : "no"}
+                    type="select"
+                    options={[{ value: "no", label: "No" }, { value: "yes", label: "Yes" }]}
+                    onSave={(value) => patchProduct(p.id, { refillSupported: value === "yes", refillDays: productRefill(p).days || 30 })}
+                  />
+                </td>
+                <td className="p-2">
+                  <QuickCell
+                    display={<Badge className={statusTone[p.status]}>{p.status}</Badge>}
+                    value={p.status}
+                    type="select"
+                    options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
+                    onSave={(value) => patchProduct(p.id, { status: value })}
+                  />
+                </td>
+                <td className="p-2">
+                  <QuickCell
+                    display={p.reseller_available === false ? "Hidden" : "Visible"}
+                    value={p.reseller_available === false ? "hidden" : "visible"}
+                    type="select"
+                    options={[{ value: "visible", label: "Visible" }, { value: "hidden", label: "Hidden" }]}
+                    onSave={(value) => patchProduct(p.id, { resellerAvailable: value === "visible" })}
+                  />
+                </td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-2">
                     <button className="font-semibold text-brand-700" onClick={() => setEditing(p)}>Edit</button>
-                    <button className="font-semibold" onClick={async () => { await api(`/admin/products/${p.id}/duplicate`, { method: "POST" }); toast.success("Duplicated"); qc.invalidateQueries({ queryKey: ["admin-products"] }); }}>Duplicate</button>
+                    <button className="font-semibold" onClick={() => setDuplicating(p)}>Duplicate</button>
                     <button className="font-semibold text-rose-600" onClick={() => setConfirm(p)}>Delete</button>
                   </div>
                 </td>
@@ -167,210 +217,30 @@ export function AdminProducts() {
         </table>
         {products.data && <Pagination page={page} total={products.data.total} limit={products.data.limit} onPage={setPage} />}
       </Card>
-      {editing && <ProductForm product={editing === "new" ? null : editing} platforms={platforms.data ?? []} categories={categories.data ?? []} onClose={() => setEditing(null)} />}
-      <ConfirmDialog open={!!confirm} title="Delete product" body="Products with orders are disabled instead of deleted." danger confirmLabel="Delete" onClose={() => setConfirm(null)} onConfirm={async () => {
+      {(creating || editing || duplicating) && (
+        <ProductQuickAdd
+          key={duplicating ? `dup-${duplicating.id}` : editing?.id || creating || "new"}
+          product={duplicating || editing}
+          duplicate={!!duplicating}
+          startBulk={creating === "bulk"}
+          platforms={platforms.data ?? []}
+          categories={categories.data ?? []}
+          onClose={() => { setCreating(null); setEditing(null); setDuplicating(null); }}
+          onViewProduct={(product) => {
+            setCreating(null);
+            setDuplicating(null);
+            setEditing(product);
+          }}
+        />
+      )}
+      <ConfirmDialog open={!!confirm} title="Delete service" body="Services with orders are disabled instead of deleted." danger confirmLabel="Delete" onClose={() => setConfirm(null)} onConfirm={async () => {
         if (!confirm) return;
         await api(`/admin/products/${confirm.id}`, { method: "DELETE" });
-        toast.success("Product removed");
+        toast.success("Service removed");
         setConfirm(null);
         qc.invalidateQueries({ queryKey: ["admin-products"] });
       }} />
     </div>
-  );
-}
-
-function ProductForm({ product, platforms, categories, onClose }: { product: Product | null; platforms: Platform[]; categories: Category[]; onClose: () => void }) {
-  const qc = useQueryClient();
-  const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<{ id: string; name: string }[]>("/admin/providers") });
-  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
-  const defaultPercent = Number(settings.data?.pricing?.importMarkupPercent ?? 40);
-  const startCost = Number(product?.cost_per_1000 ?? 0);
-  const startSell = Number(product?.price_per_1000 ?? 0);
-  const [form, setForm] = useState({
-    platformId: product?.platform_id ?? platforms[0]?.id ?? "",
-    categoryId: product?.category_id ?? categories[0]?.id ?? "",
-    providerId: product?.provider_id ?? "",
-    name: product?.name ?? "",
-    description: product?.description ?? "",
-    minQuantity: product?.min_quantity ?? 1,
-    maxQuantity: product?.max_quantity ?? 100000,
-    costPer1000: startCost,
-    markupPercent: startCost > 0 && startSell > 0 ? percentFromPrices(startCost, startSell) : defaultPercent,
-    pricePer1000: startSell || sellFromCost(startCost, defaultPercent),
-    resellerPricePer1000: Number(product?.reseller_price_per_1000 ?? 0),
-    apiPricePer1000: Number(product?.api_price_per_1000 ?? 0),
-    apiMinQuantity: Number(product?.api_min_quantity ?? 0) || "",
-    apiMaxQuantity: Number(product?.api_max_quantity ?? 0) || "",
-    status: product?.status ?? "active",
-    deliveryType: product?.delivery_type ?? "gradual",
-    avgDeliveryTime: product?.avg_delivery_time ?? "0-6 hours",
-    providerServiceId: product?.provider_service_id ?? "",
-    features: (product?.features ?? []).join("\n"),
-    refillSupported: productRefill(product ?? {}).supported,
-    refillDays: productRefill(product ?? {}).days,
-    refillType: product?.refill_type ?? "",
-    refillServiceId: product?.refill_service_id ?? "",
-    refillLimit: product?.refill_limit ?? 1,
-    refillInstructions: product?.refill_instructions ?? "",
-    providerRefillSupported: Boolean(product?.provider_refill_supported),
-    resellerAvailable: product?.reseller_available !== false,
-    apiAvailable: Boolean(product?.api_available),
-    priceUnit: product?.price_unit === "each" ? "each" : "per_1000",
-    contactAdmin: product?.contact_admin ?? !product?.provider_id,
-  });
-  const profit = round4(form.pricePer1000 - form.costPer1000);
-  const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
-  const setCost = (cost: number) => {
-    const next = sellFromCost(cost, form.markupPercent);
-    setForm((f) => ({ ...f, costPer1000: cost, pricePer1000: next }));
-  };
-  const setPercent = (percent: number) => {
-    const next = sellFromCost(form.costPer1000, percent);
-    setForm((f) => ({ ...f, markupPercent: percent, pricePer1000: next }));
-  };
-  const setSell = (sell: number) => {
-    setForm((f) => ({ ...f, pricePer1000: sell, markupPercent: percentFromPrices(f.costPer1000, sell) }));
-  };
-
-  const visibleCategories = categories.filter((c) => {
-    if (isProviderCategory(c.name)) return false;
-    if (!form.platformId) return true;
-    return categoryMatchesPlatform(c, form.platformId, platforms);
-  });
-
-  return (
-    <Modal open title={product ? "Edit product" : "Add product"} onClose={onClose}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <OrderSelect
-          label="Category"
-          value={form.platformId}
-          onChange={(value) => setForm((f) => ({ ...f, platformId: value, categoryId: "" }))}
-          placeholder="Select a category"
-          leadingCheck
-          clearable={false}
-          options={platforms.map((p) => ({ value: p.id, label: p.name }))}
-        />
-        <OrderSelect
-          label="Type"
-          value={form.categoryId}
-          onChange={(value) => set("categoryId", value)}
-          placeholder="Select a type"
-          clearable={false}
-          options={visibleCategories.map((c) => ({ value: c.id, label: publicCategoryName(c.name) }))}
-        />
-        <label className="block sm:col-span-2"><span className="label">Product name</span><Input value={form.name} onChange={(e) => {
-          const name = e.target.value;
-          setForm((f) => ({ ...f, name, priceUnit: /netflix/i.test(name) ? "each" : f.priceUnit }));
-        }} /></label>
-        <div className="sm:col-span-2 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-500/10">
-          <p className="text-sm font-semibold">Your price</p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-            {form.priceUnit === "each"
-              ? "This price is for 1 item. Quantity 1 of ₵120 costs ₵120."
-              : "Followers, likes and views are priced per 1,000. Quantity 1 of ₵120 / 1,000 costs ₵0.12. Tick the box below for packages that cost ₵120 per 1."}
-          </p>
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.priceUnit === "each"} onChange={(e) => set("priceUnit", e.target.checked ? "each" : "per_1000")} />
-            Charge this price per 1 (not per 1,000)
-          </label>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="block"><span className="label">{form.priceUnit === "each" ? "Provider cost per 1 (GHS)" : "Provider cost / 1,000 (GHS)"}</span><Input type="number" step="0.01" value={form.costPer1000} onChange={(e) => setCost(Number(e.target.value))} /></label>
-            <label className="block"><span className="label">Your percent %</span><Input type="number" step="0.1" value={form.markupPercent} onChange={(e) => setPercent(Number(e.target.value))} /></label>
-            <label className="block"><span className="label">{form.priceUnit === "each" ? "Customer pays per 1" : "Customer pays / 1,000"}</span><Input type="number" step="0.01" value={form.pricePer1000} onChange={(e) => setSell(Number(e.target.value))} /></label>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
-            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">Profit {form.priceUnit === "each" ? "per 1" : "/ 1,000"}: <strong className="text-emerald-700 dark:text-emerald-400">{money(profit)}</strong></div>
-            <div className="rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/60">{form.priceUnit === "each" ? `Qty 1 costs the customer ${money(form.pricePer1000)}` : `On 1000 units you keep ${money(profit)} after paying the provider ${money(form.costPer1000)}`}</div>
-          </div>
-        </div>
-        <label className="block"><span className="label">{form.priceUnit === "each" ? "Reseller price per 1 (optional)" : "Reseller price / 1,000 (optional)"}</span><Input type="number" step="0.01" value={form.resellerPricePer1000} onChange={(e) => set("resellerPricePer1000", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Min qty</span><Input type="number" value={form.minQuantity} onChange={(e) => set("minQuantity", Number(e.target.value))} /></label>
-        <label className="block"><span className="label">Max qty</span><Input type="number" value={form.maxQuantity} onChange={(e) => set("maxQuantity", Number(e.target.value))} /></label>
-        <OrderSelect
-          label="Status"
-          value={form.status}
-          onChange={(value) => set("status", value)}
-          placeholder="Active"
-          clearable={false}
-          options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
-        />
-        <label className="block sm:col-span-2">
-          <span className="label">Description</span>
-          <p className="mb-1.5 text-xs text-slate-500">Customers see this on New Order. For Netflix and verification numbers, write how to buy (WhatsApp, email, what they receive).</p>
-          <Textarea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Place the order with your WhatsApp number or email…" />
-        </label>
-        <OrderSelect
-          label="Provider"
-          value={form.providerId}
-          onChange={(value) => setForm((f) => ({ ...f, providerId: value, contactAdmin: !value }))}
-          placeholder="None — you fulfill this (contact admin)"
-          options={(providers.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
-        />
-        <label className="block"><span className="label">Provider service ID</span><Input value={form.providerServiceId} onChange={(e) => set("providerServiceId", e.target.value)} /></label>
-        <label className="flex items-center gap-2 text-sm sm:col-span-2">
-          <input type="checkbox" checked={form.contactAdmin} onChange={(e) => set("contactAdmin", e.target.checked)} />
-          Customers contact you for this (Netflix, verification numbers, accounts — not sent to a provider)
-        </label>
-        <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <p className="text-sm font-semibold">Refill settings</p>
-          <p className="mt-1 text-xs text-slate-500">Only enable refill when this service actually offers it. Do not turn this on just because an order completed.</p>
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.refillSupported} onChange={(e) => set("refillSupported", e.target.checked)} />
-            Refill supported
-          </label>
-          {form.refillSupported && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="block"><span className="label">Refill period (days)</span><Input type="number" value={form.refillDays} onChange={(e) => set("refillDays", Number(e.target.value))} /></label>
-              <label className="block"><span className="label">Maximum refills</span><Input type="number" value={form.refillLimit} onChange={(e) => set("refillLimit", Number(e.target.value))} /></label>
-              <label className="block"><span className="label">Refill service ID</span><Input value={form.refillServiceId} onChange={(e) => set("refillServiceId", e.target.value)} /></label>
-              <label className="block"><span className="label">Refill type</span><Input value={form.refillType} onChange={(e) => set("refillType", e.target.value)} placeholder="auto / manual" /></label>
-              <label className="block sm:col-span-2"><span className="label">Refill instructions</span><Textarea value={form.refillInstructions} onChange={(e) => set("refillInstructions", e.target.value)} /></label>
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input type="checkbox" checked={form.providerRefillSupported} onChange={(e) => set("providerRefillSupported", e.target.checked)} />
-                Provider supports automatic refill API
-              </label>
-            </div>
-          )}
-        </div>
-        <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <p className="text-sm font-semibold">Availability</p>
-          <p className="mt-1 text-xs text-slate-500">The same product can be sold on the customer dashboard, reseller storefront, and developer API.</p>
-          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={form.resellerAvailable} onChange={(e) => set("resellerAvailable", e.target.checked)} /> Reseller</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={form.apiAvailable} onChange={(e) => set("apiAvailable", e.target.checked)} /> API available</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={form.status === "active"} onChange={(e) => set("status", e.target.checked ? "active" : "inactive")} /> Active</label>
-          </div>
-          {form.apiAvailable && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <label className="block"><span className="label">{form.priceUnit === "each" ? "API price per 1" : "API price / 1,000"}</span><Input type="number" step="0.01" value={form.apiPricePer1000} onChange={(e) => set("apiPricePer1000", Number(e.target.value))} /></label>
-              <label className="block"><span className="label">API min qty</span><Input type="number" value={form.apiMinQuantity} onChange={(e) => set("apiMinQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
-              <label className="block"><span className="label">API max qty</span><Input type="number" value={form.apiMaxQuantity} onChange={(e) => set("apiMaxQuantity", e.target.value === "" ? "" : Number(e.target.value))} /></label>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={async () => {
-          const payload = {
-            ...form,
-            features: form.features.split("\n").map((s) => s.trim()).filter(Boolean),
-            providerId: form.providerId || null,
-            apiPricePer1000: Number(form.apiPricePer1000) || null,
-            apiMinQuantity: form.apiMinQuantity === "" ? null : Number(form.apiMinQuantity),
-            apiMaxQuantity: form.apiMaxQuantity === "" ? null : Number(form.apiMaxQuantity),
-          };
-          try {
-            if (product) await api(`/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-            else await api("/admin/products", { method: "POST", body: JSON.stringify(payload) });
-            toast.success(product ? "Product updated" : "Product created successfully");
-            qc.invalidateQueries({ queryKey: ["admin-products"] });
-            qc.invalidateQueries({ queryKey: ["products"] });
-            onClose();
-          } catch (e) { toast.error(e instanceof ApiError ? e.message : "Save failed"); }
-        }}>Save</Button>
-      </div>
-    </Modal>
   );
 }
 

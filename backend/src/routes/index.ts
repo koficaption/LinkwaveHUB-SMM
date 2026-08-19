@@ -16,6 +16,7 @@ import * as analytics from "../services/analyticsService.js";
 import * as providers from "../services/providerService.js";
 import * as notifications from "../services/notificationService.js";
 import * as refills from "../services/refillService.js";
+import { imageUpload } from "../upload.js";
 import {
   registerSchema,
   loginSchema,
@@ -26,6 +27,7 @@ import {
   platformSchema,
   categorySchema,
   productSchema,
+  productBulkSchema,
   orderSchema,
   walletDepositSchema,
   ticketSchema,
@@ -457,8 +459,17 @@ admin.get("/products", asyncHandler(async (req, res) => {
     resellerAvailable: req.query.resellerAvailable as string | undefined,
   })));
 }));
+admin.post("/uploads", imageUpload.single("file"), asyncHandler(async (req, res) => {
+  const file = req.file;
+  if (!file) throw new AppError("Choose an image");
+  res.status(201).json(ok({ url: `/uploads/${file.filename}` }, "Uploaded"));
+}));
 admin.post("/products", validate(productSchema), asyncHandler(async (req, res) => {
   res.status(201).json(ok(await catalog.createProduct(req.body, req.user!, clientIp(req)), "Product created successfully"));
+}));
+admin.post("/products/bulk", validate(productBulkSchema), asyncHandler(async (req, res) => {
+  const result = await catalog.createProductsBulk(req.body, req.user!, clientIp(req));
+  res.status(result.saved ? 201 : 400).json(ok(result, result.saved ? `${result.saved} services added` : "No services were added"));
 }));
 admin.patch("/products/:id", validate(productSchema.partial()), asyncHandler(async (req, res) => {
   res.json(ok(await catalog.updateProduct(req.params.id, req.body, req.user!, clientIp(req)), "Product updated"));

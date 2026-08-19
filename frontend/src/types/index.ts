@@ -113,6 +113,10 @@ export type Product = {
   loyalty_discount_percent?: number;
   price_unit?: "per_1000" | "each";
   contact_admin?: boolean;
+  service_type?: "api" | "manual" | "digital_product" | "subscription" | "account" | "other";
+  stock?: number | null;
+  delivery_method?: string | null;
+  service_no?: number | string;
 };
 
 export type RefillSummary = {

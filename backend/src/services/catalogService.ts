@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail, resolveContactAdmin } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -14,12 +14,92 @@ const productSelect = `
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
   p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit, p.contact_admin,
+  p.service_type, p.stock, p.delivery_method, p.service_no,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
   c.name AS category_name, c.slug AS category_slug,
   pr.name AS provider_name
 `;
+
+const SERVICE_TYPES = new Set(["api", "manual", "digital_product", "subscription", "account", "other"]);
+
+function inferServiceType(input: Record<string, unknown>, current?: Record<string, unknown>) {
+  const explicit = String(input.serviceType ?? current?.service_type ?? "");
+  if (SERVICE_TYPES.has(explicit)) return explicit;
+  const name = String(input.name ?? current?.name ?? "");
+  if (/netflix|subscription/i.test(name)) return "subscription";
+  if (/\baccount\b/i.test(name)) return "account";
+  const providerId = input.providerId !== undefined ? input.providerId : current?.provider_id;
+  if (!providerId) return "manual";
+  return "api";
+}
+
+function applyProductCreateDefaults(input: Record<string, unknown>) {
+  const name = String(input.name || "").trim();
+  const serviceType = inferServiceType(input);
+  const perUnitRequested = input.priceUnit === "each"
+    || serviceType === "digital_product"
+    || serviceType === "subscription"
+    || serviceType === "account";
+  const providerId = serviceType === "api" && input.providerId ? input.providerId : null;
+  const contactAdmin = typeof input.contactAdmin === "boolean"
+    ? Boolean(input.contactAdmin)
+    : !providerId;
+  const perUnit = perUnitRequested || looksLikePerUnitProduct(
+    name,
+    Number(input.minQuantity || 1),
+    Number(input.maxQuantity || 1),
+    { cost: Number(input.costPer1000 || 0), providerServiceId: input.providerServiceId == null ? "" : String(input.providerServiceId) }
+  );
+  const stock = input.stock == null || input.stock === "" ? null : Number(input.stock);
+  const defaultMin = perUnit ? 1 : 100;
+  const defaultMax = perUnit ? Math.max(Number(stock) || 1, 1) : 100000;
+  const minQuantity = Number(input.minQuantity) > 0 ? Number(input.minQuantity) : defaultMin;
+  const maxQuantity = Number(input.maxQuantity) > 0 ? Number(input.maxQuantity) : defaultMax;
+  const features = Array.isArray(input.features) ? [...input.features as string[]] : [];
+  const instructions = String(input.orderInstructions || "").trim();
+  if (instructions) features.push(instructions);
+  return {
+    platformId: input.platformId,
+    categoryId: input.categoryId,
+    providerId,
+    name,
+    description: input.description ?? null,
+    minQuantity,
+    maxQuantity,
+    pricePer1000: Number(input.pricePer1000 ?? 0),
+    costPer1000: Number(input.costPer1000 ?? 0),
+    resellerPricePer1000: input.resellerPricePer1000 == null || input.resellerPricePer1000 === ""
+      ? null
+      : Number(input.resellerPricePer1000),
+    status: input.status === "inactive" ? "inactive" : "active",
+    deliveryType: input.deliveryType === "instant" || input.deliveryType === "mixed"
+      ? input.deliveryType
+      : (serviceType === "digital_product" || serviceType === "subscription" ? "instant" : "gradual"),
+    avgDeliveryTime: input.avgDeliveryTime ?? (input.deliveryMethod ? String(input.deliveryMethod) : "0-6 hours"),
+    providerServiceId: providerId ? (input.providerServiceId ?? null) : null,
+    imageUrl: input.imageUrl ?? null,
+    features,
+    refillSupported: Boolean(input.refillSupported) && serviceType !== "digital_product",
+    refillDays: Number(input.refillDays ?? 30),
+    refillType: input.refillType ?? null,
+    refillServiceId: providerId ? (input.refillServiceId ?? null) : null,
+    refillInstructions: input.refillInstructions ?? null,
+    refillLimit: Number(input.refillLimit ?? 1) || 1,
+    providerRefillSupported: Boolean(input.providerRefillSupported) && Boolean(providerId),
+    resellerAvailable: input.resellerAvailable !== false,
+    apiAvailable: Boolean(input.apiAvailable),
+    apiPricePer1000: input.apiPricePer1000 ?? null,
+    apiMinQuantity: input.apiMinQuantity ?? null,
+    apiMaxQuantity: input.apiMaxQuantity ?? null,
+    priceUnit: perUnit ? "each" : "per_1000",
+    contactAdmin,
+    serviceType,
+    stock,
+    deliveryMethod: input.deliveryMethod ?? null,
+  };
+}
 
 export async function listPlatforms(opts: { includeInactive?: boolean } = {}) {
   const where = opts.includeInactive
@@ -418,10 +498,8 @@ export async function contactAdminForProduct(
 }
 
 export async function createProduct(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
-  const contactAdmin = resolveContactAdmin(input);
-  const minQuantity = contactAdmin ? 1 : input.minQuantity;
-  const maxQuantity = contactAdmin ? Math.max(Number(input.maxQuantity) || 1, 1_000_000) : input.maxQuantity;
-  if (Number(maxQuantity) < Number(minQuantity)) {
+  const d = applyProductCreateDefaults(input);
+  if (Number(d.maxQuantity) < Number(d.minQuantity)) {
     throw new AppError("Maximum quantity must be greater than or equal to minimum quantity");
   }
   const row = await queryOne(
@@ -431,65 +509,109 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
       status, delivery_type, avg_delivery_time, provider_service_id, image_url, features,
       refill_supported, refill_days, refill_type, refill_service_id, refill_instructions,
       refill_limit, provider_refill_supported, reseller_available, api_available,
-      api_price_per_1000, api_min_quantity, api_max_quantity, price_unit, contact_admin
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+      api_price_per_1000, api_min_quantity, api_max_quantity, price_unit, contact_admin,
+      service_type, stock, delivery_method
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
     RETURNING *`,
     [
-      input.platformId,
-      input.categoryId,
-      input.providerId ?? null,
-      input.name,
-      uniqueSlug(String(input.name)),
-      input.description ?? null,
-      minQuantity,
-      maxQuantity,
-      input.pricePer1000,
-      input.costPer1000,
-      input.resellerPricePer1000 ?? null,
-      input.status ?? "active",
-      input.deliveryType ?? "gradual",
-      input.avgDeliveryTime ?? null,
-      input.providerServiceId ?? null,
-      input.imageUrl ?? null,
-      JSON.stringify(input.features ?? []),
-      Boolean(input.refillSupported),
-      Number(input.refillDays ?? 30),
-      input.refillType ?? null,
-      input.refillServiceId ?? null,
-      input.refillInstructions ?? null,
-      Number(input.refillLimit ?? 1) || 1,
-      Boolean(input.providerRefillSupported),
-      input.resellerAvailable !== false,
-      Boolean(input.apiAvailable),
-      input.apiPricePer1000 ?? null,
-      input.apiMinQuantity ?? null,
-      input.apiMaxQuantity ?? null,
-      input.priceUnit === "each" || looksLikePerUnitProduct(String(input.name || ""), Number(input.minQuantity), Number(input.maxQuantity), {
-        cost: Number(input.costPer1000),
-        providerServiceId: input.providerServiceId == null ? "" : String(input.providerServiceId),
-      })
-        ? "each"
-        : "per_1000",
-      contactAdmin,
+      d.platformId,
+      d.categoryId,
+      d.providerId,
+      d.name,
+      uniqueSlug(d.name),
+      d.description,
+      d.minQuantity,
+      d.maxQuantity,
+      d.pricePer1000,
+      d.costPer1000,
+      d.resellerPricePer1000,
+      d.status,
+      d.deliveryType,
+      d.avgDeliveryTime,
+      d.providerServiceId,
+      d.imageUrl,
+      JSON.stringify(d.features ?? []),
+      d.refillSupported,
+      d.refillDays,
+      d.refillType,
+      d.refillServiceId,
+      d.refillInstructions,
+      d.refillLimit,
+      d.providerRefillSupported,
+      d.resellerAvailable,
+      d.apiAvailable,
+      d.apiPricePer1000,
+      d.apiMinQuantity,
+      d.apiMaxQuantity,
+      d.priceUnit,
+      d.contactAdmin,
+      d.serviceType,
+      d.stock,
+      d.deliveryMethod,
     ]
   );
-  await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: input.name } });
+  await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: d.name } });
   return getProduct(row!.id, { admin: true });
+}
+
+export async function createProductsBulk(
+  input: { platformId: string; categoryId: string; serviceType?: string; providerId?: string | null; items: Record<string, unknown>[] },
+  actor: AuthUser,
+  ip?: string
+) {
+  const created: Record<string, unknown>[] = [];
+  const errors: { name: string; message: string }[] = [];
+  for (const item of input.items) {
+    try {
+      created.push(await createProduct({
+        ...item,
+        platformId: input.platformId,
+        categoryId: input.categoryId,
+        serviceType: input.serviceType,
+        providerId: input.providerId,
+      }, actor, ip));
+    } catch (error) {
+      errors.push({
+        name: String(item.name || "Service"),
+        message: error instanceof Error ? error.message : "Could not save",
+      });
+    }
+  }
+  return { created, errors, saved: created.length };
 }
 
 export async function updateProduct(id: string, input: Record<string, unknown>, actor: AuthUser, ip?: string) {
   const current = await queryOne(`SELECT * FROM products WHERE id = $1`, [id]);
   if (!current) throw new AppError("Product not found", 404);
-  const contactAdmin = input.contactAdmin === undefined ? resolveContactAdmin(input, current) : Boolean(input.contactAdmin);
-  const minQuantity = contactAdmin ? 1 : input.minQuantity ?? null;
-  const maxQuantity = contactAdmin
-    ? Math.max(Number(input.maxQuantity ?? current.max_quantity) || 1, 1_000_000)
-    : input.maxQuantity ?? null;
+  const serviceType = inferServiceType(input, current);
+  const contactAdmin = input.contactAdmin === undefined && input.serviceType === undefined
+    ? null
+    : (typeof input.contactAdmin === "boolean" ? Boolean(input.contactAdmin) : serviceType !== "api");
+  let providerId = input.providerId === undefined ? current.provider_id : input.providerId;
+  if (input.serviceType && serviceType !== "api") providerId = null;
+  const features = Array.isArray(input.features) ? [...input.features as string[]] : null;
+  if (features && input.orderInstructions) features.push(String(input.orderInstructions));
+  else if (!features && input.orderInstructions) {
+    const currentFeatures = Array.isArray(current.features) ? current.features as string[] : [];
+    currentFeatures.push(String(input.orderInstructions));
+  }
+  const priceUnit = input.priceUnit
+    ?? (input.name && looksLikePerUnitProduct(
+      String(input.name ?? current.name ?? ""),
+      Number(input.minQuantity ?? current.min_quantity),
+      Number(input.maxQuantity ?? current.max_quantity),
+      {
+        cost: Number(input.costPer1000 ?? current.cost_per_1000),
+        providerServiceId: input.providerServiceId === undefined
+          ? String(current.provider_service_id ?? "")
+          : String(input.providerServiceId ?? ""),
+      }
+    ) ? "each" : null);
   await query(
     `UPDATE products SET
       platform_id = COALESCE($2, platform_id),
       category_id = COALESCE($3, category_id),
-      provider_id = COALESCE($4, provider_id),
+      provider_id = $4,
       name = COALESCE($5, name),
       description = COALESCE($6, description),
       min_quantity = COALESCE($7, min_quantity),
@@ -516,26 +638,29 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       api_min_quantity = COALESCE($28, api_min_quantity),
       api_max_quantity = COALESCE($29, api_max_quantity),
       price_unit = COALESCE($30, price_unit),
-      contact_admin = COALESCE($31, contact_admin)
+      contact_admin = COALESCE($31, contact_admin),
+      service_type = COALESCE($32, service_type),
+      stock = COALESCE($33, stock),
+      delivery_method = COALESCE($34, delivery_method)
      WHERE id = $1`,
     [
       id,
       input.platformId ?? null,
       input.categoryId ?? null,
-      input.providerId === undefined ? null : input.providerId,
+      input.providerId === undefined && input.serviceType === undefined ? current.provider_id : providerId,
       input.name ?? null,
       input.description ?? null,
-      minQuantity,
-      maxQuantity,
+      input.minQuantity ?? null,
+      input.maxQuantity ?? null,
       input.pricePer1000 ?? null,
       input.costPer1000 ?? null,
       input.resellerPricePer1000 === undefined ? null : input.resellerPricePer1000,
       input.status ?? null,
       input.deliveryType ?? null,
       input.avgDeliveryTime ?? null,
-      input.providerServiceId ?? null,
+      input.providerServiceId === undefined ? null : input.providerServiceId,
       input.imageUrl ?? null,
-      input.features ? JSON.stringify(input.features) : null,
+      features ? JSON.stringify(features) : (input.orderInstructions ? JSON.stringify([...(Array.isArray(current.features) ? current.features as string[] : []), String(input.orderInstructions)]) : null),
       input.refillSupported === undefined ? null : Boolean(input.refillSupported),
       input.refillDays === undefined ? null : Number(input.refillDays),
       input.refillType === undefined ? null : input.refillType,
@@ -548,22 +673,11 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.apiPricePer1000 === undefined ? null : input.apiPricePer1000,
       input.apiMinQuantity === undefined ? null : input.apiMinQuantity,
       input.apiMaxQuantity === undefined ? null : input.apiMaxQuantity,
-      looksLikePerUnitProduct(
-        String(input.name ?? current.name ?? ""),
-        Number(minQuantity ?? current.min_quantity),
-        Number(maxQuantity ?? current.max_quantity),
-        {
-          cost: Number(input.costPer1000 ?? current.cost_per_1000),
-          providerServiceId: input.providerServiceId === undefined
-            ? String(current.provider_service_id ?? "")
-            : String(input.providerServiceId ?? ""),
-        }
-      )
-        ? "each"
-        : input.priceUnit === undefined
-          ? null
-          : input.priceUnit,
+      priceUnit,
       contactAdmin,
+      input.serviceType ? serviceType : null,
+      input.stock === undefined ? null : input.stock,
+      input.deliveryMethod === undefined ? null : input.deliveryMethod,
     ]
   );
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
@@ -615,6 +729,10 @@ export async function duplicateProduct(id: string, actor: AuthUser, ip?: string)
       apiMinQuantity: current.api_min_quantity ? Number(current.api_min_quantity) : null,
       apiMaxQuantity: current.api_max_quantity ? Number(current.api_max_quantity) : null,
       priceUnit: current.price_unit === "each" ? "each" : "per_1000",
+      contactAdmin: Boolean(current.contact_admin),
+      serviceType: current.service_type,
+      stock: current.stock == null ? null : Number(current.stock),
+      deliveryMethod: current.delivery_method,
     },
     actor,
     ip
@@ -690,7 +808,7 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   product.display_price_per_1000 = display;
   product.price_unit = perUnit ? "each" : "per_1000";
   product.contact_admin = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
-  if (product.contact_admin) {
+  if (!admin && product.contact_admin && looksLikeContactAdminProduct(String(product.name || ""))) {
     product.min_quantity = 1;
     product.max_quantity = Math.max(Number(product.max_quantity) || 1, 1_000_000);
   }

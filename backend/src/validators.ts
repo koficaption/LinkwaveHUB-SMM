@@ -72,22 +72,31 @@ export const categorySchema = z.object({
   platformIds: z.array(z.string().uuid()).optional(),
 });
 
+export const productServiceTypeSchema = z.enum([
+  "api",
+  "manual",
+  "digital_product",
+  "subscription",
+  "account",
+  "other",
+]);
+
 export const productSchema = z.object({
   platformId: z.string().uuid(),
   categoryId: z.string().uuid(),
   providerId: z.string().uuid().optional().nullable(),
   name: z.string().min(2).max(160),
   description: z.string().max(2000).optional().nullable(),
-  minQuantity: z.number().int().positive(),
-  maxQuantity: z.number().int().positive(),
+  minQuantity: z.number().int().positive().optional(),
+  maxQuantity: z.number().int().positive().optional(),
   pricePer1000: z.number().nonnegative(),
-  costPer1000: z.number().nonnegative(),
+  costPer1000: z.number().nonnegative().optional(),
   resellerPricePer1000: z.number().nonnegative().optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
   deliveryType: z.enum(["instant", "gradual", "mixed"]).optional(),
   avgDeliveryTime: z.string().max(80).optional().nullable(),
   providerServiceId: z.string().max(80).optional().nullable(),
-  imageUrl: z.string().max(500).optional().nullable(),
+  imageUrl: z.string().max(2000).optional().nullable(),
   features: z.array(z.string()).optional(),
   refillSupported: z.boolean().optional(),
   refillDays: z.number().int().positive().max(365).optional(),
@@ -103,6 +112,27 @@ export const productSchema = z.object({
   apiMaxQuantity: z.number().int().positive().optional().nullable(),
   priceUnit: z.enum(["per_1000", "each"]).optional(),
   contactAdmin: z.boolean().optional(),
+  serviceType: productServiceTypeSchema.optional(),
+  stock: z.number().int().nonnegative().optional().nullable(),
+  deliveryMethod: z.string().max(80).optional().nullable(),
+  orderInstructions: z.string().max(2000).optional().nullable(),
+});
+
+export const productBulkSchema = z.object({
+  platformId: z.string().uuid(),
+  categoryId: z.string().uuid(),
+  serviceType: productServiceTypeSchema.optional(),
+  providerId: z.string().uuid().optional().nullable(),
+  items: z.array(z.object({
+    name: z.string().min(2).max(160),
+    pricePer1000: z.number().nonnegative(),
+    minQuantity: z.number().int().positive().optional(),
+    maxQuantity: z.number().int().positive().optional(),
+    refillSupported: z.boolean().optional(),
+    refillDays: z.number().int().positive().max(365).optional(),
+    description: z.string().max(2000).optional().nullable(),
+    status: z.enum(["active", "inactive"]).optional(),
+  })).min(1).max(50),
 });
 
 export const API_SCOPES = [
