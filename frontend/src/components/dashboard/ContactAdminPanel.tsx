@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, money, ApiError } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Input, Textarea } from "@/components/ui";
 import type { Product } from "@/types";
-import { publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
 
 export function isContactAdminProduct(product?: Product | null) {
   return Boolean(product?.contact_admin);
@@ -36,7 +36,8 @@ export function ContactAdminPanel({ product }: { product: Product }) {
   const qty = Number(quantity || 1);
   const each = isEachPrice(product);
   const total = orderTotal(unit, qty, each ? "each" : "per_1000");
-  const supportPath = me?.user.role === "admin" ? "/admin/support" : "/app/support";
+  const balance = Number(me?.wallet?.available_balance ?? me?.wallet?.balance ?? 0);
+  const ordersPath = me?.user.role === "admin" ? "/admin/orders" : "/app/orders";
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -48,13 +49,12 @@ export function ContactAdminPanel({ product }: { product: Product }) {
         }
       ),
     onSuccess: async (data) => {
-      toast.success(data.message || "Order placed. Customer service has your request.");
+      toast.success(data.message || "Order placed. Admin has your paid order.");
       await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.invalidateQueries({ queryKey: ["wallet"] });
       await qc.invalidateQueries({ queryKey: ["my-orders"] });
       await qc.invalidateQueries({ queryKey: ["admin-orders"] });
-      await qc.invalidateQueries({ queryKey: ["tickets"] });
-      await qc.invalidateQueries({ queryKey: ["admin-tickets"] });
-      navigate(supportPath);
+      navigate(ordersPath);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place the order"),
   });
@@ -70,6 +70,10 @@ export function ContactAdminPanel({ product }: { product: Product }) {
     }
     if (!looksLikeWhatsAppOrEmail(details)) {
       toast.error("Enter a WhatsApp number or email");
+      return;
+    }
+    if (balance < total) {
+      toast.error("Insufficient wallet balance. Add funds first.");
       return;
     }
     mutation.mutate();
@@ -91,10 +95,20 @@ export function ContactAdminPanel({ product }: { product: Product }) {
           <strong>{money(unit)} {priceUnitSuffix(product)}</strong>
         </p>
         <p>
+          <span className="text-muted">Current Balance</span><br />
+          <strong>{me?.wallet ? money(balance) : "—"}</strong>
+        </p>
+        <p className="sm:col-span-2">
           <span className="text-muted">Total</span><br />
           <strong className="text-lg text-brand-700">{money(total)}</strong>
         </p>
       </div>
+      {me && balance < total && (
+        <p className="text-sm text-rose-600">
+          Not enough balance.{" "}
+          <Link className="font-semibold text-brand-700" to="/app/wallet">Add funds</Link>
+        </p>
+      )}
       <Button className="h-12 w-full text-base uppercase tracking-wide" disabled={mutation.isPending} onClick={submit}>
         {mutation.isPending ? "Placing order…" : me ? "Place order" : "Login to order"}
       </Button>
