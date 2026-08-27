@@ -25,6 +25,59 @@ function isCardMethod(adapter?: string) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
 }
 
+async function copyText(value: string, label = "Copied") {
+  await navigator.clipboard.writeText(value);
+  toast.success(label);
+}
+
+function UniquePaymentCode({ code }: { code?: string | null }) {
+  if (!code) return null;
+  return (
+    <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-500/30 dark:bg-brand-500/10">
+      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Your unique payment code</p>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-2xl font-extrabold tracking-wider text-slate-900 dark:text-white">{code}</p>
+        <Button type="button" variant="outline" onClick={() => void copyText(code, "Payment code copied")}>Copy</Button>
+      </div>
+      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+        Put this code in the Mobile Money or bank transfer note. Admin uses it to credit your wallet.
+      </p>
+    </div>
+  );
+}
+
+function ManualPaymentDetails({
+  cfg,
+  amountHint,
+}: {
+  cfg?: PaymentMethod["config"];
+  amountHint?: string;
+}) {
+  if (!cfg) return null;
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <p className="font-semibold text-slate-800 dark:text-slate-100">Payment details</p>
+      {amountHint && <p className="mt-1">Send {amountHint}.</p>}
+      {cfg.network && cfg.momoNumber && (
+        <p className="mt-1">
+          {cfg.network}: <strong className="font-mono">{cfg.momoNumber}</strong>
+          <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(String(cfg.momoNumber), "Number copied")}>Copy</button>
+        </p>
+      )}
+      {cfg.accountName && <p>Name: <strong>{cfg.accountName}</strong></p>}
+      {(cfg.bankName || cfg.accountNumber) && (
+        <p>
+          Bank: {[cfg.bankName, cfg.accountNumber].filter(Boolean).join(" · ")}
+          {cfg.accountNumber ? (
+            <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(String(cfg.accountNumber), "Account copied")}>Copy</button>
+          ) : null}
+        </p>
+      )}
+      {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
+    </div>
+  );
+}
+
 export function CustomerHome() {
   const { me } = useAuth();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
@@ -291,8 +344,13 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
 
 export function WalletPage() {
   const qc = useQueryClient();
+  const { me } = useAuth();
   const { verifying } = usePaystackReturn();
-  const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api<Wallet>("/wallet") });
+  const wallet = useQuery({
+    queryKey: ["wallet"],
+    queryFn: () => api<Wallet>("/wallet"),
+    refetchInterval: (query) => (query.state.data?.pending_deposits?.length ? 8000 : false),
+  });
   const tx = useQuery({ queryKey: ["tx"], queryFn: () => api<Paginated<Record<string, unknown>>>("/wallet/transactions") });
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
   const [amount, setAmount] = useState("50");
@@ -303,7 +361,7 @@ export function WalletPage() {
     ?? methods.data?.[0];
   const methodCode = method || selected?.code || "korapay";
   const deposit = useMutation({
-    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null }>("/payments/deposit", {
+    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null; depositCode?: string }>("/payments/deposit", {
       method: "POST",
       body: JSON.stringify({
         amount: Number(amount),
@@ -317,8 +375,8 @@ export function WalletPage() {
         window.location.assign(data.checkoutUrl);
         return;
       }
-      setLastInstructions(data.instructions || "Deposit initiated");
-      toast.success(data.instructions || "Deposit initiated");
+      setLastInstructions(data.instructions || "Payment submitted. Admin will confirm and credit your wallet.");
+      toast.success("Submitted. Admin will confirm this payment, then it will appear in your wallet.");
       await qc.invalidateQueries({ queryKey: ["wallet"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
       await qc.invalidateQueries({ queryKey: ["tx"] });
@@ -331,10 +389,12 @@ export function WalletPage() {
   const korapayQuote = isCardMethod(selected?.adapter)
     ? quoteKorapayFees(depositAmount, cfg)
     : null;
+  const paymentCode = w?.deposit_code || me?.user.deposit_code || "";
+  const pending = w?.pending_deposits ?? [];
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-3">
-        <PageHeader title="Add Funds" subtitle="Deposit to your wallet, then place orders." />
+        <PageHeader title="Add Funds" subtitle="Pay with the details below using your unique code. Admin confirms, then the amount is added to your wallet." />
       </div>
       <Card><p className="text-sm text-slate-500">Current / available</p><p className="mt-2 text-3xl font-extrabold">{money(w?.available_balance ?? w?.balance)}</p></Card>
       <Card><p className="text-sm text-slate-500">Total deposits</p><p className="mt-2 text-3xl font-extrabold">{money(w?.total_deposits)}</p></Card>
@@ -342,6 +402,7 @@ export function WalletPage() {
       <Card className="lg:col-span-1">
         <h2 className="font-bold">Add money</h2>
         <div className="mt-4 space-y-3">
+          <UniquePaymentCode code={paymentCode} />
           <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
@@ -362,20 +423,27 @@ export function WalletPage() {
             </div>
           )}
           {selected?.adapter === "manual" && (
-            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
-              {cfg.accountName && <p>Name: {cfg.accountName}</p>}
-              {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
-              {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
-              <p className="mt-1 text-xs">After you pay, an admin confirms the deposit.</p>
-            </div>
+            <ManualPaymentDetails cfg={cfg} amountHint={Number.isFinite(depositAmount) && depositAmount > 0 ? money(depositAmount) : undefined} />
+          )}
+          {selected?.adapter === "manual" && (
+            <p className="text-xs text-slate-500">Send the money first, then tap below. Admin matches your unique code and amount, confirms, and the balance appears in your account.</p>
           )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
-            {verifying ? "Confirming payment…" : deposit.isPending ? "Starting checkout…" : isCardMethod(selected?.adapter)
+            {verifying ? "Confirming payment…" : deposit.isPending ? "Submitting…" : isCardMethod(selected?.adapter)
               ? `Pay ${money(korapayQuote?.total ?? depositAmount)} with card`
-              : "Deposit"}
+              : "I have paid — submit for confirmation"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
+          {pending.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+              <p className="font-semibold text-amber-900 dark:text-amber-100">Waiting for admin confirmation</p>
+              {pending.map((p) => (
+                <p key={p.id} className="text-slate-700 dark:text-slate-200">
+                  {money(Number(p.amount))} · code <span className="font-mono font-bold">{p.deposit_code || paymentCode}</span>
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
       <Card className="lg:col-span-2">
@@ -601,6 +669,7 @@ type UpgradeOffer = {
     payment_reference?: string | null;
     payment_status?: string | null;
     method_name?: string | null;
+    deposit_code?: string | null;
     payment_metadata?: { instructions?: string; checkoutUrl?: string | null };
     created_at: string;
   } | null;
@@ -679,6 +748,7 @@ export function BecomeResellerPage() {
   const upgradeQuote = cardCheckout
     ? quoteKorapayFees(Number(data?.upgradeFee ?? 0), selected?.config)
     : null;
+  const paymentCode = me?.user.deposit_code || application?.deposit_code || "";
 
   return (
     <div className="space-y-4">
@@ -702,13 +772,13 @@ export function BecomeResellerPage() {
           </div>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Store: <strong>{application.store_name}</strong>
-            {application.payment_reference ? <> · Reference <span className="font-mono">{application.payment_reference}</span></> : null}
           </p>
+          {!pendingCheckout && <div className="mt-3"><UniquePaymentCode code={paymentCode} /></div>}
           {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
           {pendingCheckout ? (
             <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Korapay</Button>
           ) : (
-            <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using that reference. When an admin confirms it, this page will switch to your reseller dashboard.</p>
+            <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using your unique code as the note. When an admin confirms it, this page will switch to your reseller dashboard.</p>
           )}
         </Card>
       )}
@@ -748,13 +818,10 @@ export function BecomeResellerPage() {
                   </div>
                 )}
                 {selected?.adapter === "manual" && (
-                  <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {cfg.network && cfg.momoNumber && <p>{cfg.network}: <strong>{cfg.momoNumber}</strong></p>}
-                    {cfg.accountName && <p>Name: {cfg.accountName}</p>}
-                    {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
-                    {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
-                    <p className="mt-1 text-xs">Pay {money(data.upgradeFee, data.currency)} and use the payment reference as the MoMo note.</p>
-                  </div>
+                  <>
+                    <UniquePaymentCode code={paymentCode} />
+                    <ManualPaymentDetails cfg={cfg} amountHint={money(data.upgradeFee, data.currency)} />
+                  </>
                 )}
                 {selected?.adapter === "manual" && (
                   <>

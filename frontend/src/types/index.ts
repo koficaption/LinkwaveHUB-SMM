@@ -14,6 +14,7 @@ export type User = {
   avatar_url?: string | null;
   last_login_at?: string | null;
   created_at: string;
+  deposit_code?: string | null;
 };
 
 export type PanelStore = {
@@ -39,6 +40,16 @@ export type Wallet = {
   total_deposits?: number;
   total_spent?: number;
   available_balance?: number;
+  deposit_code?: string;
+  pending_deposits?: {
+    id: string;
+    amount: number | string;
+    status: string;
+    reference?: string;
+    deposit_code?: string | null;
+    created_at: string;
+    instructions?: string | null;
+  }[];
 };
 
 export type Platform = {

@@ -2,12 +2,12 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { signToken } from "../utils.js";
+import { newDepositCode, signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { attachPanelCustomer } from "./resellerService.js";
 
-const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at`;
+const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at, deposit_code`;
 
 export function googleEnabled() {
   return Boolean(config.googleClientId);
@@ -124,10 +124,10 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
 
     if (!user) {
       user = await queryOne(
-        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code)
-         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5)
+        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code, deposit_code)
+         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5, $6)
          RETURNING ${publicUser}`,
-        [email, profile.name || email.split("@")[0], profile.sub, profile.picture ?? null, newReferralCode()],
+        [email, profile.name || email.split("@")[0], profile.sub, profile.picture ?? null, newReferralCode(), newDepositCode()],
         client
       );
       await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id], client);

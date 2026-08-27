@@ -3,7 +3,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { config } from "../config.js";
 import { passwordResetEmail, sendMail, mailConfigured } from "../mailer.js";
-import { hashPassword, makeSlug, signToken, uniqueSlug, verifyPassword } from "../utils.js";
+import { hashPassword, makeSlug, newDepositCode, signToken, uniqueSlug, verifyPassword } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
@@ -12,7 +12,7 @@ import { attachPanelCustomer, getPanelForUser } from "./resellerService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `
-  id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at
+  id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at, deposit_code
 `;
 
 export async function registerUser(input: {
@@ -35,10 +35,10 @@ export async function registerUser(input: {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
     const user = await queryOne(
-      `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)
+      `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code, deposit_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)
        RETURNING ${publicUser}`,
-      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode()],
+      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode(), newDepositCode()],
       client
     );
     if (!user) throw new AppError("Unable to create account", 500);

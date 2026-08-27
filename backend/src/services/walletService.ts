@@ -1,10 +1,10 @@
 import { query, queryOne, withTransaction, type Queryable } from "../db.js";
 import { AppError } from "../errors.js";
-import { uniqueSlug, parsePagination, safeCheckoutReturnUrl } from "../utils.js";
+import { uniqueSlug, parsePagination, paymentReference, safeCheckoutReturnUrl } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { getPaymentAdapter } from "../providers/payment/index.js";
-import { paymentReference } from "../utils.js";
+import { ensureDepositCode } from "./depositCode.js";
 import { config } from "../config.js";
 import type { AuthUser } from "../middleware/auth.js";
 import {
@@ -15,8 +15,15 @@ import {
 } from "./korapayFees.js";
 
 export async function getWallet(userId: string) {
-  const wallet = await queryOne(`SELECT * FROM wallets WHERE user_id = $1`, [userId]);
+  const wallet = await queryOne(
+    `SELECT w.*, u.deposit_code
+     FROM wallets w
+     JOIN users u ON u.id = w.user_id
+     WHERE w.user_id = $1`,
+    [userId]
+  );
   if (!wallet) throw new AppError("Wallet not found", 404);
+  const depositCode = String(wallet.deposit_code || (await ensureDepositCode(userId)));
   const stats = await queryOne<{ deposits: string; spent: string }>(
     `SELECT
        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' OR (type = 'admin_adjustment' AND amount > 0) OR type = 'refund'), 0) AS deposits,
@@ -24,11 +31,23 @@ export async function getWallet(userId: string) {
      FROM wallet_transactions WHERE user_id = $1`,
     [userId]
   );
+  const pendingDeposits = await query(
+    `SELECT id, amount, status, reference, deposit_code, created_at, metadata->>'instructions' AS instructions
+     FROM payments
+     WHERE user_id = $1
+       AND status = 'pending'
+       AND COALESCE(metadata->>'purpose', 'deposit') = 'deposit'
+     ORDER BY created_at DESC
+     LIMIT 8`,
+    [userId]
+  );
   return {
     ...wallet,
+    deposit_code: depositCode,
     total_deposits: Number(stats?.deposits ?? 0),
     total_spent: Number(stats?.spent ?? 0),
     available_balance: Number(wallet.balance),
+    pending_deposits: pendingDeposits,
   };
 }
 
@@ -121,16 +140,21 @@ export async function initiateDirectedPayment(
     typeof extraCallback === "string" ? extraCallback : undefined,
     "/app/become-reseller"
   );
-  const reference = paymentReference();
-  const adapter = getPaymentAdapter(String(method.adapter));
-  const charge = await korapayInitOptions(String(method.adapter), amount);
+  const depositCode = await ensureDepositCode(user.id);
+  const adapterName = String(method.adapter);
+  const reference = isCardPaymentAdapter(adapterName) || adapterName === "mock"
+    ? paymentReference()
+    : paymentReference(depositCode);
+  const adapter = getPaymentAdapter(adapterName);
+  const charge = await korapayInitOptions(adapterName, amount);
   const init = await adapter.initialize({
     amount: charge.amount,
     currency: "GHS",
     email: user.email,
     customerName: user.full_name,
     reference,
-    metadata: { userId: user.id, ...meta },
+    customerReference: depositCode,
+    metadata: { userId: user.id, depositCode, ...meta },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl,
     merchantBearsCost: charge.merchantBearsCost,
@@ -138,8 +162,8 @@ export async function initiateDirectedPayment(
   });
 
   const payment = await queryOne<Record<string, unknown>>(
-    `INSERT INTO payments (user_id, method_id, amount, currency, status, reference, provider_ref, metadata)
-     VALUES ($1,$2,$3,'GHS','pending',$4,$5,$6::jsonb) RETURNING *`,
+    `INSERT INTO payments (user_id, method_id, amount, currency, status, reference, provider_ref, metadata, deposit_code)
+     VALUES ($1,$2,$3,'GHS','pending',$4,$5,$6::jsonb,$7) RETURNING *`,
     [
       user.id,
       method.id,
@@ -149,9 +173,11 @@ export async function initiateDirectedPayment(
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
+        depositCode,
         ...feeMetadata(charge.feeQuote),
         ...meta,
       }),
+      depositCode,
     ]
   );
 
@@ -161,6 +187,7 @@ export async function initiateDirectedPayment(
     checkoutUrl: init.checkoutUrl,
     instructions: init.instructions,
     feeQuote: charge.feeQuote,
+    depositCode,
   };
 }
 
@@ -171,16 +198,21 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
   );
   if (!method) throw new AppError("Payment method is not available");
 
-  const reference = paymentReference();
-  const adapter = getPaymentAdapter(String(method.adapter));
-  const charge = await korapayInitOptions(String(method.adapter), amount);
+  const depositCode = await ensureDepositCode(user.id);
+  const adapterName = String(method.adapter);
+  const reference = isCardPaymentAdapter(adapterName) || adapterName === "mock"
+    ? paymentReference()
+    : paymentReference(depositCode);
+  const adapter = getPaymentAdapter(adapterName);
+  const charge = await korapayInitOptions(adapterName, amount);
   const init = await adapter.initialize({
     amount: charge.amount,
     currency: "GHS",
     email: user.email,
     customerName: user.full_name,
     reference,
-    metadata: { userId: user.id },
+    customerReference: depositCode,
+    metadata: { userId: user.id, depositCode },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl: safeCheckoutReturnUrl(returnUrl, "/app/wallet"),
     merchantBearsCost: charge.merchantBearsCost,
@@ -188,8 +220,8 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
   });
 
   const payment = await queryOne(
-    `INSERT INTO payments (user_id, method_id, amount, currency, status, reference, provider_ref, metadata)
-     VALUES ($1,$2,$3,'GHS',$4,$5,$6,$7::jsonb) RETURNING *`,
+    `INSERT INTO payments (user_id, method_id, amount, currency, status, reference, provider_ref, metadata, deposit_code)
+     VALUES ($1,$2,$3,'GHS',$4,$5,$6,$7::jsonb,$8) RETURNING *`,
     [
       user.id,
       method.id,
@@ -200,8 +232,10 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
+        depositCode,
         ...feeMetadata(charge.feeQuote),
       }),
+      depositCode,
     ]
   );
 
@@ -228,7 +262,13 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     });
   }
 
-  return { payment, checkoutUrl: init.checkoutUrl, instructions: init.instructions, feeQuote: charge.feeQuote };
+  return {
+    payment,
+    checkoutUrl: init.checkoutUrl,
+    instructions: init.instructions,
+    feeQuote: charge.feeQuote,
+    depositCode,
+  };
 }
 
 function isCardAdapter(adapter: unknown) {
@@ -484,7 +524,7 @@ export async function listPayments(opts: { status?: string; search?: string; pag
   }
   if (opts.search) {
     params.push(`%${opts.search}%`);
-    where.push(`(p.reference ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
+    where.push(`(p.reference ILIKE $${params.length} OR p.deposit_code ILIKE $${params.length} OR u.deposit_code ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.full_name ILIKE $${params.length})`);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const count = await queryOne<{ count: string }>(
@@ -493,7 +533,9 @@ export async function listPayments(opts: { status?: string; search?: string; pag
   );
   params.push(p.limit, p.offset);
   const items = await query(
-    `SELECT p.*, u.full_name, u.email, m.name AS method_name, m.code AS method_code,
+    `SELECT p.*, u.full_name, u.email, u.deposit_code AS user_deposit_code,
+            COALESCE(p.deposit_code, u.deposit_code) AS deposit_code,
+            m.name AS method_name, m.code AS method_code,
             COALESCE(p.metadata->>'purpose', 'deposit') AS purpose
      FROM payments p
      JOIN users u ON u.id = p.user_id
@@ -578,10 +620,10 @@ export async function listAllWallets(search?: string) {
   let where = "";
   if (search) {
     params.push(`%${search}%`);
-    where = `WHERE u.email ILIKE $1 OR u.full_name ILIKE $1`;
+    where = `WHERE u.email ILIKE $1 OR u.full_name ILIKE $1 OR u.deposit_code ILIKE $1`;
   }
   return query(
-    `SELECT w.*, u.full_name, u.email, u.role, u.status AS user_status
+    `SELECT w.*, u.full_name, u.email, u.role, u.status AS user_status, u.deposit_code
      FROM wallets w JOIN users u ON u.id = w.user_id ${where}
      ORDER BY w.balance DESC`,
     params

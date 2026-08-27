@@ -336,7 +336,7 @@ const applicationSelect = `
   a.id, a.user_id, a.store_name, a.store_slug, a.fee_amount, a.currency, a.status,
   a.payment_id, a.method_code, a.sender_name, a.sender_number, a.note,
   a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at,
-  u.full_name, u.email, u.role,
+  u.full_name, u.email, u.role, u.deposit_code,
   p.reference AS payment_reference, p.status AS payment_status, p.amount AS payment_amount,
   p.metadata AS payment_metadata, m.name AS method_name
 `;
@@ -414,7 +414,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
     methodCode = String(started.method.code);
     instructions = started.instructions ?? null;
     checkoutUrl = started.checkoutUrl ?? null;
-    reference = String(started.payment!.reference);
+    reference = started.depositCode || String(started.payment!.reference);
   }
 
   try {
@@ -446,7 +446,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
       userId: user.id,
       title: "Reseller application submitted",
       body: fee > 0
-        ? `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using reference ${reference}. An admin will promote you after confirming the payment.`
+        ? `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using your unique code ${reference}. An admin will promote you after confirming the payment.`
         : "Your reseller application is waiting for admin approval.",
       type: "reseller",
     });

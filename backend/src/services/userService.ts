@@ -1,11 +1,11 @@
 import { query, queryOne } from "../db.js";
 import { AppError } from "../errors.js";
-import { hashPassword, like, parsePagination } from "../utils.js";
+import { hashPassword, like, newDepositCode, parsePagination } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
-const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at`;
+const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at, deposit_code`;
 
 export async function listUsers(opts: { search?: string; role?: string; status?: string; page?: number; limit?: number }) {
   const p = parsePagination(opts as Record<string, unknown>);
@@ -14,7 +14,7 @@ export async function listUsers(opts: { search?: string; role?: string; status?:
   const search = like(opts.search);
   if (search) {
     params.push(search);
-    where.push(`(email ILIKE $${params.length} OR full_name ILIKE $${params.length} OR phone ILIKE $${params.length})`);
+    where.push(`(email ILIKE $${params.length} OR full_name ILIKE $${params.length} OR phone ILIKE $${params.length} OR deposit_code ILIKE $${params.length})`);
   }
   if (opts.role) {
     params.push(opts.role);
@@ -68,9 +68,9 @@ export async function createUser(input: {
   if (exists) throw new AppError("Email already in use", 409);
   const hash = await hashPassword(input.password);
   const user = await queryOne(
-    `INSERT INTO users (email, password_hash, full_name, phone, role, status)
-     VALUES ($1,$2,$3,$4,$5,'active') RETURNING ${publicUser}`,
-    [input.email.toLowerCase(), hash, input.fullName, input.phone ?? null, input.role]
+    `INSERT INTO users (email, password_hash, full_name, phone, role, status, deposit_code)
+     VALUES ($1,$2,$3,$4,$5,'active',$6) RETURNING ${publicUser}`,
+    [input.email.toLowerCase(), hash, input.fullName, input.phone ?? null, input.role, newDepositCode()]
   );
   await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id]);
   if (input.role === "reseller") {

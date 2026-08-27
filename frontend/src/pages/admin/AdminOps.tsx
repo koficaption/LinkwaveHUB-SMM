@@ -313,12 +313,13 @@ export function AdminUsers() {
       </div>
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Name","Email","Role","Status",""].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Name","Email","Code","Role","Status",""].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {users.data?.items.map((u) => (
               <tr key={u.id} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2">{u.full_name}</td>
                 <td className="p-2">{u.email}</td>
+                <td className="p-2 font-mono text-xs font-semibold">{u.deposit_code || "—"}</td>
                 <td className="p-2 capitalize">{u.role}</td>
                 <td className="p-2"><Badge className={statusTone[u.status]}>{u.status}</Badge></td>
                 <td className="p-2"><Link className="font-semibold text-brand-700" to={`/admin/users/${u.id}`}>View</Link></td>
@@ -377,6 +378,9 @@ export function AdminUserDetail() {
           <div>
             <h1 className="text-2xl font-extrabold">{u.full_name}</h1>
             <p className="text-slate-500">{u.email} · {u.role}</p>
+            {u.deposit_code && (
+              <p className="mt-1 text-sm">Payment code: <span className="font-mono font-bold">{u.deposit_code}</span></p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={async () => { await api(`/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ status: u.status === "suspended" ? "active" : "suspended" }) }); qc.invalidateQueries({ queryKey: ["user", id] }); }}>{u.status === "suspended" ? "Activate" : "Suspend"}</Button>
@@ -417,7 +421,7 @@ export function AdminResellers() {
                 <td className="p-2">{String(a.store_name)}</td>
                 <td className="p-2">{money(Number(a.fee_amount))}</td>
                 <td className="p-2 text-xs">{[a.sender_name, a.sender_number].filter(Boolean).map(String).join(" · ") || "—"}</td>
-                <td className="p-2 font-mono text-xs">{String(a.payment_reference || "—")}<div className="font-sans text-slate-500">{prettyStatus(String(a.payment_status || a.method_name || ""))}</div></td>
+                <td className="p-2 font-mono text-xs font-semibold">{String(a.deposit_code || a.payment_reference || "—")}<div className="font-sans text-slate-500">{prettyStatus(String(a.payment_status || a.method_name || ""))}</div></td>
                 <td className="p-2"><Badge className={statusTone[String(a.status)]}>{prettyStatus(String(a.status))}</Badge></td>
                 <td className="p-2 space-x-2">
                   {(String(a.status) === "pending_review" || String(a.status) === "pending_payment") && (
@@ -535,7 +539,12 @@ export function AdminResellerPayouts() {
 
 export function AdminPayments() {
   const qc = useQueryClient();
-  const payments = useQuery({ queryKey: ["admin-payments"], queryFn: () => api<Paginated<Record<string, unknown>>>("/admin/payments") });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("pending");
+  const payments = useQuery({
+    queryKey: ["admin-payments", search, status],
+    queryFn: () => api<Paginated<Record<string, unknown>>>(`/admin/payments?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`),
+  });
   const methods = useQuery({ queryKey: ["admin-methods"], queryFn: () => api<PaymentMethod[]>("/admin/payments/methods") });
   const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
   return (
@@ -543,7 +552,7 @@ export function AdminPayments() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Payments</h1>
-          <p className="text-sm text-slate-500">Add Mobile Money, bank or other manual details. Customers see them when they fund their wallet. Instant providers like Korapay can be added later.</p>
+          <p className="text-sm text-slate-500">Add Mobile Money or bank details. Customers and resellers pay using those details plus their unique code. Confirm a matching payment to credit their wallet.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add manual method</Button>
       </div>
@@ -579,13 +588,23 @@ export function AdminPayments() {
       </div>
       {editing && <PaymentMethodModal method={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       <Card className="overflow-x-auto">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="font-bold">Incoming payments</h2>
+          <Input className="max-w-xs" placeholder="Search unique code, name, or email" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Select className="max-w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="">All</option>
+          </Select>
+        </div>
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Reference","User","Type","Amount","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Unique code","User","Type","Amount","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {payments.data?.items.map((p) => (
               <tr key={String(p.id)} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="p-2">{String(p.reference)}</td>
-                <td className="p-2">{String(p.email)}</td>
+                <td className="p-2 font-mono text-sm font-bold">{String(p.deposit_code || p.user_deposit_code || "—")}</td>
+                <td className="p-2">{String(p.full_name || "")}<div className="text-xs text-slate-500">{String(p.email)}</div></td>
                 <td className="p-2">{String(p.purpose) === "reseller_upgrade" ? "Reseller upgrade" : "Wallet deposit"}</td>
                 <td className="p-2">
                   {money(Number(p.amount))}
@@ -597,13 +616,16 @@ export function AdminPayments() {
                 <td className="p-2 space-x-2">
                   {p.status === "pending" && (
                     <>
-                      <button className="font-semibold text-brand-700" onClick={async () => { await api(`/admin/payments/${p.reference}/confirm`, { method: "POST" }); toast.success(String(p.purpose) === "reseller_upgrade" ? "Promoted to reseller" : "Confirmed"); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); qc.invalidateQueries({ queryKey: ["resellers"] }); }}>Confirm</button>
-                      <button className="font-semibold text-rose-600" onClick={async () => { await api(`/admin/payments/${p.reference}/reject`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); }}>Reject</button>
+                      <button className="font-semibold text-brand-700" onClick={async () => { await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/confirm`, { method: "POST" }); toast.success(String(p.purpose) === "reseller_upgrade" ? "Promoted to reseller" : "Wallet credited"); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); qc.invalidateQueries({ queryKey: ["resellers"] }); }}>Confirm</button>
+                      <button className="font-semibold text-rose-600" onClick={async () => { await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/reject`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); }}>Reject</button>
                     </>
                   )}
                 </td>
               </tr>
             ))}
+            {!payments.data?.items.length && (
+              <tr><td className="p-3 text-slate-500" colSpan={6}>No payments in this view.</td></tr>
+            )}
           </tbody>
         </table>
       </Card>
@@ -647,7 +669,7 @@ function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null;
         <label className="block"><span className="label">Account name</span><Input value={form.accountName} onChange={(e) => set("accountName", e.target.value)} /></label>
         <label className="block"><span className="label">Bank name</span><Input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} /></label>
         <label className="block sm:col-span-2"><span className="label">Bank account number</span><Input value={form.accountNumber} onChange={(e) => set("accountNumber", e.target.value)} /></label>
-        <label className="block sm:col-span-2"><span className="label">Extra instructions</span><Textarea placeholder="Send as merchant payment. Use the deposit reference as the note." value={form.instructions} onChange={(e) => set("instructions", e.target.value)} /></label>
+        <label className="block sm:col-span-2"><span className="label">Extra instructions</span><Textarea placeholder="Send as merchant payment. Customers already have a unique payment code to put in the note." value={form.instructions} onChange={(e) => set("instructions", e.target.value)} /></label>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -686,14 +708,15 @@ export function AdminWallets() {
   return (
     <div>
       <h1 className="text-2xl font-extrabold">Wallets</h1>
-      <Input className="mt-4 max-w-sm" placeholder="Search user" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <Input className="mt-4 max-w-sm" placeholder="Search user or payment code" value={search} onChange={(e) => setSearch(e.target.value)} />
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["User","Role","Balance"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["User","Code","Role","Balance"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {wallets.data?.map((w) => (
               <tr key={String(w.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2">{String(w.full_name)}<div className="text-xs text-slate-500">{String(w.email)}</div></td>
+                <td className="p-2 font-mono text-xs font-semibold">{String(w.deposit_code || "—")}</td>
                 <td className="p-2 capitalize">{String(w.role)}</td>
                 <td className="p-2 font-semibold">{money(Number(w.balance))}</td>
               </tr>

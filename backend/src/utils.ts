@@ -57,8 +57,19 @@ export function normalizeDomain(raw: string): string {
     .replace(/[/:].*$/, "");
 }
 
-export function paymentReference(): string {
-  return `PAY-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+const DEPOSIT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function newDepositCode(): string {
+  const bytes = crypto.randomBytes(6);
+  let out = "LBG";
+  for (const byte of bytes) out += DEPOSIT_CODE_ALPHABET[byte % DEPOSIT_CODE_ALPHABET.length];
+  return out;
+}
+
+export function paymentReference(depositCode?: string): string {
+  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  if (depositCode) return `${depositCode}-${suffix}`;
+  return `PAY-${Date.now()}-${suffix}`;
 }
 
 function encryptionKey(): Buffer {

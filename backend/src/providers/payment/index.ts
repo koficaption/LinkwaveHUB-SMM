@@ -32,16 +32,17 @@ function manualInstructions(config: Record<string, unknown> | undefined, amount:
     parts.push(`Bank: ${[bankName, accountNumber, accountName].filter(Boolean).join(" · ")}`);
   }
   if (extra) parts.push(extra);
-  parts.push(`Use reference ${reference} as the payment note, then wait for admin confirmation.`);
+  parts.push(`Use your unique code ${reference} as the payment note, then wait for admin to confirm. The amount will then appear in your wallet.`);
   return parts.join(" ");
 }
 
 export const manualAdapter: PaymentAdapter = {
   code: "manual",
   async initialize(input: PaymentInitInput): Promise<PaymentInitResult> {
+    const note = input.customerReference || input.reference;
     return {
       reference: input.reference,
-      instructions: manualInstructions(input.config, input.amount, input.reference),
+      instructions: manualInstructions(input.config, input.amount, note),
       autoComplete: false,
     };
   },
