@@ -11,6 +11,10 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
 import { KORAPAY_MARKETS } from "@/utils/korapayMarkets";
 
+function isCardMethod(adapter?: string | null) {
+  return adapter === "korapay" || adapter === "paystack" || adapter === "card";
+}
+
 export function AdminOrders() {
   const qc = useQueryClient();
   const [params] = useSearchParams();
@@ -412,7 +416,7 @@ export function AdminResellers() {
       <h1 className="text-2xl font-extrabold">Resellers</h1>
       <Card className="overflow-x-auto">
         <h2 className="font-bold">Upgrade applications</h2>
-        <p className="mt-1 text-sm text-slate-500">Customers who paid the reseller upgrade fee. Confirm after you see the Mobile Money payment, and their dashboard switches to reseller.</p>
+        <p className="mt-1 text-sm text-slate-500">Customers who paid the reseller upgrade fee. Confirm matching Mobile Money payments. Korapay upgrades complete automatically — no admin approval.</p>
         <table className="mt-3 w-full text-left text-sm">
           <thead><tr className="text-slate-500">{["Customer","Store","Fee","MoMo","Payment","Status","Actions"].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
@@ -426,6 +430,30 @@ export function AdminResellers() {
                 <td className="p-2"><Badge className={statusTone[String(a.status)]}>{prettyStatus(String(a.status))}</Badge></td>
                 <td className="p-2 space-x-2">
                   {(String(a.status) === "pending_review" || String(a.status) === "pending_payment") && (
+                    isCardMethod(String(a.adapter || a.method_code || "")) ? (
+                      <>
+                        <span className="text-xs font-semibold text-slate-500">Automatic — no admin confirm</span>
+                        {a.payment_reference ? (
+                          <button className="font-semibold text-brand-700" onClick={async () => {
+                            try {
+                              await api(`/admin/payments/${encodeURIComponent(String(a.payment_reference))}/confirm`, { method: "POST" });
+                              toast.success("Korapay confirmed. Promoted to reseller");
+                              qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                              qc.invalidateQueries({ queryKey: ["resellers"] });
+                              qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                            } catch (e) {
+                              toast.error(e instanceof ApiError ? e.message : "Korapay has not confirmed this payment yet");
+                            }
+                          }}>Check Korapay</button>
+                        ) : null}
+                        <button className="font-semibold text-rose-600" onClick={async () => {
+                          await api(`/admin/reseller-applications/${a.id}/reject`, { method: "POST", body: JSON.stringify({}) });
+                          toast.success("Application rejected");
+                          qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                          qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                        }}>Reject</button>
+                      </>
+                    ) : (
                     <>
                       <button className="font-semibold text-brand-700" onClick={async () => {
                         await api(`/admin/reseller-applications/${a.id}/approve`, { method: "POST" });
@@ -441,6 +469,7 @@ export function AdminResellers() {
                         qc.invalidateQueries({ queryKey: ["admin-payments"] });
                       }}>Reject</button>
                     </>
+                    )
                   )}
                 </td>
               </tr>
@@ -553,7 +582,7 @@ export function AdminPayments() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Payments</h1>
-          <p className="text-sm text-slate-500">Add Mobile Money or bank details for manual deposits. Enable Korapay for automatic Ghana, Nigeria, and other Korapay-country checkout. Confirm matching manual payments to credit the wallet.</p>
+          <p className="text-sm text-slate-500">Add Mobile Money or bank details for manual deposits. Enable Korapay for automatic Ghana, Nigeria, and other Korapay-country checkout. Confirm matching manual payments only — Korapay credits the wallet automatically, without admin approval.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add manual method</Button>
       </div>
@@ -606,7 +635,10 @@ export function AdminPayments() {
               <tr key={String(p.id)} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="p-2 font-mono text-sm font-bold">{String(p.deposit_code || p.user_deposit_code || "—")}</td>
                 <td className="p-2">{String(p.full_name || "")}<div className="text-xs text-slate-500">{String(p.email)}</div></td>
-                <td className="p-2">{String(p.purpose) === "reseller_upgrade" ? "Reseller upgrade" : "Wallet deposit"}</td>
+                <td className="p-2">
+                  {String(p.purpose) === "reseller_upgrade" ? "Reseller upgrade" : "Wallet deposit"}
+                  <div className="text-xs text-slate-500">{isCardMethod(String(p.adapter || "")) ? "Korapay automatic" : String(p.method_name || "Manual")}</div>
+                </td>
                 <td className="p-2">
                   {money(Number(p.amount))}
                   {Number((p.metadata as { chargedAmount?: number } | null)?.chargedAmount) > Number(p.amount) && (
@@ -616,10 +648,32 @@ export function AdminPayments() {
                 <td className="p-2"><Badge className={statusTone[String(p.status)]}>{String(p.status)}</Badge></td>
                 <td className="p-2 space-x-2">
                   {p.status === "pending" && (
+                    isCardMethod(String(p.adapter || "")) ? (
+                      <>
+                        <span className="text-xs font-semibold text-slate-500">Automatic — no admin confirm</span>
+                        <button className="font-semibold text-brand-700" onClick={async () => {
+                          try {
+                            await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/confirm`, { method: "POST" });
+                            toast.success(String(p.purpose) === "reseller_upgrade" ? "Korapay confirmed. Promoted to reseller" : "Korapay confirmed. Wallet credited");
+                            qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                            qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                            qc.invalidateQueries({ queryKey: ["resellers"] });
+                          } catch (e) {
+                            toast.error(e instanceof ApiError ? e.message : "Korapay has not confirmed this payment yet");
+                          }
+                        }}>Check Korapay</button>
+                        <button className="font-semibold text-rose-600" onClick={async () => {
+                          await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/reject`, { method: "POST" });
+                          qc.invalidateQueries({ queryKey: ["admin-payments"] });
+                          qc.invalidateQueries({ queryKey: ["reseller-applications"] });
+                        }}>Reject</button>
+                      </>
+                    ) : (
                     <>
                       <button className="font-semibold text-brand-700" onClick={async () => { await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/confirm`, { method: "POST" }); toast.success(String(p.purpose) === "reseller_upgrade" ? "Promoted to reseller" : "Wallet credited"); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); qc.invalidateQueries({ queryKey: ["resellers"] }); }}>Confirm</button>
                       <button className="font-semibold text-rose-600" onClick={async () => { await api(`/admin/payments/${encodeURIComponent(String(p.reference))}/reject`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin-payments"] }); qc.invalidateQueries({ queryKey: ["reseller-applications"] }); }}>Reject</button>
                     </>
+                    )
                   )}
                 </td>
               </tr>

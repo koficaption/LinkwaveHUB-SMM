@@ -34,12 +34,16 @@ export async function getWallet(userId: string) {
     [userId]
   );
   const pendingDeposits = await query(
-    `SELECT id, amount, status, reference, deposit_code, created_at, metadata->>'instructions' AS instructions
-     FROM payments
-     WHERE user_id = $1
-       AND status = 'pending'
-       AND COALESCE(metadata->>'purpose', 'deposit') = 'deposit'
-     ORDER BY created_at DESC
+    `SELECT p.id, p.amount, p.status, p.reference, p.deposit_code, p.created_at,
+            p.metadata->>'instructions' AS instructions,
+            p.metadata->>'checkoutUrl' AS checkout_url,
+            m.adapter, m.name AS method_name
+     FROM payments p
+     LEFT JOIN payment_methods m ON m.id = p.method_id
+     WHERE p.user_id = $1
+       AND p.status = 'pending'
+       AND COALESCE(p.metadata->>'purpose', 'deposit') = 'deposit'
+     ORDER BY p.created_at DESC
      LIMIT 8`,
     [userId]
   );
@@ -354,7 +358,12 @@ export async function completeVerifiedPayment(
   const adapter = getPaymentAdapter(String(payment.adapter || "manual"));
   const verified = await adapter.verify(String(payment.reference), (payment.config as Record<string, unknown>) || {});
   if (!verified.success) {
-    throw new AppError("This payment has not been confirmed yet", 400);
+    throw new AppError(
+      isCardAdapter(payment.adapter)
+        ? "Korapay has not confirmed this payment yet"
+        : "This payment has not been confirmed yet",
+      400
+    );
   }
   if (verified.amount != null) {
     const meta = paymentMetadata(payment);
@@ -586,7 +595,7 @@ export async function listPayments(opts: { status?: string; search?: string; pag
   const items = await query(
     `SELECT p.*, u.full_name, u.email, u.deposit_code AS user_deposit_code,
             COALESCE(p.deposit_code, u.deposit_code) AS deposit_code,
-            m.name AS method_name, m.code AS method_code,
+            m.name AS method_name, m.code AS method_code, m.adapter AS adapter,
             COALESCE(p.metadata->>'purpose', 'deposit') AS purpose
      FROM payments p
      JOIN users u ON u.id = p.user_id

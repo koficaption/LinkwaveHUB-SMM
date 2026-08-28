@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ContactLinks, panelHelp } from "@/components/ContactLinks";
 import type { PaymentMethod } from "@/types";
-import { checkoutReturnUrl, usePaystackReturn } from "@/hooks/usePaystackReturn";
+import { checkoutReturnUrl, usePaystackReturn, usePendingKorapayVerify } from "@/hooks/usePaystackReturn";
 import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
 import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
@@ -408,10 +408,13 @@ export function WalletPage() {
     : null;
   const paymentCode = w?.deposit_code || me?.user.deposit_code || "";
   const pending = w?.pending_deposits ?? [];
+  const pendingManual = pending.filter((p) => !isCardMethod(p.adapter ?? undefined));
+  const pendingKorapay = pending.filter((p) => isCardMethod(p.adapter ?? undefined));
+  usePendingKorapayVerify(pendingKorapay.map((p) => p.reference));
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-3">
-        <PageHeader title="Add Funds" subtitle="Pay with the details below using your unique code. Admin confirms, then the amount is added to your wallet." />
+        <PageHeader title="Add Funds" subtitle="Korapay credits your GHS wallet automatically after you pay — no admin approval. Ghana MoMo/bank uses your unique payment code and needs admin confirmation." />
       </div>
       <Card><p className="text-sm text-slate-500">Current / available</p><p className="mt-2 text-3xl font-extrabold">{money(w?.available_balance ?? w?.balance)}</p></Card>
       <Card><p className="text-sm text-slate-500">Total deposits</p><p className="mt-2 text-3xl font-extrabold">{money(w?.total_deposits)}</p></Card>
@@ -480,10 +483,24 @@ export function WalletPage() {
               : "I have paid — submit for confirmation"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
-          {pending.length > 0 && (
+          {pendingKorapay.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm dark:border-brand-500/30 dark:bg-brand-500/10">
+              <p className="font-semibold text-brand-900 dark:text-brand-100">Waiting for Korapay</p>
+              <p className="text-xs text-slate-600 dark:text-slate-300">No admin approval. Your wallet is credited automatically after Korapay confirms.</p>
+              {pendingKorapay.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-slate-700 dark:text-slate-200">
+                  <p>{money(Number(p.amount))} · {p.method_name || "Korapay"}</p>
+                  {p.checkout_url ? (
+                    <Button type="button" variant="outline" onClick={() => window.location.assign(p.checkout_url!)}>Finish payment</Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+          {pendingManual.length > 0 && (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
               <p className="font-semibold text-amber-900 dark:text-amber-100">Waiting for admin confirmation</p>
-              {pending.map((p) => (
+              {pendingManual.map((p) => (
                 <p key={p.id} className="text-slate-700 dark:text-slate-200">
                   {money(Number(p.amount))} · code <span className="font-mono font-bold">{p.deposit_code || paymentCode}</span>
                 </p>
@@ -715,6 +732,7 @@ type UpgradeOffer = {
     payment_reference?: string | null;
     payment_status?: string | null;
     method_name?: string | null;
+    adapter?: string | null;
     deposit_code?: string | null;
     payment_metadata?: { instructions?: string; checkoutUrl?: string | null };
     created_at: string;
@@ -802,13 +820,15 @@ export function BecomeResellerPage() {
     ? quoteKorapayFees(upgradeLocal, selected?.config)
     : null;
   const paymentCode = me?.user.deposit_code || application?.deposit_code || "";
+  const korapayPending = Boolean(pending && (pendingCheckout || isCardMethod(application?.adapter ?? undefined)));
+  usePendingKorapayVerify(korapayPending ? [application?.payment_reference] : []);
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Become a reseller</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Pay the fee set by admin. Korapay is confirmed automatically for Ghana, Nigeria, and other enabled countries. Manual Mobile Money still waits for admin confirmation.
+          Pay the fee set by admin. Korapay credits and promotes you automatically — no admin approval. Manual Mobile Money still waits for admin confirmation.
         </p>
       </div>
       <Card>
@@ -820,16 +840,18 @@ export function BecomeResellerPage() {
       {pending && application && (
         <Card>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-bold">{pendingCheckout ? "Finish card payment" : "Waiting for admin confirmation"}</h2>
+            <h2 className="font-bold">{korapayPending ? (pendingCheckout ? "Finish Korapay payment" : "Waiting for Korapay") : "Waiting for admin confirmation"}</h2>
             <Badge className={statusTone[application.status] ?? statusTone.pending}>{prettyStatus(application.status)}</Badge>
           </div>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Store: <strong>{application.store_name}</strong>
           </p>
-          {!pendingCheckout && <div className="mt-3"><UniquePaymentCode code={paymentCode} /></div>}
+          {!pendingCheckout && !korapayPending && <div className="mt-3"><UniquePaymentCode code={paymentCode} /></div>}
           {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
           {pendingCheckout ? (
             <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Korapay</Button>
+          ) : korapayPending ? (
+            <p className="mt-3 text-sm text-slate-500">Korapay confirms this automatically. Your dashboard switches to reseller after payment — no admin approval.</p>
           ) : (
             <p className="mt-3 text-sm text-slate-500">Send the MoMo payment using your unique code as the note. When an admin confirms it, this page will switch to your reseller dashboard.</p>
           )}

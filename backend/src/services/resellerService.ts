@@ -7,6 +7,8 @@ import type { AuthUser } from "../middleware/auth.js";
 import { getResellerUpgradeSettings } from "./settingsService.js";
 import { publicProductName } from "./catalogClassify.js";
 import { creditWallet, initiateDirectedPayment } from "./walletService.js";
+import { getPaymentAdapter } from "../providers/payment/index.js";
+import { isCardPaymentAdapter } from "./korapayFees.js";
 
 export const MIN_RESELLER_WITHDRAWAL_GHS = 250;
 
@@ -338,7 +340,7 @@ const applicationSelect = `
   a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at,
   u.full_name, u.email, u.role, u.deposit_code,
   p.reference AS payment_reference, p.status AS payment_status, p.amount AS payment_amount,
-  p.metadata AS payment_metadata, m.name AS method_name
+  p.metadata AS payment_metadata, m.name AS method_name, m.adapter AS adapter
 `;
 
 export async function getUpgradeOffer(user: AuthUser) {
@@ -404,6 +406,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   let instructions: string | null = null;
   let checkoutUrl: string | null = null;
   let reference: string | null = null;
+  let methodAdapter: string | null = null;
 
   if (fee > 0) {
     const started = await initiateDirectedPayment(user, fee, String(input.methodCode), {
@@ -414,6 +417,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
     });
     paymentId = String(started.payment!.id);
     methodCode = String(started.method.code);
+    methodAdapter = String(started.method.adapter);
     instructions = started.instructions ?? null;
     checkoutUrl = started.checkoutUrl ?? null;
     reference = started.depositCode || String(started.payment!.reference);
@@ -448,7 +452,9 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
       userId: user.id,
       title: "Reseller application submitted",
       body: fee > 0
-        ? `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using your unique code ${reference}. An admin will promote you after confirming the payment.`
+        ? isCardPaymentAdapter(methodAdapter)
+          ? "Finish Korapay checkout. Your dashboard switches to reseller automatically after payment — no admin approval."
+          : `Pay ${settings.currency} ${fee.toFixed(2)} by Mobile Money using your unique code ${reference}. An admin will promote you after confirming the payment.`
         : "Your reseller application is waiting for admin approval.",
       type: "reseller",
     });
@@ -504,6 +510,33 @@ export async function rejectUpgradeByPaymentReference(reference: string, actor: 
 }
 
 export async function approveResellerApplication(id: string, actor: AuthUser | null, ip?: string) {
+  if (actor) {
+    const preview = await queryOne<Record<string, unknown>>(
+      `SELECT p.status AS payment_status, p.reference AS payment_reference, m.adapter, m.config AS method_config
+       FROM reseller_applications a
+       LEFT JOIN payments p ON p.id = a.payment_id
+       LEFT JOIN payment_methods m ON m.id = p.method_id
+       WHERE a.id = $1`,
+      [id]
+    );
+    if (preview && isCardPaymentAdapter(preview.adapter) && preview.payment_status === "pending") {
+      if (!preview.payment_reference) {
+        throw new AppError("Korapay payments complete automatically after the customer pays. No admin approval is needed.", 400);
+      }
+      const adapter = getPaymentAdapter(String(preview.adapter));
+      const verified = await adapter.verify(
+        String(preview.payment_reference),
+        (preview.method_config as Record<string, unknown>) || {}
+      );
+      if (!verified.success) {
+        throw new AppError(
+          "Korapay has not confirmed this payment yet. It completes automatically after the customer pays — no admin approval.",
+          400
+        );
+      }
+    }
+  }
+
   const result = await withTransaction(async (client) => {
     const application = await queryOne<Record<string, unknown>>(
       `SELECT * FROM reseller_applications WHERE id = $1 FOR UPDATE`,

@@ -41,15 +41,18 @@ export type Wallet = {
   total_spent?: number;
   available_balance?: number;
   deposit_code?: string;
-  pending_deposits?: {
-    id: string;
-    amount: number | string;
-    status: string;
-    reference?: string;
-    deposit_code?: string | null;
-    created_at: string;
-    instructions?: string | null;
-  }[];
+    pending_deposits?: {
+      id: string;
+      amount: number | string;
+      status: string;
+      reference?: string;
+      deposit_code?: string | null;
+      created_at: string;
+      instructions?: string | null;
+      checkout_url?: string | null;
+      adapter?: string | null;
+      method_name?: string | null;
+    }[];
 };
 
 export type Platform = {
