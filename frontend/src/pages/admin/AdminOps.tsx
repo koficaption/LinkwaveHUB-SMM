@@ -9,6 +9,7 @@ import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
+import { KORAPAY_MARKETS } from "@/utils/korapayMarkets";
 
 export function AdminOrders() {
   const qc = useQueryClient();
@@ -552,7 +553,7 @@ export function AdminPayments() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Payments</h1>
-          <p className="text-sm text-slate-500">Add Mobile Money or bank details. Customers and resellers pay using those details plus their unique code. Confirm a matching payment to credit their wallet.</p>
+          <p className="text-sm text-slate-500">Add Mobile Money or bank details for manual deposits. Enable Korapay for automatic Ghana, Nigeria, and other Korapay-country checkout. Confirm matching manual payments to credit the wallet.</p>
         </div>
         <Button onClick={() => setEditing("new")}>Add manual method</Button>
       </div>
@@ -656,7 +657,7 @@ function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null;
         <label className="block"><span className="label">Type</span>
           <Select value={form.adapter} onChange={(e) => set("adapter", e.target.value)} disabled={Boolean(method)}>
             <option value="manual">Manual (MoMo / bank)</option>
-            <option value="korapay">Card / Korapay</option>
+            <option value="korapay">Korapay (automatic)</option>
             <option value="paystack">Card / Paystack (legacy)</option>
             <option value="mock">Instant demo top-up</option>
           </Select>
@@ -970,11 +971,25 @@ function KorapayFeesSettingsCard({
     korapayFeePercent: String(source.korapayFeePercent ?? 1.5),
     korapayVatPercent: String(source.korapayVatPercent ?? 15),
   };
+  const enabledCurrencies = Array.isArray(source.korapayCurrencies) && source.korapayCurrencies.length
+    ? source.korapayCurrencies.map((code) => String(code).toUpperCase())
+    : KORAPAY_MARKETS.map((item) => item.currency);
+  const [currencies, setCurrencies] = useState<string[] | null>(null);
+  const selectedCurrencies = currencies ?? enabledCurrencies;
+  const toggleCurrency = (code: string) => {
+    setCurrencies((current) => {
+      const next = new Set(current ?? selectedCurrencies);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      const list = KORAPAY_MARKETS.map((item) => item.currency).filter((item) => next.has(item));
+      return list.length ? list : [code];
+    });
+  };
   return (
     <Card>
-      <h2 className="font-bold">Korapay fees and tax</h2>
+      <h2 className="font-bold">Korapay (automatic)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        When a customer pays with Korapay, add Korapay’s processing fee and VAT on top of the wallet or upgrade amount. The extra is paid to Korapay — the wallet is still credited with the amount they entered. Match these rates to your Korapay contract.
+        Wallet stays in GHS. Customers pick Ghana, Nigeria, or another Korapay country; they pay in that currency and the wallet is credited in GHS after Korapay confirms. Enable the same currencies on your Korapay dashboard.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <label className="block">
@@ -993,12 +1008,32 @@ function KorapayFeesSettingsCard({
           <Input type="number" min="0" step="0.01" value={values.korapayVatPercent} onChange={(e) => setForm({ ...values, korapayVatPercent: e.target.value })} />
         </label>
       </div>
+      <div className="mt-4">
+        <p className="label">Checkout countries</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {KORAPAY_MARKETS.map((market) => (
+            <label key={market.currency} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={selectedCurrencies.includes(market.currency)}
+                onChange={() => toggleCurrency(market.currency)}
+              />
+              <span>
+                <strong>{market.country}</strong> · {market.currency}
+                <span className="block text-xs text-slate-500">{market.methods}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
       <Button className="mt-4" onClick={() => onSave({
         ...source,
         korapayCustomerPaysFees: values.korapayCustomerPaysFees === "true",
         korapayFeePercent: Number(values.korapayFeePercent || 0),
         korapayVatPercent: Number(values.korapayVatPercent || 0),
-      })}>Save Korapay fees</Button>
+        korapayCurrencies: selectedCurrencies,
+      })}>Save Korapay settings</Button>
     </Card>
   );
 }

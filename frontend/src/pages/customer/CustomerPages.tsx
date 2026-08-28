@@ -20,6 +20,8 @@ import { MobileActionButtons } from "@/components/dashboard/AccountMenu";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog } from "@/components/dashboard/RequestRefillDialog";
 import { quoteKorapayFees } from "@/utils/korapayFees";
+import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
+import { getDisplayCurrency } from "@/utils/currency";
 
 function isCardMethod(adapter?: string) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -355,11 +357,22 @@ export function WalletPage() {
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
   const [amount, setAmount] = useState("50");
   const [method, setMethod] = useState("");
+  const [checkoutCurrency, setCheckoutCurrency] = useState("");
   const [lastInstructions, setLastInstructions] = useState("");
   const selected = methods.data?.find((m) => m.code === method)
     ?? methods.data?.find((m) => isCardMethod(m.adapter))
     ?? methods.data?.[0];
   const methodCode = method || selected?.code || "korapay";
+  const korapayMarkets = filterKorapayMarkets(
+    (selected?.config?.markets ?? []).map((item) => item.currency)
+  );
+  const selectedMarket = isCardMethod(selected?.adapter)
+    ? pickKorapayMarket(korapayMarkets, checkoutCurrency || getDisplayCurrency())
+    : null;
+  useEffect(() => {
+    if (!selectedMarket) return;
+    if (checkoutCurrency !== selectedMarket.currency) setCheckoutCurrency(selectedMarket.currency);
+  }, [selectedMarket?.currency]);
   const deposit = useMutation({
     mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null; depositCode?: string }>("/payments/deposit", {
       method: "POST",
@@ -367,6 +380,7 @@ export function WalletPage() {
         amount: Number(amount),
         methodCode,
         returnUrl: checkoutReturnUrl("/app/wallet"),
+        checkoutCurrency: isCardMethod(selected?.adapter) ? (selectedMarket?.currency || checkoutCurrency) : undefined,
       }),
     }),
     onSuccess: async (data) => {
@@ -386,8 +400,11 @@ export function WalletPage() {
   const w = wallet.data;
   const cfg = selected?.config ?? {};
   const depositAmount = Number(amount);
+  const localAmount = selectedMarket
+    ? convertGhsToKorapay(depositAmount, selectedMarket.currency)
+    : depositAmount;
   const korapayQuote = isCardMethod(selected?.adapter)
-    ? quoteKorapayFees(depositAmount, cfg)
+    ? quoteKorapayFees(localAmount, cfg)
     : null;
   const paymentCode = w?.deposit_code || me?.user.deposit_code || "";
   const pending = w?.pending_deposits ?? [];
@@ -402,24 +419,53 @@ export function WalletPage() {
       <Card className="lg:col-span-1">
         <h2 className="font-bold">Add money</h2>
         <div className="mt-4 space-y-3">
-          <UniquePaymentCode code={paymentCode} />
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          {selected?.adapter === "manual" && <UniquePaymentCode code={paymentCode} />}
+          <label className="block">
+            <span className="label">Amount to add (GHS)</span>
+            <Input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </label>
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
           </Select>
-          {isCardMethod(selected?.adapter) && (
-            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {korapayQuote && korapayQuote.total > korapayQuote.wallet ? (
-                <dl className="space-y-1">
-                  <div className="flex justify-between gap-3"><dt>Wallet credit</dt><dd className="font-semibold">{money(korapayQuote.wallet)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(korapayQuote.fee)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(korapayQuote.vat)}</dd></div>
-                  <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(korapayQuote.total)}</dd></div>
+          {isCardMethod(selected?.adapter) && selectedMarket && (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="label">Pay from</span>
+                <Select
+                  value={selectedMarket.currency}
+                  onChange={(e) => {
+                    setCheckoutCurrency(e.target.value);
+                    storeKorapayCurrency(e.target.value);
+                  }}
+                >
+                  {korapayMarkets.map((market) => (
+                    <option key={market.currency} value={market.currency}>
+                      {market.country} · {market.currency}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <p className="font-semibold text-slate-800 dark:text-slate-100">Automatic Korapay</p>
+                <p className="mt-1">{selectedMarket.country}: {selectedMarket.methods}.</p>
+                <dl className="mt-2 space-y-1">
+                  <div className="flex justify-between gap-3"><dt>Wallet credit</dt><dd className="font-semibold">{money(depositAmount, "GHS")}</dd></div>
+                  {korapayQuote && korapayQuote.total > korapayQuote.wallet && (
+                    <>
+                      <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(korapayQuote.fee, selectedMarket.currency)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(korapayQuote.vat, selectedMarket.currency)}</dd></div>
+                    </>
+                  )}
+                  <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700">
+                    <dt>You pay</dt>
+                    <dd>{money(korapayQuote?.total ?? localAmount, selectedMarket.currency)}</dd>
+                  </div>
                 </dl>
-              ) : (
-                <p>You will be redirected to Korapay to pay by card (or mobile money).</p>
-              )}
-              <p className="mt-2 text-xs">Korapay processing fee and tax are added on top of the amount you enter. Your wallet is credited with the amount above, not the extra tax.</p>
+                <p className="mt-2 text-xs">
+                  Korapay confirms the payment automatically and credits your wallet in GHS.
+                  {selectedMarket.currency !== "GHS" ? " The local amount uses the admin USD→GHS rate." : ""}
+                </p>
+              </div>
             </div>
           )}
           {selected?.adapter === "manual" && (
@@ -430,7 +476,7 @@ export function WalletPage() {
           )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
             {verifying ? "Confirming payment…" : deposit.isPending ? "Submitting…" : isCardMethod(selected?.adapter)
-              ? `Pay ${money(korapayQuote?.total ?? depositAmount)} with card`
+              ? `Pay ${money(korapayQuote?.total ?? localAmount, selectedMarket?.currency || "GHS")} with Korapay`
               : "I have paid — submit for confirmation"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
@@ -691,6 +737,7 @@ export function BecomeResellerPage() {
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
   const [storeName, setStoreName] = useState(me?.user.full_name ? `${me.user.full_name}'s Store` : "");
   const [method, setMethod] = useState("");
+  const [checkoutCurrency, setCheckoutCurrency] = useState("");
   const [senderName, setSenderName] = useState(me?.user.full_name ?? "");
   const [senderNumber, setSenderNumber] = useState(me?.user.phone ?? "");
   const selected = methods.data?.find((m) => m.code === method)
@@ -700,6 +747,8 @@ export function BecomeResellerPage() {
   const methodCode = method || selected?.code || "korapay";
   const cfg = selected?.config ?? {};
   const cardCheckout = isCardMethod(selected?.adapter);
+  const korapayMarkets = filterKorapayMarkets((selected?.config?.markets ?? []).map((item) => item.currency));
+  const selectedMarket = cardCheckout ? pickKorapayMarket(korapayMarkets, checkoutCurrency || getDisplayCurrency()) : null;
 
   useEffect(() => {
     if (me?.panel) navigate("/app", { replace: true });
@@ -721,6 +770,7 @@ export function BecomeResellerPage() {
         senderName: Number(offer.data?.upgradeFee ?? 0) > 0 && !cardCheckout ? senderName : undefined,
         senderNumber: Number(offer.data?.upgradeFee ?? 0) > 0 && !cardCheckout ? senderNumber : undefined,
         returnUrl: checkoutReturnUrl("/app/become-reseller"),
+        checkoutCurrency: cardCheckout ? (selectedMarket?.currency || checkoutCurrency) : undefined,
       }),
     }),
     onSuccess: async (data) => {
@@ -745,8 +795,11 @@ export function BecomeResellerPage() {
   const pending = application?.status === "pending_review" || application?.status === "pending_payment";
   const instructions = application?.payment_metadata?.instructions;
   const pendingCheckout = application?.payment_metadata?.checkoutUrl;
+  const upgradeLocal = selectedMarket
+    ? convertGhsToKorapay(Number(data?.upgradeFee ?? 0), selectedMarket.currency)
+    : Number(data?.upgradeFee ?? 0);
   const upgradeQuote = cardCheckout
-    ? quoteKorapayFees(Number(data?.upgradeFee ?? 0), selected?.config)
+    ? quoteKorapayFees(upgradeLocal, selected?.config)
     : null;
   const paymentCode = me?.user.deposit_code || application?.deposit_code || "";
 
@@ -755,7 +808,7 @@ export function BecomeResellerPage() {
       <div>
         <h1 className="page-title">Become a reseller</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Pay the fee set by admin. Card payments via Korapay are confirmed automatically. Korapay processing fee and tax are added on top. Mobile Money still waits for admin confirmation.
+          Pay the fee set by admin. Korapay is confirmed automatically for Ghana, Nigeria, and other enabled countries. Manual Mobile Money still waits for admin confirmation.
         </p>
       </div>
       <Card>
@@ -802,19 +855,41 @@ export function BecomeResellerPage() {
                     {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
                   </Select>
                 </label>
-                {cardCheckout && (
-                  <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {upgradeQuote && upgradeQuote.total > upgradeQuote.wallet ? (
-                      <dl className="space-y-1">
-                        <div className="flex justify-between gap-3"><dt>Upgrade fee</dt><dd className="font-semibold">{money(upgradeQuote.wallet, data.currency)}</dd></div>
-                        <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(upgradeQuote.fee, data.currency)}</dd></div>
-                        <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(upgradeQuote.vat, data.currency)}</dd></div>
-                        <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700"><dt>You pay</dt><dd>{money(upgradeQuote.total, data.currency)}</dd></div>
+                {cardCheckout && selectedMarket && (
+                  <div className="space-y-3">
+                    <label className="block">
+                      <span className="label">Pay from</span>
+                      <Select
+                        value={selectedMarket.currency}
+                        onChange={(e) => {
+                          setCheckoutCurrency(e.target.value);
+                          storeKorapayCurrency(e.target.value);
+                        }}
+                      >
+                        {korapayMarkets.map((market) => (
+                          <option key={market.currency} value={market.currency}>
+                            {market.country} · {market.currency}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      <p>{selectedMarket.country}: {selectedMarket.methods}.</p>
+                      <dl className="mt-2 space-y-1">
+                        <div className="flex justify-between gap-3"><dt>Upgrade fee</dt><dd className="font-semibold">{money(data.upgradeFee, "GHS")}</dd></div>
+                        {upgradeQuote && upgradeQuote.total > upgradeQuote.wallet && (
+                          <>
+                            <div className="flex justify-between gap-3"><dt>Korapay fee</dt><dd>{money(upgradeQuote.fee, selectedMarket.currency)}</dd></div>
+                            <div className="flex justify-between gap-3"><dt>VAT / tax</dt><dd>{money(upgradeQuote.vat, selectedMarket.currency)}</dd></div>
+                          </>
+                        )}
+                        <div className="flex justify-between gap-3 border-t border-slate-200 pt-1 font-semibold dark:border-slate-700">
+                          <dt>You pay</dt>
+                          <dd>{money(upgradeQuote?.total ?? upgradeLocal, selectedMarket.currency)}</dd>
+                        </div>
                       </dl>
-                    ) : (
-                      <p>You will be redirected to Korapay.</p>
-                    )}
-                    <p className="mt-2 text-xs">After a successful payment, your dashboard switches to reseller automatically.</p>
+                      <p className="mt-2 text-xs">After Korapay confirms, your dashboard switches to reseller automatically.</p>
+                    </div>
                   </div>
                 )}
                 {selected?.adapter === "manual" && (
@@ -837,7 +912,7 @@ export function BecomeResellerPage() {
                 : Number(data.upgradeFee) === 0
                   ? "Submit application"
                   : cardCheckout
-                    ? `Pay ${money(upgradeQuote?.total ?? data.upgradeFee, data.currency)} with card`
+                    ? `Pay ${money(upgradeQuote?.total ?? upgradeLocal, selectedMarket?.currency || "GHS")} with Korapay`
                     : `Submit and pay ${money(data.upgradeFee, data.currency)}`}
             </Button>
           </div>

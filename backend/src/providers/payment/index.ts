@@ -56,59 +56,48 @@ export const korapayAdapter: PaymentAdapter = {
   async initialize(input: PaymentInitInput): Promise<PaymentInitResult> {
     const secret = (input.config?.secretKey as string) || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY;
     if (!secret) {
-      return {
-        reference: input.reference,
-        instructions:
-          "Korapay is enabled but not configured. Add KORAPAY_SECRET_KEY to the server environment.",
-        autoComplete: false,
-      };
+      throw new AppError("Automatic Korapay checkout is not configured. Add KORAPAY_SECRET_KEY on the server.", 503);
     }
     const quote = input.feeQuote;
     const chargeAmount = Number((quote?.chargedAmount ?? input.amount).toFixed(2));
     const walletAmount = Number((quote?.walletAmount ?? input.amount).toFixed(2));
+    const currency = String(input.currency || "GHS").toUpperCase();
     const merchantBearsCost = input.merchantBearsCost !== false;
     const metadata = korapayMetadata(input.metadata);
     const notificationUrl = `${config.frontendUrl.replace(/\/$/, "")}/api/payments/webhooks/korapay`;
-    const response = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        "Content-Type": "application/json",
-        "User-Agent": "LinkBoostGrowth/1.0",
+    const walletGhs = Number(input.metadata?.walletAmountGhs ?? walletAmount);
+    const payload = {
+      amount: chargeAmount,
+      currency,
+      reference: input.reference,
+      redirect_url: input.callbackUrl || undefined,
+      notification_url: notificationUrl,
+      narration: `LinkBoost Growth SMM wallet GHS ${Number(walletGhs).toFixed(2)}`,
+      merchant_bears_cost: merchantBearsCost,
+      customer: {
+        email: input.email,
+        name: input.customerName || input.email.split("@")[0],
       },
-      body: JSON.stringify({
-        amount: chargeAmount,
-        currency: input.currency || "GHS",
-        reference: input.reference,
-        redirect_url: input.callbackUrl || undefined,
-        notification_url: notificationUrl,
-        narration: `LinkBoost Growth SMM ${walletAmount.toFixed(2)} ${input.currency || "GHS"}`,
-        channels: ["card", "bank_transfer", "mobile_money"],
-        default_channel: "card",
-        merchant_bears_cost: merchantBearsCost,
-        customer: {
-          email: input.email,
-          name: input.customerName || input.email.split("@")[0],
-        },
-        metadata,
-      }),
-    });
-    const json = (await response.json()) as {
-      status: boolean;
-      message: string;
-      data?: { checkout_url?: string; reference?: string; fee?: number | string; vat?: number | string };
+      metadata,
     };
-    if (!json.status || !json.data?.checkout_url) {
-      throw new AppError(json.message || "Korapay initialization failed", 400);
+    const withChannels = input.channels?.length
+      ? { ...payload, channels: input.channels, default_channel: input.defaultChannel || input.channels[0] }
+      : payload;
+    let json = await korapayInitialize(secret, withChannels);
+    if ((!json?.status || !json.data?.checkout_url) && input.channels?.length) {
+      json = await korapayInitialize(secret, payload);
+    }
+    if (!json?.status || !json.data?.checkout_url) {
+      throw new AppError(json?.message || "Korapay could not start checkout for this country. Enable that currency on your Korapay dashboard.", 400);
     }
     const extras = quote && quote.chargedAmount > quote.walletAmount
-      ? ` Korapay fee GHS ${quote.fee.toFixed(2)} + VAT GHS ${quote.vat.toFixed(2)} are included. You pay GHS ${chargeAmount.toFixed(2)}.`
+      ? ` Korapay fee ${currency} ${quote.fee.toFixed(2)} + tax ${currency} ${quote.vat.toFixed(2)} are included. You pay ${currency} ${chargeAmount.toFixed(2)}.`
       : "";
     return {
       reference: json.data.reference || input.reference,
       checkoutUrl: json.data.checkout_url,
       providerRef: json.data.reference || input.reference,
-      instructions: `Complete payment on Korapay.${extras} Your wallet is credited with GHS ${walletAmount.toFixed(2)}.`,
+      instructions: `Complete payment on Korapay.${extras} Your wallet is credited in GHS after Korapay confirms.`,
     };
   },
   async verify(reference: string, cfg?: Record<string, unknown>): Promise<PaymentVerifyResult> {
@@ -139,6 +128,29 @@ export const korapayAdapter: PaymentAdapter = {
     };
   },
 };
+
+type KorapayInitJson = {
+  status: boolean;
+  message: string;
+  data?: { checkout_url?: string; reference?: string; fee?: number | string; vat?: number | string };
+};
+
+async function korapayInitialize(secret: string, body: Record<string, unknown>): Promise<KorapayInitJson | null> {
+  const response = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+      "User-Agent": "LinkBoostGrowth/1.0",
+    },
+    body: JSON.stringify(body),
+  });
+  try {
+    return (await response.json()) as KorapayInitJson;
+  } catch {
+    return { status: false, message: `Korapay returned HTTP ${response.status}` };
+  }
+}
 
 function korapayMetadata(meta?: Record<string, unknown>) {
   if (!meta) return undefined;

@@ -9,11 +9,14 @@ export type PaymentInitInput = {
   config?: Record<string, unknown>;
   callbackUrl?: string | null;
   merchantBearsCost?: boolean;
+  channels?: string[];
+  defaultChannel?: string;
   feeQuote?: {
     walletAmount: number;
     fee: number;
     vat: number;
     chargedAmount: number;
+    checkoutCurrency?: string;
   };
 };
 

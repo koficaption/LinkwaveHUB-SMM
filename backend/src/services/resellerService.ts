@@ -374,6 +374,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   senderName?: string;
   senderNumber?: string;
   returnUrl?: string;
+  checkoutCurrency?: string;
 }) {
   if (user.role === "admin") throw new AppError("Admins cannot apply for a reseller upgrade");
   const panel = await getPanelForUser(user.id);
@@ -409,6 +410,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
       purpose: "reseller_upgrade",
       storeName,
       callbackUrl: input.returnUrl,
+      checkoutCurrency: input.checkoutCurrency,
     });
     paymentId = String(started.payment!.id);
     methodCode = String(started.method.code);

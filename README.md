@@ -29,8 +29,8 @@ Signed-in users get a personal link (`/register?ref=CODE`). When a referred user
 
 Wallet deposits and reseller upgrade fees can use:
 
-- **Card / Korapay** — hosted checkout (test or live keys). Set `KORAPAY_PUBLIC_KEY`, `KORAPAY_SECRET_KEY`, and `KORAPAY_ENCRYPTION_KEY` in `.env` (never commit them). After a successful charge, the API verifies with Korapay and credits the wallet. Reseller upgrade card payments do **not** credit the wallet; they promote the account instead.
-- **Mobile Money** — manual confirmation by an admin
+- **Korapay (automatic)** — hosted checkout for Ghana (Mobile Money / GHS), Nigeria (card, bank transfer, Pay with Bank / NGN), and other Korapay countries (Kenya, Cameroon, Côte d’Ivoire, Egypt, Tanzania, South Africa, USD). The customer picks a country; they pay in that currency and the **wallet is still credited in GHS** after Korapay confirms. Set `KORAPAY_PUBLIC_KEY`, `KORAPAY_SECRET_KEY`, and `KORAPAY_ENCRYPTION_KEY` in `.env` (never commit them). Enable the same currencies on the Korapay dashboard. Reseller upgrade card payments do **not** credit the wallet; they promote the account instead.
+- **Mobile Money (manual)** — unique payment code + admin confirmation
 - **Instant Demo Top-up** — local/demo only; disable it when real payments are on
 
 Webhook URL (Korapay Dashboard → Settings → Webhooks):

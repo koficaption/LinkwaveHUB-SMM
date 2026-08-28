@@ -25,6 +25,7 @@ const defaults: Record<string, unknown> = {
     korapayCustomerPaysFees: true,
     korapayFeePercent: 1.5,
     korapayVatPercent: 15,
+    korapayCurrencies: ["GHS", "NGN", "KES", "XAF", "XOF", "EGP", "TZS", "ZAR", "USD"],
   },
   orders: {
     autoProcessing: true,
@@ -143,6 +144,7 @@ export async function getPublicSettings() {
       korapayCustomerPaysFees: (all.payments as Record<string, unknown>)?.korapayCustomerPaysFees !== false,
       korapayFeePercent: Number((all.payments as Record<string, unknown>)?.korapayFeePercent ?? 1.5),
       korapayVatPercent: Number((all.payments as Record<string, unknown>)?.korapayVatPercent ?? 15),
+      korapayCurrencies: (all.payments as Record<string, unknown>)?.korapayCurrencies,
     },
     resellers: {
       upgradeEnabled: (all.resellers as Record<string, unknown>).upgradeEnabled !== false,

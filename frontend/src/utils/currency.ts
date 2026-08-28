@@ -14,6 +14,7 @@ export const DISPLAY_CURRENCIES: DisplayCurrency[] = [
   { code: "EUR", name: "Euro", symbol: "€", usdPerUnit: 1.08 },
   { code: "GBP", name: "Pound Sterling", symbol: "£", usdPerUnit: 1.27 },
   { code: "NGN", name: "Nigerian Naira", symbol: "₦", usdPerUnit: 0.00062 },
+  { code: "XAF", name: "Central African CFA", symbol: "FCFA", usdPerUnit: 0.0017 },
   { code: "XOF", name: "West African CFA", symbol: "CFA", usdPerUnit: 0.0017 },
   { code: "KES", name: "Kenyan Shilling", symbol: "KSh", usdPerUnit: 0.0077 },
   { code: "ZAR", name: "South African Rand", symbol: "R", usdPerUnit: 0.055 },

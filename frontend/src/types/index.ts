@@ -281,6 +281,7 @@ export type PublicSettings = {
     korapayCustomerPaysFees?: boolean;
     korapayFeePercent?: number;
     korapayVatPercent?: number;
+    korapayCurrencies?: string[];
   };
   resellers?: {
     upgradeEnabled?: boolean;
@@ -307,5 +308,12 @@ export type PaymentMethod = {
     customerPaysFees?: boolean;
     feePercent?: number;
     vatPercent?: number;
+    markets?: {
+      country: string;
+      countryCode: string;
+      currency: string;
+      currencyName: string;
+      methods: string;
+    }[];
   };
 };

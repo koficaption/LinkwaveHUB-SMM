@@ -211,6 +211,7 @@ export const walletDepositSchema = z.object({
   amount: z.number().positive(),
   methodCode: z.string().min(2).max(40),
   returnUrl: z.string().url().max(500).optional(),
+  checkoutCurrency: z.string().trim().min(3).max(8).optional(),
 });
 
 export const ticketSchema = z.object({
@@ -321,6 +322,7 @@ export const resellerUpgradeSchema = z.object({
   senderName: z.string().max(120).optional(),
   senderNumber: z.string().max(30).optional(),
   returnUrl: z.string().url().max(500).optional(),
+  checkoutCurrency: z.string().trim().min(3).max(8).optional(),
 });
 
 export const childPanelOrderSchema = z.object({

@@ -13,6 +13,8 @@ import {
   quoteKorapayFees,
   type KorapayFeeQuote,
 } from "./korapayFees.js";
+import { convertGhsToKorapay, getKorapayMarket, enabledKorapayMarkets } from "./korapayMarkets.js";
+import { getSettings } from "./settingsService.js";
 
 export async function getWallet(userId: string) {
   const wallet = await queryOne(
@@ -69,6 +71,8 @@ export async function listPaymentMethods(includeDisabled = false) {
   const where = includeDisabled ? "" : "WHERE is_enabled = TRUE";
   const rows = await query(`SELECT id, code, name, description, adapter, is_enabled, sort_order, config FROM payment_methods ${where} ORDER BY sort_order, name`);
   const korapayFees = await getKorapayFeeSettings();
+  const all = await getSettings();
+  const paymentsSettings = (all.payments as Record<string, unknown> | undefined) ?? {};
   return rows.map((row) => {
     const methodConfig = { ...(row.config as Record<string, unknown> | null) };
     delete methodConfig.secretKey;
@@ -80,6 +84,13 @@ export async function listPaymentMethods(includeDisabled = false) {
       methodConfig.customerPaysFees = korapayFees.customerPaysFees;
       methodConfig.feePercent = korapayFees.feePercent;
       methodConfig.vatPercent = korapayFees.vatPercent;
+      methodConfig.markets = enabledKorapayMarkets(paymentsSettings.korapayCurrencies).map((item) => ({
+        country: item.country,
+        countryCode: item.countryCode,
+        currency: item.currency,
+        currencyName: item.currencyName,
+        methods: item.methods,
+      }));
     }
     return { ...row, config: methodConfig };
   });
@@ -91,31 +102,48 @@ function paymentMetadata(payment: Record<string, unknown>) {
   return {};
 }
 
-async function korapayInitOptions(adapter: string, walletAmount: number) {
+async function korapayInitOptions(adapter: string, walletAmountGhs: number, checkoutCurrency?: string) {
   if (!isCardPaymentAdapter(adapter)) {
     return {
-      amount: walletAmount,
+      amount: walletAmountGhs,
+      currency: "GHS",
       merchantBearsCost: true,
       feeQuote: undefined as KorapayFeeQuote | undefined,
+      market: null as ReturnType<typeof getKorapayMarket> | null,
+      walletAmountGhs,
     };
   }
-  const quote = quoteKorapayFees(walletAmount, await getKorapayFeeSettings());
+  const all = await getSettings();
+  const usdToGhs = Number((all.pricing as Record<string, unknown> | undefined)?.usdToGhs ?? 15.4);
+  const enabled = (all.payments as Record<string, unknown> | undefined)?.korapayCurrencies;
+  const market = getKorapayMarket(checkoutCurrency, enabled);
+  if (!market) throw new AppError("That Korapay country is not enabled");
+  const localAmount = convertGhsToKorapay(walletAmountGhs, market.currency, usdToGhs);
+  if (localAmount < 1) {
+    throw new AppError(`Amount is too small to collect in ${market.currency}. Enter a higher GHS amount.`);
+  }
+  const quote = quoteKorapayFees(localAmount, await getKorapayFeeSettings());
   const addedFees = quote.chargedAmount > quote.walletAmount + 0.001;
   return {
     amount: quote.chargedAmount,
+    currency: market.currency,
     merchantBearsCost: addedFees || !quote.customerPaysFees,
     feeQuote: quote,
+    market,
+    walletAmountGhs,
+    usdToGhs,
   };
 }
 
-function feeMetadata(quote?: KorapayFeeQuote) {
-  if (!quote || quote.chargedAmount <= quote.walletAmount) return {};
+function feeMetadata(quote?: KorapayFeeQuote, extra: Record<string, unknown> = {}) {
+  if (!quote) return extra;
   return {
     chargedAmount: quote.chargedAmount,
     korapayFee: quote.fee,
     korapayVat: quote.vat,
     feePercent: quote.feePercent,
     vatPercent: quote.vatPercent,
+    ...extra,
   };
 }
 
@@ -135,7 +163,7 @@ export async function initiateDirectedPayment(
   );
   if (!method) throw new AppError("Payment method is not available");
 
-  const { callbackUrl: extraCallback, ...meta } = extra;
+  const { callbackUrl: extraCallback, checkoutCurrency, ...meta } = extra;
   const callbackUrl = safeCheckoutReturnUrl(
     typeof extraCallback === "string" ? extraCallback : undefined,
     "/app/become-reseller"
@@ -146,19 +174,27 @@ export async function initiateDirectedPayment(
     ? paymentReference()
     : paymentReference(depositCode);
   const adapter = getPaymentAdapter(adapterName);
-  const charge = await korapayInitOptions(adapterName, amount);
+  const charge = await korapayInitOptions(adapterName, amount, typeof checkoutCurrency === "string" ? checkoutCurrency : undefined);
   const init = await adapter.initialize({
     amount: charge.amount,
-    currency: "GHS",
+    currency: charge.currency,
     email: user.email,
     customerName: user.full_name,
     reference,
     customerReference: depositCode,
-    metadata: { userId: user.id, depositCode, ...meta },
+    metadata: {
+      userId: user.id,
+      depositCode,
+      walletAmountGhs: amount,
+      checkoutCurrency: charge.currency,
+      ...meta,
+    },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl,
     merchantBearsCost: charge.merchantBearsCost,
     feeQuote: charge.feeQuote,
+    channels: charge.market?.channels,
+    defaultChannel: charge.market?.defaultChannel,
   });
 
   const payment = await queryOne<Record<string, unknown>>(
@@ -174,6 +210,8 @@ export async function initiateDirectedPayment(
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
         depositCode,
+        walletAmountGhs: amount,
+        checkoutCurrency: charge.currency,
         ...feeMetadata(charge.feeQuote),
         ...meta,
       }),
@@ -191,7 +229,7 @@ export async function initiateDirectedPayment(
   };
 }
 
-export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string, returnUrl?: string) {
+export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string, returnUrl?: string, checkoutCurrency?: string) {
   const method = await queryOne<Record<string, unknown>>(
     `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
     [methodCode]
@@ -204,19 +242,26 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     ? paymentReference()
     : paymentReference(depositCode);
   const adapter = getPaymentAdapter(adapterName);
-  const charge = await korapayInitOptions(adapterName, amount);
+  const charge = await korapayInitOptions(adapterName, amount, checkoutCurrency);
   const init = await adapter.initialize({
     amount: charge.amount,
-    currency: "GHS",
+    currency: charge.currency,
     email: user.email,
     customerName: user.full_name,
     reference,
     customerReference: depositCode,
-    metadata: { userId: user.id, depositCode },
+    metadata: {
+      userId: user.id,
+      depositCode,
+      walletAmountGhs: amount,
+      checkoutCurrency: charge.currency,
+    },
     config: (method.config as Record<string, unknown>) || {},
     callbackUrl: safeCheckoutReturnUrl(returnUrl, "/app/wallet"),
     merchantBearsCost: charge.merchantBearsCost,
     feeQuote: charge.feeQuote,
+    channels: charge.market?.channels,
+    defaultChannel: charge.market?.defaultChannel,
   });
 
   const payment = await queryOne(
@@ -233,6 +278,8 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
         depositCode,
+        walletAmountGhs: amount,
+        checkoutCurrency: charge.currency,
         ...feeMetadata(charge.feeQuote),
       }),
       depositCode,
@@ -310,16 +357,20 @@ export async function completeVerifiedPayment(
     throw new AppError("This payment has not been confirmed yet", 400);
   }
   if (verified.amount != null) {
-    const expected = Number(payment.amount);
-    const paid = normalizeKorapayAmount(verified.amount, expected);
+    const meta = paymentMetadata(payment);
+    const expectedGhs = Number(payment.amount);
+    const quotedCharge = Number(meta.chargedAmount ?? 0);
+    const checkoutCurrency = String(meta.checkoutCurrency || payment.currency || "GHS").toUpperCase();
+    const expectedCheckout = quotedCharge > 0 ? quotedCharge : expectedGhs;
+    const paid = normalizeKorapayAmount(verified.amount, expectedCheckout);
     const raw = verified.raw && typeof verified.raw === "object" ? verified.raw as Record<string, unknown> : {};
-    const charged = normalizeKorapayAmount(raw.amount_charged ?? raw.amount_paid ?? raw.amount, expected);
-    const quotedCharge = Number(paymentMetadata(payment).chargedAmount ?? 0);
-    const matchesWallet = Math.abs(paid - expected) <= 0.5;
+    const charged = normalizeKorapayAmount(raw.amount_charged ?? raw.amount_paid ?? raw.amount, expectedCheckout);
+    const slack = checkoutCurrency === "GHS" ? 0.5 : Math.max(1, expectedCheckout * 0.01);
     const matchesQuoted = quotedCharge > 0 && (
-      Math.abs(paid - quotedCharge) <= 0.5 || Math.abs(charged - quotedCharge) <= 0.5
+      Math.abs(paid - quotedCharge) <= slack || Math.abs(charged - quotedCharge) <= slack
     );
-    const includesFees = charged + 0.01 >= expected && charged <= expected * 1.25 + 10;
+    const matchesWallet = checkoutCurrency === "GHS" && Math.abs(paid - expectedGhs) <= 0.5;
+    const includesFees = checkoutCurrency === "GHS" && charged + 0.01 >= expectedGhs && charged <= expectedGhs * 1.25 + 10;
     if (!matchesWallet && !matchesQuoted && !includesFees) {
       throw new AppError("Paid amount does not match this invoice", 400);
     }
