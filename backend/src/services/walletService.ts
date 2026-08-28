@@ -17,6 +17,21 @@ import {
 import { convertGhsToKorapay, getKorapayMarket, enabledKorapayMarkets } from "./korapayMarkets.js";
 import { getSettings } from "./settingsService.js";
 
+async function cancelBelowMinKorapayDeposits(userId: string) {
+  await query(
+    `UPDATE payments p
+     SET status = 'cancelled', updated_at = NOW()
+     FROM payment_methods m
+     WHERE m.id = p.method_id
+       AND p.user_id = $1
+       AND p.status = 'pending'
+       AND COALESCE(p.metadata->>'purpose', 'deposit') = 'deposit'
+       AND p.amount < $2
+       AND m.adapter IN ('korapay', 'card', 'paystack')`,
+    [userId, MIN_WALLET_DEPOSIT_GHS]
+  );
+}
+
 export async function getWallet(userId: string) {
   const wallet = await queryOne(
     `SELECT w.*, u.deposit_code
@@ -27,6 +42,7 @@ export async function getWallet(userId: string) {
   );
   if (!wallet) throw new AppError("Wallet not found", 404);
   const depositCode = String(wallet.deposit_code || (await ensureDepositCode(userId)));
+  await cancelBelowMinKorapayDeposits(userId);
   const stats = await queryOne<{ deposits: string; spent: string }>(
     `SELECT
        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' OR (type = 'admin_adjustment' AND amount > 0) OR type = 'refund'), 0) AS deposits,
@@ -44,6 +60,7 @@ export async function getWallet(userId: string) {
      WHERE p.user_id = $1
        AND p.status = 'pending'
        AND COALESCE(p.metadata->>'purpose', 'deposit') = 'deposit'
+       AND COALESCE(m.adapter, 'manual') NOT IN ('korapay', 'card', 'paystack')
      ORDER BY p.created_at DESC
      LIMIT 8`,
     [userId]
@@ -243,6 +260,19 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
     [methodCode]
   );
   if (!method) throw new AppError("Payment method is not available");
+  if (isCardPaymentAdapter(method.adapter)) {
+    await query(
+      `UPDATE payments p
+       SET status = 'cancelled', updated_at = NOW()
+       FROM payment_methods m
+       WHERE m.id = p.method_id
+         AND p.user_id = $1
+         AND p.status = 'pending'
+         AND COALESCE(p.metadata->>'purpose', 'deposit') = 'deposit'
+         AND m.adapter IN ('korapay', 'card', 'paystack')`,
+      [user.id]
+    );
+  }
 
   const depositCode = await ensureDepositCode(user.id);
   const adapterName = String(method.adapter);

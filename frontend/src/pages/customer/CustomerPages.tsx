@@ -506,20 +506,6 @@ export function WalletPage() {
               : "I have paid — submit for confirmation"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
-          {pendingKorapay.length > 0 && (
-            <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm dark:border-brand-500/30 dark:bg-brand-500/10">
-              <p className="font-semibold text-brand-900 dark:text-brand-100">Waiting for Korapay</p>
-              <p className="text-xs text-slate-600 dark:text-slate-300">No admin approval. Your wallet is credited automatically after Korapay confirms.</p>
-              {pendingKorapay.map((p) => (
-                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-slate-700 dark:text-slate-200">
-                  <p>{money(Number(p.amount))} · {p.method_name || "Korapay"}</p>
-                  {p.checkout_url ? (
-                    <Button type="button" variant="outline" onClick={() => window.location.assign(p.checkout_url!)}>Finish payment</Button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
           {pendingManual.length > 0 && selected?.adapter === "manual" && (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
               <p className="font-semibold text-amber-900 dark:text-amber-100">Waiting for admin confirmation</p>
