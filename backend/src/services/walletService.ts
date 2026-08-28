@@ -7,6 +7,7 @@ import { getPaymentAdapter } from "../providers/payment/index.js";
 import { ensureDepositCode } from "./depositCode.js";
 import { config } from "../config.js";
 import type { AuthUser } from "../middleware/auth.js";
+import { MIN_WALLET_DEPOSIT_GHS } from "../validators.js";
 import {
   getKorapayFeeSettings,
   isCardPaymentAdapter,
@@ -234,6 +235,9 @@ export async function initiateDirectedPayment(
 }
 
 export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string, returnUrl?: string, checkoutCurrency?: string) {
+  if (amount < MIN_WALLET_DEPOSIT_GHS) {
+    throw new AppError(`Minimum deposit is GHS ${MIN_WALLET_DEPOSIT_GHS}`, 400);
+  }
   const method = await queryOne<Record<string, unknown>>(
     `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
     [methodCode]

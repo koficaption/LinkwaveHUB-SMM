@@ -207,8 +207,10 @@ export const orderSchema = z.object({
   storeSlug: z.string().max(80).optional(),
 });
 
+export const MIN_WALLET_DEPOSIT_GHS = 20;
+
 export const walletDepositSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().min(MIN_WALLET_DEPOSIT_GHS, `Minimum deposit is GHS ${MIN_WALLET_DEPOSIT_GHS}`),
   methodCode: z.string().min(2).max(40),
   returnUrl: z.string().url().max(500).optional(),
   checkoutCurrency: z.string().trim().min(3).max(8).optional(),

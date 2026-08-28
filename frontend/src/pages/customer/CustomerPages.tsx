@@ -23,8 +23,18 @@ import { quoteKorapayFees } from "@/utils/korapayFees";
 import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
 import { getDisplayCurrency } from "@/utils/currency";
 
-function isCardMethod(adapter?: string) {
-  return adapter === "korapay" || adapter === "paystack" || adapter === "card";
+function isCardMethod(adapter?: string | null) {
+  const code = String(adapter || "").toLowerCase();
+  return code === "korapay" || code === "paystack" || code === "card";
+}
+
+const MIN_WALLET_DEPOSIT_GHS = 20;
+
+function isAutomaticPending(p: NonNullable<Wallet["pending_deposits"]>[number]) {
+  if (isCardMethod(p.adapter)) return true;
+  if (p.checkout_url) return true;
+  const label = `${p.method_name || ""} ${p.instructions || ""}`.toLowerCase();
+  return label.includes("korapay") || label.includes("paystack") || /\bcard\b/.test(label);
 }
 
 async function copyText(value: string, label = "Copied") {
@@ -355,7 +365,7 @@ export function WalletPage() {
   });
   const tx = useQuery({ queryKey: ["tx"], queryFn: () => api<Paginated<Record<string, unknown>>>("/wallet/transactions") });
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
-  const [amount, setAmount] = useState("50");
+  const [amount, setAmount] = useState(String(MIN_WALLET_DEPOSIT_GHS));
   const [method, setMethod] = useState("");
   const [checkoutCurrency, setCheckoutCurrency] = useState("");
   const [lastInstructions, setLastInstructions] = useState("");
@@ -389,6 +399,13 @@ export function WalletPage() {
         window.location.assign(data.checkoutUrl);
         return;
       }
+      if (isCardMethod(selected?.adapter)) {
+        toast.success("Waiting for Korapay. Your wallet is credited automatically — no admin approval.");
+        await qc.invalidateQueries({ queryKey: ["wallet"] });
+        await qc.invalidateQueries({ queryKey: ["me"] });
+        await qc.invalidateQueries({ queryKey: ["tx"] });
+        return;
+      }
       setLastInstructions(data.instructions || "Payment submitted. Admin will confirm and credit your wallet.");
       toast.success("Submitted. Admin will confirm this payment, then it will appear in your wallet.");
       await qc.invalidateQueries({ queryKey: ["wallet"] });
@@ -408,8 +425,10 @@ export function WalletPage() {
     : null;
   const paymentCode = w?.deposit_code || me?.user.deposit_code || "";
   const pending = w?.pending_deposits ?? [];
-  const pendingManual = pending.filter((p) => !isCardMethod(p.adapter ?? undefined));
-  const pendingKorapay = pending.filter((p) => isCardMethod(p.adapter ?? undefined));
+  const korapaySelected = isCardMethod(selected?.adapter);
+  const pendingKorapay = pending.filter((p) => isAutomaticPending(p) || (korapaySelected && !p.adapter));
+  const pendingManual = pending.filter((p) => !isAutomaticPending(p) && !(korapaySelected && !p.adapter));
+  const belowMin = !Number.isFinite(depositAmount) || depositAmount < MIN_WALLET_DEPOSIT_GHS;
   usePendingKorapayVerify(pendingKorapay.map((p) => p.reference));
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -425,7 +444,11 @@ export function WalletPage() {
           {selected?.adapter === "manual" && <UniquePaymentCode code={paymentCode} />}
           <label className="block">
             <span className="label">Amount to add (GHS)</span>
-            <Input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input type="number" min={MIN_WALLET_DEPOSIT_GHS} step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <p className="mt-1 text-xs text-slate-500">Minimum {money(MIN_WALLET_DEPOSIT_GHS, "GHS")}.</p>
+            {belowMin && (
+              <p className="mt-1 text-xs font-semibold text-rose-600">Enter at least {money(MIN_WALLET_DEPOSIT_GHS, "GHS")}.</p>
+            )}
           </label>
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
             {methods.data?.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
@@ -477,7 +500,7 @@ export function WalletPage() {
           {selected?.adapter === "manual" && (
             <p className="text-xs text-slate-500">Send the money first, then tap below. Admin matches your unique code and amount, confirms, and the balance appears in your account.</p>
           )}
-          <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying}>
+          <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying || belowMin}>
             {verifying ? "Confirming payment…" : deposit.isPending ? "Submitting…" : isCardMethod(selected?.adapter)
               ? `Pay ${money(korapayQuote?.total ?? localAmount, selectedMarket?.currency || "GHS")} with Korapay`
               : "I have paid — submit for confirmation"}
@@ -497,7 +520,7 @@ export function WalletPage() {
               ))}
             </div>
           )}
-          {pendingManual.length > 0 && (
+          {pendingManual.length > 0 && selected?.adapter === "manual" && (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
               <p className="font-semibold text-amber-900 dark:text-amber-100">Waiting for admin confirmation</p>
               {pendingManual.map((p) => (
