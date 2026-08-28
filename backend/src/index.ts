@@ -18,6 +18,7 @@ import { isAllowedWebHost, captureReferralFromRequest } from "./utils.js";
 import { syncRefillStatuses } from "./services/refillService.js";
 import { syncWebhookDeliveries } from "./services/apiWebhookService.js";
 import { syncOpenOrdersFromProvider } from "./services/orderService.js";
+import { ensureKorapayPaymentMethod } from "./services/walletService.js";
 
 const app = express();
 
@@ -113,6 +114,7 @@ async function start() {
   await migrate();
   await seedIfEmpty();
   await ensurePrimaryAdmin();
+  await ensureKorapayPaymentMethod();
   app.listen(config.port, "0.0.0.0", () => {
     console.log(`LinkBoost Growth API listening on http://0.0.0.0:${config.port}`);
   });

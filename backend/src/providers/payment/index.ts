@@ -1,6 +1,20 @@
 import type { PaymentAdapter, PaymentInitInput, PaymentInitResult, PaymentVerifyResult } from "./types.js";
 import { AppError } from "../../errors.js";
 import { config } from "../../config.js";
+import { decryptSecret, looksEncrypted } from "../../utils.js";
+
+function resolveKorapaySecret(cfg?: Record<string, unknown>) {
+  const raw = String(cfg?.secretKey || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "");
+  if (!raw) return "";
+  if (looksEncrypted(raw)) {
+    try {
+      return decryptSecret(raw);
+    } catch {
+      return "";
+    }
+  }
+  return raw;
+}
 
 export const mockAdapter: PaymentAdapter = {
   code: "mock",
@@ -54,7 +68,7 @@ export const manualAdapter: PaymentAdapter = {
 export const korapayAdapter: PaymentAdapter = {
   code: "korapay",
   async initialize(input: PaymentInitInput): Promise<PaymentInitResult> {
-    const secret = (input.config?.secretKey as string) || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY;
+    const secret = resolveKorapaySecret(input.config);
     if (!secret) {
       throw new AppError("Automatic Korapay checkout is not configured. Add KORAPAY_SECRET_KEY on the server.", 503);
     }
@@ -101,7 +115,7 @@ export const korapayAdapter: PaymentAdapter = {
     };
   },
   async verify(reference: string, cfg?: Record<string, unknown>): Promise<PaymentVerifyResult> {
-    const secret = (cfg?.secretKey as string) || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY;
+    const secret = resolveKorapaySecret(cfg);
     if (!secret) return { success: false, reference };
     const response = await fetch(
       `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,

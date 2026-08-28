@@ -680,3 +680,46 @@ export async function listAllWallets(search?: string) {
     params
   );
 }
+
+export async function ensureKorapayPaymentMethod() {
+  if (!config.korapaySecretKey) return;
+  const publicKey = config.korapayPublicKey || null;
+  const existing = await queryOne<{ id: string; name: string; config: Record<string, unknown> | null }>(
+    `SELECT id, name, config FROM payment_methods
+     WHERE adapter IN ('korapay', 'card', 'paystack') OR code = 'korapay'
+     ORDER BY CASE WHEN code = 'korapay' THEN 0 ELSE 1 END, sort_order
+     LIMIT 1`
+  );
+  const nextConfig = { ...(existing?.config ?? {}) };
+  delete nextConfig.secretKey;
+  delete nextConfig.apiKey;
+  if (publicKey) nextConfig.publicKey = publicKey;
+  if (existing) {
+    const rename = ["Card / Korapay", "Card / Paystack", "Korapay"].includes(String(existing.name));
+    await query(
+      `UPDATE payment_methods SET
+         is_enabled = TRUE,
+         name = CASE WHEN $3 THEN 'Korapay (automatic)' ELSE name END,
+         description = CASE
+           WHEN $3 THEN 'Pay instantly with Mobile Money in Ghana, cards/bank in Nigeria, and other Korapay countries. Wallet is credited in GHS after Korapay confirms.'
+           ELSE description
+         END,
+         config = $2::jsonb,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [existing.id, JSON.stringify(nextConfig), rename]
+    );
+  } else {
+    await query(
+      `INSERT INTO payment_methods (code, name, description, adapter, is_enabled, sort_order, config)
+       VALUES ('korapay', 'Korapay (automatic)',
+         'Pay instantly with Mobile Money in Ghana, cards/bank in Nigeria, and other Korapay countries. Wallet is credited in GHS after Korapay confirms.',
+         'korapay', TRUE, 1, $1::jsonb)`,
+      [JSON.stringify(nextConfig)]
+    );
+  }
+  if (config.isProd) {
+    await query(`UPDATE payment_methods SET is_enabled = FALSE WHERE adapter = 'mock'`);
+  }
+  console.log("Korapay automatic checkout is enabled");
+}
