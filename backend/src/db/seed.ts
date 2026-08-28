@@ -91,7 +91,9 @@ export async function seed() {
   for (const [name, slug, icon, color, description] of platforms) {
     const row = await queryOne<{ id: string }>(
       `INSERT INTO platforms (name, slug, description, icon, color, sort_order, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6, TRUE) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6, TRUE)
+       ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, is_active = TRUE
+       RETURNING id`,
       [name, slug, description, icon, color, order++]
     );
     platformIds[slug] = row!.id;
@@ -112,7 +114,10 @@ export async function seed() {
   order = 1;
   for (const [name, slug, icon] of categories) {
     const row = await queryOne<{ id: string }>(
-      `INSERT INTO categories (name, slug, icon, sort_order, is_active) VALUES ($1,$2,$3,$4, TRUE) RETURNING id`,
+      `INSERT INTO categories (name, slug, icon, sort_order, is_active)
+       VALUES ($1,$2,$3,$4, TRUE)
+       ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, is_active = TRUE
+       RETURNING id`,
       [name, slug, icon, order++]
     );
     categoryIds[slug] = row!.id;
@@ -130,7 +135,8 @@ export async function seed() {
   for (const [platform, cats] of assignments) {
     for (const cat of cats) {
       await query(
-        `INSERT INTO platform_categories (platform_id, category_id) VALUES ($1, $2)`,
+        `INSERT INTO platform_categories (platform_id, category_id) VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
         [platformIds[platform], categoryIds[cat]]
       );
     }
