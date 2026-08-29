@@ -246,9 +246,16 @@ export const apiAdminDeveloperPatchSchema = z.object({
 
 export const orderSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().positive(),
+  quantity: z.coerce.number().int().positive(),
   target: z.string().min(3).max(500),
   storeSlug: z.string().max(80).optional(),
+});
+
+export const orderQuoteSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.coerce.number().int().positive(),
+  storeSlug: z.string().max(80).optional(),
+  manual: z.boolean().optional(),
 });
 
 export const MIN_WALLET_DEPOSIT_GHS = 20;
@@ -268,7 +275,7 @@ export const ticketSchema = z.object({
 });
 
 export const contactAdminSchema = z.object({
-  quantity: z.number().int().positive(),
+  quantity: z.coerce.number().int().positive(),
   details: z.string().min(3).max(1000),
 });
 

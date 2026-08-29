@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, money, ApiError } from "@/api/client";
+import { api, money, ApiError, errorMessage } from "@/api/client";
 import type { Category, LoyaltyMe, Paginated, Platform, Product } from "@/types";
 import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,8 +13,9 @@ import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollow
 import { ServiceCatalogFilters, categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
 import { OrderSelect } from "@/components/dashboard/OrderSelect";
 import { productRefill } from "@/utils/refill";
-import { publicProductName, isEachPrice, isProviderCategory, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { publicProductName, isEachPrice, isProviderCategory, priceUnitSuffix } from "@/utils/catalog";
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
+import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
 export function NewOrderPanel() {
   const { me } = useAuth();
@@ -61,10 +62,14 @@ export function NewOrderPanel() {
     .sort((a, b) => publicProductName(a.name).localeCompare(publicProductName(b.name)));
 
   const selected = visibleProducts.find((p) => p.id === productId);
-  const unit = Number(selected?.display_price_per_1000 ?? selected?.price_per_1000 ?? 0);
   const qty = Number(quantity || selected?.min_quantity || 0);
   const each = isEachPrice(selected);
-  const total = selected ? orderTotal(unit, qty, each ? "each" : "per_1000") : 0;
+  const quote = useOrderQuote(selected, qty, {
+    storeSlug: me?.panel?.store_slug,
+    enabled: Boolean(selected) && !isContactAdminProduct(selected) && qty > 0,
+  });
+  const unit = Number(quote.data?.unitPrice ?? selected?.display_price_per_1000 ?? selected?.price_per_1000 ?? 0);
+  const total = quote.data?.charge ?? (selected ? localOrderTotal(selected, qty) : 0);
 
   useEffect(() => {
     if (selected) setQuantity(String(selected.min_quantity));
@@ -88,7 +93,7 @@ export function NewOrderPanel() {
       await qc.invalidateQueries({ queryKey: ["my-orders"] });
       await qc.invalidateQueries({ queryKey: ["wallet"] });
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place order"),
+    onError: (e) => toast.error(errorMessage(e, e instanceof ApiError ? e.message : "Could not place order")),
   });
 
   const visibleCategories = useMemo(
@@ -216,13 +221,13 @@ export function NewOrderPanel() {
           <div className="grid gap-3 rounded-2xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
             <p>
               <span className="text-muted">Price</span><br />
-              <strong>{money(unit)} {each ? "per 1" : "per 1,000"}</strong>
+              <strong>{money(unit)} {quote.data?.priceUnit === "each" || each ? "per 1" : "per 1,000"}</strong>
             </p>
             <p><span className="text-muted">Current Balance</span><br /><strong>{me?.wallet ? money(me.wallet.available_balance ?? me.wallet.balance) : "—"}</strong></p>
             <p><span className="text-muted">Estimated Delivery</span><br /><strong>{selected.avg_delivery_time || "—"}</strong></p>
             <p><span className="text-muted">Total</span><br /><strong className="text-lg text-brand-700">{money(total)}</strong></p>
             <p className="sm:col-span-2 text-xs text-muted">
-              {each
+              {quote.data?.priceUnit === "each" || each
                 ? `${money(unit)} per 1 × ${qty.toLocaleString()} = ${money(total)}. Quantity 1 costs ${money(unit)}, not ${money(unit / 1000)}.`
                 : `${money(unit)} per 1,000 × ${qty.toLocaleString()} = ${money(total)}.`}
             </p>

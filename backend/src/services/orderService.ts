@@ -106,11 +106,17 @@ export async function quoteOrder(
     unit = applyLoyaltyDiscount(unit, await customerLoyaltyDiscountPercent(user));
   }
 
-  const priceUnit = product.price_unit === "each" || looksLikePerUnitProduct(
+  const priceUnit = looksLikePerUnitProduct(
     String(product.name || ""),
     Number(product.min_quantity),
     Number(product.max_quantity),
-    { cost: Number(product.cost_per_1000), providerServiceId: String(product.provider_service_id ?? "") }
+    {
+      cost: Number(product.cost_per_1000),
+      providerServiceId: String(product.provider_service_id ?? ""),
+      contactAdmin: Boolean(product.contact_admin) || Boolean(options?.manual),
+      serviceType: String(product.service_type ?? ""),
+      priceUnit: String(product.price_unit ?? ""),
+    }
   ) ? "each" as const : "per_1000" as const;
   const charge = calcCharge(unit, quantity, priceUnit);
   const cost = calcCharge(Number(product.cost_per_1000), quantity, priceUnit);
@@ -124,6 +130,25 @@ export async function quoteOrder(
     profit: Number((charge - cost).toFixed(4)),
     resellerId,
     resellerCost,
+  };
+}
+
+export async function publicQuote(
+  productId: string,
+  quantity: number,
+  user?: AuthUser | null,
+  storeSlug?: string,
+  options?: { viaApi?: boolean; manual?: boolean }
+) {
+  const quote = await quoteOrder(productId, quantity, user, storeSlug, options);
+  return {
+    productId: String(quote.product.id),
+    quantity: quote.quantity,
+    unitPrice: quote.unitPricePer1000,
+    priceUnit: quote.priceUnit,
+    charge: quote.charge,
+    minQuantity: Number(quote.product.min_quantity),
+    maxQuantity: Number(quote.product.max_quantity),
   };
 }
 
@@ -168,12 +193,16 @@ export async function placeOrder(input: {
       client
     );
     if (!wallet) throw new AppError("Wallet not found", 400);
-    const balance = Number(wallet.balance);
-    if (balance < quote.charge) {
-      throw new AppError("Insufficient wallet balance", 400);
+    const balance = Number(Number(wallet.balance).toFixed(4));
+    const charge = Number(Number(quote.charge).toFixed(4));
+    if (balance < charge) {
+      throw new AppError(
+        `Insufficient wallet balance. This order is GHS ${charge.toFixed(2)}. You have GHS ${balance.toFixed(2)}.`,
+        400
+      );
     }
 
-    const newBalance = Number((balance - quote.charge).toFixed(4));
+    const newBalance = Number((balance - charge).toFixed(4));
     await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, newBalance], client);
 
     const publicId = publicOrderId();
@@ -197,7 +226,7 @@ export async function placeOrder(input: {
         quote.resellerId,
         input.quantity,
         target,
-        quote.charge,
+        charge,
         quote.cost,
         quote.resellerId ? platformProfit : quote.profit,
         resellerProfit,
@@ -214,7 +243,7 @@ export async function placeOrder(input: {
     await query(
       `INSERT INTO order_items (order_id, product_id, quantity, unit_price, total)
        VALUES ($1,$2,$3,$4,$5)`,
-      [order!.id, input.productId, input.quantity, quote.unitPricePer1000, quote.charge],
+      [order!.id, input.productId, input.quantity, quote.unitPricePer1000, charge],
       client
     );
     await query(
@@ -229,7 +258,7 @@ export async function placeOrder(input: {
       [
         wallet.id,
         input.user.id,
-        -quote.charge,
+        -charge,
         newBalance,
         publicId,
         `Order ${publicId}`,

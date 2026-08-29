@@ -29,6 +29,7 @@ import {
   productSchema,
   productBulkSchema,
   orderSchema,
+  orderQuoteSchema,
   walletDepositSchema,
   ticketSchema,
   ticketReplySchema,
@@ -311,8 +312,10 @@ router.get("/orders", requireAuth, asyncHandler(async (req, res) => {
 router.get("/orders/:id", requireAuth, asyncHandler(async (req, res) => {
   res.json(ok(await orders.getOrder(req.params.id, req.user!)));
 }));
-router.post("/orders/quote", optionalAuth, validate(orderSchema), asyncHandler(async (req, res) => {
-  res.json(ok(await orders.quoteOrder(req.body.productId, req.body.quantity, req.user, req.body.storeSlug)));
+router.post("/orders/quote", optionalAuth, validate(orderQuoteSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await orders.publicQuote(req.body.productId, req.body.quantity, req.user, req.body.storeSlug, {
+    manual: req.body.manual,
+  })));
 }));
 router.post("/orders", requireAuth, validate(orderSchema), asyncHandler(async (req, res) => {
   const order = await orders.placeOrder({

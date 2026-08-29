@@ -184,10 +184,22 @@ export function looksLikePerUnitProduct(
   name: string,
   minQty: number,
   maxQty: number,
-  opts?: { cost?: number; providerServiceId?: string | null }
+  opts?: {
+    cost?: number;
+    providerServiceId?: string | null;
+    contactAdmin?: boolean;
+    serviceType?: string | null;
+    priceUnit?: string | null;
+  }
 ) {
+  if (opts?.priceUnit === "each") return true;
+  const type = String(opts?.serviceType || "");
+  if (type === "account" || type === "digital_product") return true;
+  if (opts?.contactAdmin) return true;
   // Netflix-style packages are sold per 1 (₵120 for qty 1), never per 1,000.
+  // Do not treat SMM titles that merely contain "subscription" as per-unit.
   if (/netflix/i.test(name)) return true;
+  if (type === "subscription" && !String(opts?.providerServiceId || "").trim()) return true;
   if (looksLikeContactAdminProduct(name)) return true;
   if (!Number.isFinite(minQty) || minQty > 10 || !Number.isFinite(maxQty) || maxQty > 10) return false;
   const providerId = String(opts?.providerServiceId || "").trim();

@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { api, money, ApiError } from "@/api/client";
+import { api, money, ApiError, errorMessage } from "@/api/client";
 import type { Category, Platform, Product } from "@/types";
 import { Button, Card, EmptyState, Input, Pagination, Skeleton } from "@/components/ui";
 import { PlatformIcon } from "@/components/ui/PlatformIcon";
@@ -14,11 +14,12 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productRefill } from "@/utils/refill";
 import { productCancel } from "@/utils/cancel";
-import { publicCategoryName, publicProductName, isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import { publicCategoryName, publicProductName, isEachPrice, priceUnitSuffix } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
 import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
+import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
 export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -150,10 +151,18 @@ export function ServiceDetailPage() {
     queryKey: ["product", slug, storeSlug],
     queryFn: () => api<Product>(`/products/${slug}${storeSlug ? `?storeSlug=${encodeURIComponent(storeSlug)}` : ""}`),
   });
-  const form = useForm({ resolver: zodResolver(orderSchema), defaultValues: { quantity: 100, target: "" } });
+  const form = useForm({ resolver: zodResolver(orderSchema), defaultValues: { quantity: 1, target: "" } });
   const quantity = form.watch("quantity");
+  useEffect(() => {
+    if (!product.data) return;
+    form.setValue("quantity", isEachPrice(product.data) ? 1 : Number(product.data.min_quantity || 100));
+  }, [product.data?.id]);
   const unit = Number(product.data?.display_price_per_1000 ?? product.data?.price_per_1000 ?? 0);
-  const total = useMemo(() => orderTotal(unit, Number(quantity || 0), isEachPrice(product.data) ? "each" : "per_1000"), [unit, quantity, product.data]);
+  const quote = useOrderQuote(product.data, Number(quantity || 0), {
+    storeSlug,
+    enabled: Boolean(product.data) && !isContactAdminProduct(product.data) && Number(quantity || 0) > 0,
+  });
+  const total = quote.data?.charge ?? localOrderTotal(product.data, Number(quantity || 0));
 
   const mutation = useMutation({
     mutationFn: (values: { quantity: number; target: string }) =>
@@ -163,7 +172,7 @@ export function ServiceDetailPage() {
       await qc.invalidateQueries({ queryKey: ["me"] });
       navigate("/app/orders");
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place order"),
+    onError: (e) => toast.error(errorMessage(e, e instanceof ApiError ? e.message : "Could not place order")),
   });
 
   if (product.isLoading) return <div className="container-page py-16"><Skeleton className="h-80" /></div>;

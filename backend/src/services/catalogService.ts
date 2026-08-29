@@ -50,7 +50,13 @@ function applyProductCreateDefaults(input: Record<string, unknown>) {
     name,
     Number(input.minQuantity || 1),
     Number(input.maxQuantity || 1),
-    { cost: Number(input.costPer1000 || 0), providerServiceId: input.providerServiceId == null ? "" : String(input.providerServiceId) }
+    {
+      cost: Number(input.costPer1000 || 0),
+      providerServiceId: input.providerServiceId == null ? "" : String(input.providerServiceId),
+      contactAdmin,
+      serviceType,
+      priceUnit: String(input.priceUnit || ""),
+    }
   );
   const stock = input.stock == null || input.stock === "" ? null : Number(input.stock);
   const defaultMin = perUnit ? 1 : 100;
@@ -596,7 +602,7 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
     currentFeatures.push(String(input.orderInstructions));
   }
   const priceUnit = input.priceUnit
-    ?? (input.name && looksLikePerUnitProduct(
+    ?? (looksLikePerUnitProduct(
       String(input.name ?? current.name ?? ""),
       Number(input.minQuantity ?? current.min_quantity),
       Number(input.maxQuantity ?? current.max_quantity),
@@ -605,6 +611,9 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
         providerServiceId: input.providerServiceId === undefined
           ? String(current.provider_service_id ?? "")
           : String(input.providerServiceId ?? ""),
+        contactAdmin: typeof input.contactAdmin === "boolean" ? input.contactAdmin : Boolean(current.contact_admin),
+        serviceType: String(input.serviceType ?? current.service_type ?? ""),
+        priceUnit: String(input.priceUnit ?? current.price_unit ?? ""),
       }
     ) ? "each" : null);
   await query(
@@ -782,11 +791,17 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   }
   product.category_name = publicCategoryName(String(product.category_name || ""));
   product.description = publicProductDescription(product.description as string | null);
-  const perUnit = product.price_unit === "each" || looksLikePerUnitProduct(
+  const perUnit = looksLikePerUnitProduct(
     String(product.name || ""),
     Number(product.min_quantity),
     Number(product.max_quantity),
-    { cost: Number(product.cost_per_1000), providerServiceId: String(product.provider_service_id ?? "") }
+    {
+      cost: Number(product.cost_per_1000),
+      providerServiceId: String(product.provider_service_id ?? ""),
+      contactAdmin: Boolean(product.contact_admin),
+      serviceType: String(product.service_type ?? ""),
+      priceUnit: String(product.price_unit ?? ""),
+    }
   );
   if (!admin) {
     product.name = publicProductName(String(product.name || ""));

@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, money, ApiError } from "@/api/client";
+import { api, money, ApiError, errorMessage } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Input, Textarea } from "@/components/ui";
-import type { Product } from "@/types";
-import { isEachPrice, orderTotal, priceUnitSuffix } from "@/utils/catalog";
+import type { Product, Wallet } from "@/types";
+import { isEachPrice, priceUnitSuffix } from "@/utils/catalog";
+import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
 export function isContactAdminProduct(product?: Product | null) {
   return Boolean(product?.contact_admin);
@@ -32,12 +33,21 @@ export function ContactAdminPanel({ product }: { product: Product }) {
     setDetails("");
   }, [product.id]);
 
-  const unit = Number(product.display_price_per_1000 ?? product.price_per_1000 ?? 0);
-  const qty = Number(quantity || 1);
+  const qty = Math.max(1, Math.floor(Number(quantity || 1) || 1));
   const each = isEachPrice(product);
-  const total = orderTotal(unit, qty, each ? "each" : "per_1000");
-  const balance = Number(me?.wallet?.available_balance ?? me?.wallet?.balance ?? 0);
+  const unit = Number(product.display_price_per_1000 ?? product.price_per_1000 ?? 0);
+  const quote = useOrderQuote(product, qty, { storeSlug: me?.panel?.store_slug, manual: true, enabled: Boolean(me) });
+  const wallet = useQuery({
+    queryKey: ["wallet"],
+    queryFn: () => api<Wallet>("/wallet"),
+    enabled: Boolean(me),
+  });
+  const total = quote.data?.charge ?? localOrderTotal(product, qty);
+  const balance = Number(
+    wallet.data?.available_balance ?? wallet.data?.balance ?? me?.wallet?.available_balance ?? me?.wallet?.balance ?? 0
+  );
   const ordersPath = me?.user.role === "admin" ? "/admin/orders" : "/app/orders";
+  const short = balance + 0.0001 < total;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -56,10 +66,10 @@ export function ContactAdminPanel({ product }: { product: Product }) {
       await qc.invalidateQueries({ queryKey: ["admin-orders"] });
       navigate(ordersPath);
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not place the order"),
+    onError: (e) => toast.error(errorMessage(e, e instanceof ApiError ? e.message : "Could not place the order")),
   });
 
-  function submit() {
+  async function submit() {
     if (!me) {
       navigate("/login");
       return;
@@ -72,8 +82,15 @@ export function ContactAdminPanel({ product }: { product: Product }) {
       toast.error("Enter a WhatsApp number or email");
       return;
     }
-    if (balance < total) {
-      toast.error("Insufficient wallet balance. Add funds first.");
+    const fresh = await wallet.refetch();
+    const liveBalance = Number(
+      fresh.data?.available_balance ?? fresh.data?.balance ?? balance
+    );
+    const liveTotal = quote.data?.charge ?? total;
+    if (liveBalance + 0.0001 < liveTotal) {
+      toast.error(
+        `Insufficient wallet balance. This order is ${money(liveTotal)}. You have ${money(liveBalance)}.`
+      );
       return;
     }
     mutation.mutate();
@@ -92,24 +109,29 @@ export function ContactAdminPanel({ product }: { product: Product }) {
       <div className="grid gap-3 rounded-xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
         <p>
           <span className="text-muted">Price</span><br />
-          <strong>{money(unit)} {priceUnitSuffix(product)}</strong>
+          <strong>{money(quote.data?.unitPrice ?? unit)} {quote.data?.priceUnit === "per_1000" ? "/ 1,000" : priceUnitSuffix(product)}</strong>
         </p>
         <p>
           <span className="text-muted">Current Balance</span><br />
-          <strong>{me?.wallet ? money(balance) : "—"}</strong>
+          <strong>{me?.wallet || wallet.data ? money(balance) : "—"}</strong>
         </p>
         <p className="sm:col-span-2">
           <span className="text-muted">Total</span><br />
           <strong className="text-lg text-brand-700">{money(total)}</strong>
         </p>
+        {each || quote.data?.priceUnit === "each" ? (
+          <p className="sm:col-span-2 text-xs text-muted">
+            {money(quote.data?.unitPrice ?? unit)} per 1 × {qty.toLocaleString()} = {money(total)}.
+          </p>
+        ) : null}
       </div>
-      {me && balance < total && (
+      {me && short && (
         <p className="text-sm text-rose-600">
           Not enough balance.{" "}
           <Link className="font-semibold text-brand-700" to="/app/wallet">Add funds</Link>
         </p>
       )}
-      <Button className="h-12 w-full text-base uppercase tracking-wide" disabled={mutation.isPending} onClick={submit}>
+      <Button className="h-12 w-full text-base uppercase tracking-wide" disabled={mutation.isPending} onClick={() => void submit()}>
         {mutation.isPending ? "Placing order…" : me ? "Place order" : "Login to order"}
       </Button>
     </div>

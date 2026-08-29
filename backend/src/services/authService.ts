@@ -133,7 +133,13 @@ export async function loginUser(email: string, password: string, ip?: string, us
 export async function getMe(userId: string) {
   const user = await queryOne(`SELECT ${publicUser} FROM users WHERE id = $1`, [userId]);
   if (!user) throw new AppError("User not found", 404);
-  const wallet = await queryOne(`SELECT id, balance, currency FROM wallets WHERE user_id = $1`, [userId]);
+  const walletRow = await queryOne<{ id: string; balance: string; currency: string }>(
+    `SELECT id, balance, currency FROM wallets WHERE user_id = $1`,
+    [userId]
+  );
+  const wallet = walletRow
+    ? { ...walletRow, available_balance: Number(walletRow.balance) }
+    : null;
   const reseller = await queryOne(
     `SELECT id, status, store_name, store_slug, logo_url, brand_color, tagline, markup_percent,
             support_email, contact_phone, whatsapp_number, profit_balance

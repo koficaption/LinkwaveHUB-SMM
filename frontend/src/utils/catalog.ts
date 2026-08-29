@@ -22,9 +22,14 @@ export function isEachPrice(product?: {
   name?: string;
   min_quantity?: number;
   max_quantity?: number;
+  contact_admin?: boolean;
+  service_type?: string;
 } | null) {
   if (!product) return false;
   if (product.price_unit === "each") return true;
+  const type = product.service_type;
+  if (type === "account" || type === "digital_product") return true;
+  if (product.contact_admin) return true;
   return /netflix/i.test(product.name || "");
 }
 
