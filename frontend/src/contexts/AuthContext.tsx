@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { ApiError, api } from "@/api/client";
 import { storedReferralCode, claimStoredReferral } from "@/pages/customer/AffiliatePages";
 import { activeStoreSlug, registerStoreSlug } from "@/utils/panel";
-import { setStoredToken } from "@/api/token";
+import { setStoredToken, markJustLoggedIn, clearJustLoggedIn } from "@/api/token";
 import type { PanelStore, User, Wallet } from "@/types";
 
 type Me = {
@@ -53,6 +53,7 @@ async function finishLogin(token: string, qc: QueryClient): Promise<Me> {
   setStoredToken(token);
   const me = await api<Me>("/auth/me");
   qc.setQueryData(["me"], me);
+  markJustLoggedIn(me.user.id);
   return me;
 }
 
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async logout() {
         setStoredToken(null);
+        clearJustLoggedIn();
         await api("/auth/logout", { method: "POST" }).catch(() => undefined);
         qc.setQueryData(["me"], null);
       },

@@ -275,6 +275,13 @@ export type PublicSettings = {
   logoUrl?: string;
   usdToGhs?: number;
   channels?: ChannelLink[];
+  loginPopup?: {
+    enabled?: boolean;
+    title?: string;
+    body?: string;
+    url?: string;
+    button?: string;
+  };
   affiliates?: {
     enabled?: boolean;
     commissionPercent?: number;

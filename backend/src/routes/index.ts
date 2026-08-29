@@ -717,6 +717,9 @@ admin.post("/notifications", validate(adminBroadcastSchema), asyncHandler(async 
     body: req.body.body,
     audience: req.body.audience,
     userId: req.body.userId,
+    linkUrl: req.body.linkUrl,
+    linkLabel: req.body.linkLabel,
+    popup: req.body.popup,
     actor: req.user!,
     ip: clientIp(req),
   }), "Notification sent"));

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, formatDate, money, ApiError } from "@/api/client";
+import { api, formatDate, money, ApiError, errorMessage } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
 import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
 import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
@@ -10,6 +10,7 @@ import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
 import { KORAPAY_MARKETS } from "@/utils/korapayMarkets";
+import { normalizeHttpUrl, safeHttpUrl } from "@/utils/httpUrl";
 
 function isCardMethod(adapter?: string | null) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -1492,6 +1493,9 @@ function NotificationSettingsCard({
         orderNotifications: values.orderNotifications === "true",
         depositNotifications: values.depositNotifications === "true",
       })}>Save notifications</Button>
+      <p className="mt-3 text-xs text-slate-500">
+        To pop a channel join message on login, open <Link to="/admin/notifications" className="font-semibold text-brand-700">Notifications</Link> and save the login popup.
+      </p>
     </Card>
   );
 }
@@ -1504,10 +1508,92 @@ const audienceLabels: Record<string, string> = {
   user: "One user",
 };
 
+function LoginPopupSettingsCard() {
+  const qc = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
+  const source = settings.data?.notifications ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    loginPopupEnabled: String(source.loginPopupEnabled === true),
+    loginPopupTitle: String(source.loginPopupTitle ?? "Join our channel"),
+    loginPopupBody: String(source.loginPopupBody ?? "Get updates, promos, and faster support. Tap below to join."),
+    loginPopupUrl: String(source.loginPopupUrl ?? ""),
+    loginPopupButton: String(source.loginPopupButton ?? "Join channel"),
+  };
+  const save = useMutation({
+    mutationFn: async () => {
+      const current = settings.data?.notifications;
+      if (!current) throw new Error("Settings are still loading");
+      const url = normalizeHttpUrl(values.loginPopupUrl);
+      const enabled = values.loginPopupEnabled === "true";
+      if (enabled && !url) throw new Error("Paste your YouTube, WhatsApp, or Telegram channel link first");
+      await api("/admin/settings/notifications", {
+        method: "PUT",
+        body: JSON.stringify({
+          value: {
+            ...current,
+            loginPopupEnabled: enabled && Boolean(url),
+            loginPopupTitle: values.loginPopupTitle.trim() || "Join our channel",
+            loginPopupBody: values.loginPopupBody.trim(),
+            loginPopupUrl: url,
+            loginPopupButton: values.loginPopupButton.trim() || "Join channel",
+          },
+        }),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Login popup saved");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["public-settings"] });
+    },
+    onError: (e) => toast.error(errorMessage(e, e instanceof Error ? e.message : "Could not save login popup")),
+  });
+  return (
+    <Card>
+      <h2 className="font-bold">Login popup</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        When a customer or reseller signs in, this pops up on their screen with your channel link so they can join.
+      </p>
+      <div className="mt-3 space-y-3">
+        <label className="block">
+          <span className="label">Show on login</span>
+          <Select value={values.loginPopupEnabled} onChange={(e) => setForm({ ...values, loginPopupEnabled: e.target.value })}>
+            <option value="true">On — pop up after sign-in</option>
+            <option value="false">Off</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Title</span>
+          <Input value={values.loginPopupTitle} onChange={(e) => setForm({ ...values, loginPopupTitle: e.target.value })} placeholder="Join our channel" />
+        </label>
+        <label className="block">
+          <span className="label">Message</span>
+          <Textarea value={values.loginPopupBody} onChange={(e) => setForm({ ...values, loginPopupBody: e.target.value })} placeholder="Get updates, promos, and faster support. Tap below to join." />
+        </label>
+        <label className="block">
+          <span className="label">Channel link</span>
+          <Input value={values.loginPopupUrl} onChange={(e) => setForm({ ...values, loginPopupUrl: e.target.value })} placeholder="https://youtube.com/@yourchannel" />
+          <span className="mt-1 block text-xs text-slate-500">YouTube, WhatsApp Channel, Telegram, or any https invite link.</span>
+        </label>
+        <label className="block">
+          <span className="label">Button text</span>
+          <Input value={values.loginPopupButton} onChange={(e) => setForm({ ...values, loginPopupButton: e.target.value })} placeholder="Join channel" />
+        </label>
+      </div>
+      <Button className="mt-4" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate()}>
+        {save.isPending ? "Saving…" : "Save login popup"}
+      </Button>
+    </Card>
+  );
+}
+
 export function AdminNotifications() {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("Join channel");
+  const [popup, setPopup] = useState(true);
   const [audience, setAudience] = useState("customers");
   const [userSearch, setUserSearch] = useState("");
   const [picked, setPicked] = useState<User | null>(null);
@@ -1536,6 +1622,9 @@ export function AdminNotifications() {
         body,
         audience,
         userId: audience === "user" ? picked?.id : undefined,
+        linkUrl: normalizeHttpUrl(linkUrl) || undefined,
+        linkLabel: linkLabel.trim() || undefined,
+        popup,
       }),
     }),
     onSuccess: (data) => {
@@ -1543,20 +1632,24 @@ export function AdminNotifications() {
       toast.success(`Notification sent to ${count} ${count === 1 ? "recipient" : "recipients"}`);
       setTitle("");
       setBody("");
+      setLinkUrl("");
+      setLinkLabel("Join channel");
+      setPopup(true);
       setPicked(null);
       setUserSearch("");
       qc.invalidateQueries({ queryKey: ["admin-notifications"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to send"),
+    onError: (e) => toast.error(errorMessage(e, "Failed to send")),
   });
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Notifications</h1>
-        <p className="mt-1 text-sm text-slate-500">Send an announcement to customers, resellers, or child panels. It appears in each recipient’s Notifications inbox.</p>
+        <p className="mt-1 text-sm text-slate-500">Send an announcement, or show your channel link as a popup the next time someone signs in.</p>
       </div>
+      <LoginPopupSettingsCard />
       <Card>
         <h2 className="font-bold">Compose</h2>
         <div className="mt-3 space-y-3">
@@ -1567,6 +1660,21 @@ export function AdminNotifications() {
           <label className="block">
             <span className="label">Message</span>
             <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write the message recipients will see." />
+          </label>
+          <label className="block">
+            <span className="label">Channel / join link (optional)</span>
+            <Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://youtube.com/@yourchannel or WhatsApp / Telegram link" />
+          </label>
+          <label className="block">
+            <span className="label">Button text</span>
+            <Input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} placeholder="Join channel" />
+          </label>
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
+            <input type="checkbox" className="mt-1" checked={popup} onChange={(e) => setPopup(e.target.checked)} />
+            <span>
+              <span className="block font-semibold">Pop up when they next log in</span>
+              <span className="text-xs text-slate-500">Shows this message on their screen after sign-in, with the join button if you added a link.</span>
+            </span>
           </label>
           <fieldset>
             <legend className="label mb-2">Send to</legend>
@@ -1618,7 +1726,10 @@ export function AdminNotifications() {
           )}
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-slate-500">Will send to <strong>{recipientCount}</strong> {recipientCount === 1 ? "recipient" : "recipients"}.</p>
-            <Button disabled={send.isPending || !title.trim() || !body.trim() || recipientCount < 1} onClick={() => send.mutate()}>
+            <Button disabled={send.isPending || !title.trim() || !body.trim() || recipientCount < 1} onClick={() => {
+              if (linkUrl.trim() && !normalizeHttpUrl(linkUrl)) return toast.error("Enter a valid https channel link");
+              send.mutate();
+            }}>
               {send.isPending ? "Sending…" : "Send notification"}
             </Button>
           </div>
@@ -1636,9 +1747,15 @@ export function AdminNotifications() {
                   <p className="text-xs text-slate-500">{formatDate(String(n.created_at))}</p>
                 </div>
                 <p className="text-sm text-slate-500">{String(n.body)}</p>
+                {safeHttpUrl(String(meta.linkUrl ?? "")) ? (
+                  <a href={safeHttpUrl(String(meta.linkUrl ?? ""))} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm font-semibold text-brand-700">
+                    {String(meta.linkLabel || "Join channel")}
+                  </a>
+                ) : null}
                 <p className="mt-1 text-xs text-slate-400">
                   {audienceLabels[String(meta.audience)] ?? "Audience"} · {String(meta.recipientCount ?? 0)} recipients
                   {meta.sentByName ? ` · ${String(meta.sentByName)}` : ""}
+                  {meta.popup === true ? " · Login popup" : ""}
                 </p>
               </li>
             );

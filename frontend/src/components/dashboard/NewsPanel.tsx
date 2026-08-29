@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, formatDate } from "@/api/client";
 import { EmptyState, Skeleton } from "@/components/ui";
+import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
+import { safeHttpUrl } from "@/utils/httpUrl";
 
 type Note = {
   id: string;
@@ -10,6 +12,7 @@ type Note = {
   body: string;
   created_at?: string;
   is_read?: boolean;
+  metadata?: { linkUrl?: string; linkLabel?: string } | null;
 };
 
 export function NewsPanel() {
@@ -43,7 +46,12 @@ export function NewsPanel() {
                 </p>
               )}
               <p className="font-semibold text-slate-900 dark:text-white">{n.title}</p>
-              <p className="mt-1 text-sm text-muted">{n.body}</p>
+              <LinkedText text={n.body} className="mt-1 text-sm text-muted" />
+              {safeHttpUrl(n.metadata?.linkUrl) ? (
+                <a href={safeHttpUrl(n.metadata?.linkUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-brand-700">
+                  {n.metadata?.linkLabel || "Join channel"}
+                </a>
+              ) : null}
             </li>
           ))}
         </ul>

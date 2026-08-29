@@ -292,6 +292,20 @@ export function captureReferralFromRequest(
   return code;
 }
 
+/** Public http(s) URL for channel / join links. Rejects javascript: and credentialed URLs. */
+export function safeHttpUrl(value?: string | null, max = 500): string | undefined {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.length > max) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 /** Checkout providers redirect the payer's browser here after payment. Only /app/* paths are allowed. */
 export function safeCheckoutReturnUrl(candidate: string | undefined, fallbackPath: string): string {
   const path = fallbackPath.startsWith("/") ? fallbackPath : `/${fallbackPath}`;

@@ -2,6 +2,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { writeAudit } from "./auditService.js";
+import { safeHttpUrl } from "../utils.js";
 
 export type BroadcastAudience = "customers" | "resellers" | "child_panels" | "all" | "user";
 
@@ -103,14 +104,22 @@ export async function broadcastNotification(input: {
   body: string;
   audience: BroadcastAudience;
   userId?: string;
+  linkUrl?: string;
+  linkLabel?: string;
+  popup?: boolean;
   actor: AuthUser;
   ip?: string;
 }) {
+  const linkUrl = safeHttpUrl(input.linkUrl);
+  const linkLabel = String(input.linkLabel ?? "").trim().slice(0, 80) || (linkUrl ? "Join channel" : undefined);
+  const popup = input.popup !== false;
   const { sql, params } = recipientWhere(input.audience, input.userId, 4);
   const recipientMeta = JSON.stringify({
     audience: input.audience,
     sentBy: input.actor.id,
     sentByName: input.actor.full_name,
+    popup,
+    ...(linkUrl ? { linkUrl, linkLabel } : {}),
   });
 
   const result = await withTransaction(async (client) => {
@@ -146,6 +155,8 @@ export async function broadcastNotification(input: {
           sentBy: input.actor.id,
           sentByName: input.actor.full_name,
           userId: input.userId ?? null,
+          popup,
+          ...(linkUrl ? { linkUrl, linkLabel } : {}),
         }),
       ],
       client
@@ -158,7 +169,7 @@ export async function broadcastNotification(input: {
     action: "notification.broadcast",
     targetType: "notification",
     targetId: result.log?.id,
-    details: { audience: input.audience, recipientCount: result.recipientCount, title: input.title },
+    details: { audience: input.audience, recipientCount: result.recipientCount, title: input.title, popup, linkUrl: linkUrl ?? null },
     ip: input.ip,
   });
 

@@ -1,7 +1,7 @@
 import { query, queryOne } from "../db.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
-import { encryptSecret, looksEncrypted } from "../utils.js";
+import { encryptSecret, looksEncrypted, safeHttpUrl } from "../utils.js";
 
 const defaults: Record<string, unknown> = {
   general: {
@@ -44,6 +44,11 @@ const defaults: Record<string, unknown> = {
     orderNotifications: true,
     depositNotifications: true,
     refillNotifications: true,
+    loginPopupEnabled: false,
+    loginPopupTitle: "Join our channel",
+    loginPopupBody: "Get updates, promos, and faster support. Tap below to join.",
+    loginPopupUrl: "",
+    loginPopupButton: "Join channel",
   },
   affiliates: {
     enabled: true,
@@ -123,6 +128,16 @@ export async function getSettings() {
   return map;
 }
 
+function publicLoginPopup(notes: Record<string, unknown> | undefined) {
+  const url = safeHttpUrl(String(notes?.loginPopupUrl ?? ""));
+  if (!url || notes?.loginPopupEnabled === false) return undefined;
+  if (notes?.loginPopupEnabled !== true) return undefined;
+  const title = String(notes?.loginPopupTitle ?? "").trim() || "Join our channel";
+  const body = String(notes?.loginPopupBody ?? "").trim() || "Get updates, promos, and faster support. Tap below to join.";
+  const button = String(notes?.loginPopupButton ?? "").trim() || "Join channel";
+  return { enabled: true as const, title, body, url, button };
+}
+
 export async function getPublicSettings() {
   const all = await getSettings();
   const general = all.general as Record<string, unknown>;
@@ -139,6 +154,7 @@ export async function getPublicSettings() {
     logoUrl: general.logoUrl,
     usdToGhs: Number((all.pricing as Record<string, unknown>)?.usdToGhs ?? 15.4),
     channels: (channels.items ?? []).filter((item) => item?.name && item?.url),
+    loginPopup: publicLoginPopup(all.notifications as Record<string, unknown>),
     affiliates: all.affiliates,
     payments: {
       korapayCustomerPaysFees: (all.payments as Record<string, unknown>)?.korapayCustomerPaysFees !== false,
@@ -204,6 +220,16 @@ export async function updateSettings(key: string, value: unknown, actor: AuthUse
     const nextPass = String(incoming.pass ?? "").trim();
     if (!nextPass) incoming.pass = current.pass ?? "";
     else if (!looksEncrypted(nextPass)) incoming.pass = encryptSecret(nextPass);
+    stored = incoming;
+  }
+  if (key === "notifications" && stored && typeof stored === "object" && !Array.isArray(stored)) {
+    const incoming = { ...(stored as Record<string, unknown>) };
+    const url = safeHttpUrl(String(incoming.loginPopupUrl ?? ""));
+    incoming.loginPopupUrl = url ?? "";
+    if (!url) incoming.loginPopupEnabled = false;
+    incoming.loginPopupTitle = String(incoming.loginPopupTitle ?? "").trim().slice(0, 160);
+    incoming.loginPopupBody = String(incoming.loginPopupBody ?? "").trim().slice(0, 4000);
+    incoming.loginPopupButton = String(incoming.loginPopupButton ?? "").trim().slice(0, 80) || "Join channel";
     stored = incoming;
   }
   await query(

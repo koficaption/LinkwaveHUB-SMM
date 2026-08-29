@@ -351,11 +351,19 @@ export const resellerPriceSchema = z.object({
   isEnabled: z.boolean().optional(),
 });
 
+const optionalHttpUrl = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  return blankToUndefined(value);
+}, z.string().max(500).url("Enter a valid channel link").optional());
+
 export const adminBroadcastSchema = z.object({
   title: z.string().min(2).max(160),
   body: z.string().min(2).max(4000),
   audience: z.enum(["customers", "resellers", "child_panels", "all", "user"]),
   userId: z.string().uuid().optional(),
+  linkUrl: optionalHttpUrl,
+  linkLabel: optionalText(80),
+  popup: z.boolean().optional(),
 }).superRefine((value, ctx) => {
   if (value.audience === "user" && !value.userId) {
     ctx.addIssue({ code: "custom", message: "Select a user to notify", path: ["userId"] });

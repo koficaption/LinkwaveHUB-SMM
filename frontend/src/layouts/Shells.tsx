@@ -7,6 +7,7 @@ import { Button, Skeleton } from "@/components/ui";
 import { HelpBar, panelHelp, usePublicSettings } from "@/components/ContactLinks";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AccountMenu, CurrencyButton } from "@/components/dashboard/AccountMenu";
+import { LoginAnnouncement } from "@/components/dashboard/LoginAnnouncement";
 import { cn } from "@/utils/cn";
 import { api } from "@/api/client";
 import { panelAuthPath, persistPanelSlug } from "@/utils/panel";
@@ -290,6 +291,7 @@ export function AppShell({
         </main>
       </div>
       <HelpBar details={me?.panel ? panelHelp(me.panel) : undefined} hideTickets={Boolean(me?.panel)} />
+      <LoginAnnouncement />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ContactLinks, panelHelp } from "@/components/ContactLinks";
+import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
+import { safeHttpUrl } from "@/utils/httpUrl";
 import type { PaymentMethod } from "@/types";
 import { checkoutReturnUrl, usePaystackReturn, usePendingKorapayVerify } from "@/hooks/usePaystackReturn";
 import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
@@ -708,13 +710,23 @@ export function NotificationsPage() {
         {notes.data?.map((n) => (
           <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
             <p className="font-semibold">{String(n.title)}</p>
-            <p className="text-sm text-slate-500">{String(n.body)}</p>
+            <LinkedText text={String(n.body ?? "")} className="mt-1 text-sm text-slate-500" />
             {n.created_at ? <p className="mt-1 text-xs text-slate-400">{formatDate(String(n.created_at))}</p> : null}
             {typeof (n.metadata as { publicId?: string } | undefined)?.publicId === "string" && (
               <Link to={`/app/orders/${(n.metadata as { publicId: string }).publicId}`} className="mt-2 inline-block text-sm font-semibold text-brand-700">
                 View order
               </Link>
             )}
+            {safeHttpUrl(String((n.metadata as { linkUrl?: string } | undefined)?.linkUrl ?? "")) ? (
+              <a
+                href={safeHttpUrl(String((n.metadata as { linkUrl?: string }).linkUrl))}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 ml-3 inline-block text-sm font-semibold text-brand-700"
+              >
+                {String((n.metadata as { linkLabel?: string }).linkLabel || "Join channel")}
+              </a>
+            ) : null}
           </li>
         ))}
       </ul>
