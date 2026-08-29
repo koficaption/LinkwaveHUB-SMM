@@ -40,6 +40,7 @@ export function errorMessage(error: unknown, fallback = "Request failed") {
       .map((item) => {
         if (!item || typeof item !== "object") return "";
         const row = item as { path?: string; message?: string };
+        if (row.path && row.message) return `${row.path}: ${row.message}`;
         return row.message || "";
       })
       .filter(Boolean);

@@ -81,41 +81,85 @@ export const productServiceTypeSchema = z.enum([
   "other",
 ]);
 
+const blankToNull = (value: unknown) => {
+  if (value === "" || value === undefined) return null;
+  return value;
+};
+
+const optionalPositiveInt = (max = 1_000_000_000) =>
+  z.preprocess((value) => {
+    if (value === "" || value === null || value === undefined) return undefined;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return undefined;
+    return Math.trunc(n);
+  }, z.number().int().positive().max(max).optional());
+
+const optionalNonnegNumber = () =>
+  z.preprocess((value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  }, z.number().nonnegative().nullable().optional());
+
+const requiredNonnegNumber = () =>
+  z.preprocess((value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+  }, z.number().nonnegative());
+
+const optionalUuid = z.preprocess(
+  (value) => (value === "" || value === undefined ? null : value),
+  z.string().uuid().nullable().optional()
+);
+
+const optionalLongText = (max: number) =>
+  z.preprocess(blankToNull, z.string().max(max).nullable().optional());
+
 export const productSchema = z.object({
   platformId: z.string().uuid(),
   categoryId: z.string().uuid(),
-  providerId: z.string().uuid().optional().nullable(),
-  name: z.string().min(2).max(160),
-  description: z.string().max(2000).optional().nullable(),
-  minQuantity: z.number().int().positive().optional(),
-  maxQuantity: z.number().int().positive().optional(),
-  pricePer1000: z.number().nonnegative(),
-  costPer1000: z.number().nonnegative().optional(),
-  resellerPricePer1000: z.number().nonnegative().optional().nullable(),
+  providerId: optionalUuid,
+  name: z.string().min(2).max(200),
+  description: optionalLongText(8000),
+  minQuantity: optionalPositiveInt(),
+  maxQuantity: optionalPositiveInt(),
+  pricePer1000: requiredNonnegNumber(),
+  costPer1000: requiredNonnegNumber().optional(),
+  resellerPricePer1000: optionalNonnegNumber(),
   status: z.enum(["active", "inactive"]).optional(),
-  deliveryType: z.enum(["instant", "gradual", "mixed"]).optional(),
-  avgDeliveryTime: z.string().max(80).optional().nullable(),
-  providerServiceId: z.string().max(80).optional().nullable(),
-  imageUrl: z.string().max(2000).optional().nullable(),
+  deliveryType: z.preprocess((value) => {
+    const code = String(value || "");
+    if (code === "instant" || code === "gradual" || code === "mixed") return code;
+    return value ? "gradual" : undefined;
+  }, z.enum(["instant", "gradual", "mixed"]).optional()),
+  avgDeliveryTime: optionalLongText(120),
+  providerServiceId: optionalLongText(160),
+  imageUrl: optionalLongText(4000),
   features: z.array(z.string()).optional(),
   refillSupported: z.boolean().optional(),
-  refillDays: z.number().int().positive().max(365).optional(),
-  refillType: z.string().max(80).optional().nullable(),
-  refillServiceId: z.string().max(80).optional().nullable(),
-  refillInstructions: z.string().max(2000).optional().nullable(),
-  refillLimit: z.number().int().positive().max(50).optional(),
+  refillDays: optionalPositiveInt(365),
+  refillType: optionalLongText(80),
+  refillServiceId: optionalLongText(160),
+  refillInstructions: optionalLongText(4000),
+  refillLimit: optionalPositiveInt(50),
   providerRefillSupported: z.boolean().optional(),
   resellerAvailable: z.boolean().optional(),
   apiAvailable: z.boolean().optional(),
-  apiPricePer1000: z.number().nonnegative().optional().nullable(),
-  apiMinQuantity: z.number().int().positive().optional().nullable(),
-  apiMaxQuantity: z.number().int().positive().optional().nullable(),
+  apiPricePer1000: optionalNonnegNumber(),
+  apiMinQuantity: optionalPositiveInt(),
+  apiMaxQuantity: optionalPositiveInt(),
   priceUnit: z.enum(["per_1000", "each"]).optional(),
   contactAdmin: z.boolean().optional(),
   serviceType: productServiceTypeSchema.optional(),
-  stock: z.number().int().nonnegative().optional().nullable(),
-  deliveryMethod: z.string().max(80).optional().nullable(),
-  orderInstructions: z.string().max(2000).optional().nullable(),
+  stock: z.preprocess((value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.trunc(n);
+  }, z.number().int().nonnegative().nullable().optional()),
+  deliveryMethod: optionalLongText(80),
+  orderInstructions: optionalLongText(4000),
 });
 
 export const productBulkSchema = z.object({

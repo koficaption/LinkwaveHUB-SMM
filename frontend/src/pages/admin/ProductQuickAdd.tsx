@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { api, money, ApiError } from "@/api/client";
+import { api, money, ApiError, errorMessage } from "@/api/client";
 import type { Category, Platform, Product } from "@/types";
 import { Button, Input, Modal, Textarea } from "@/components/ui";
 import { OrderSelect } from "@/components/dashboard/OrderSelect";
@@ -120,41 +120,46 @@ function initialForm(product: Product | null, platforms: Platform[], categories:
 
 function payloadFromForm(form: FormState) {
   const perUnit = form.priceUnit === "each" || isPerUnitType(form.serviceType);
+  const refillOn = Boolean(form.refillSupported);
+  const minQty = Math.max(1, Math.floor(Number(form.minQuantity) || (perUnit ? 1 : 100)));
+  const maxQty = Math.max(minQty, Math.floor(Number(form.maxQuantity) || (perUnit ? Number(form.stock) || 1 : 100000)));
+  const apiMin = form.apiMinQuantity === "" ? null : Number(form.apiMinQuantity);
+  const apiMax = form.apiMaxQuantity === "" ? null : Number(form.apiMaxQuantity);
   return {
     platformId: form.platformId,
     categoryId: form.categoryId,
     providerId: form.serviceType === "api" && form.providerId ? form.providerId : null,
     name: form.name.trim(),
-    description: form.description || null,
-    orderInstructions: form.orderInstructions || null,
-    minQuantity: Number(form.minQuantity) || (perUnit ? 1 : 100),
-    maxQuantity: Number(form.maxQuantity) || (perUnit ? Number(form.stock) || 1 : 100000),
+    description: form.description.trim() || null,
+    orderInstructions: form.orderInstructions.trim() || null,
+    minQuantity: minQty,
+    maxQuantity: maxQty,
     pricePer1000: Number(form.pricePer1000) || 0,
     costPer1000: Number(form.costPer1000) || 0,
-    resellerPricePer1000: Number(form.resellerPricePer1000) || null,
-    apiPricePer1000: Number(form.apiPricePer1000) || null,
-    apiMinQuantity: form.apiMinQuantity === "" ? null : Number(form.apiMinQuantity),
-    apiMaxQuantity: form.apiMaxQuantity === "" ? null : Number(form.apiMaxQuantity),
-    status: form.status,
-    deliveryType: form.deliveryType,
-    avgDeliveryTime: form.avgDeliveryTime,
-    providerServiceId: form.providerServiceId || null,
+    resellerPricePer1000: Number(form.resellerPricePer1000) > 0 ? Number(form.resellerPricePer1000) : null,
+    apiPricePer1000: Number(form.apiPricePer1000) > 0 ? Number(form.apiPricePer1000) : null,
+    apiMinQuantity: apiMin && apiMin > 0 ? apiMin : null,
+    apiMaxQuantity: apiMax && apiMax > 0 ? apiMax : null,
+    status: form.status === "inactive" ? "inactive" : "active",
+    deliveryType: form.deliveryType === "instant" || form.deliveryType === "mixed" ? form.deliveryType : "gradual",
+    avgDeliveryTime: form.avgDeliveryTime.trim() || null,
+    providerServiceId: form.providerServiceId.trim() || null,
     features: form.features.split("\n").map((s) => s.trim()).filter(Boolean),
-    refillSupported: form.refillSupported,
-    refillDays: form.refillDays,
-    refillType: form.refillType || null,
-    refillServiceId: form.refillServiceId || null,
-    refillInstructions: form.refillInstructions || null,
-    refillLimit: form.refillLimit,
+    refillSupported: refillOn,
+    refillDays: refillOn ? Math.max(1, Number(form.refillDays) || 30) : undefined,
+    refillType: refillOn ? (form.refillType.trim() || null) : null,
+    refillServiceId: refillOn ? (form.refillServiceId.trim() || null) : null,
+    refillInstructions: refillOn ? (form.refillInstructions.trim() || null) : null,
+    refillLimit: refillOn ? Math.max(1, Number(form.refillLimit) || 1) : undefined,
     providerRefillSupported: form.providerRefillSupported,
     resellerAvailable: form.resellerAvailable,
     apiAvailable: form.apiAvailable,
     priceUnit: perUnit ? "each" : "per_1000",
     contactAdmin: form.serviceType !== "api" || !form.providerId,
     serviceType: form.serviceType,
-    stock: form.stock === "" ? null : Number(form.stock),
-    deliveryMethod: form.deliveryMethod || null,
-    imageUrl: form.imageUrl || null,
+    stock: form.stock === "" || !Number.isFinite(Number(form.stock)) ? null : Math.max(0, Math.floor(Number(form.stock))),
+    deliveryMethod: form.deliveryMethod.trim() || null,
+    imageUrl: form.imageUrl.trim() || null,
   };
 }
 
@@ -298,7 +303,7 @@ export function ProductQuickAdd({
         setScreen("success");
       }
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Save failed");
+      toast.error(errorMessage(error, "Could not save this service"));
     } finally {
       setSaving(false);
     }
@@ -337,7 +342,7 @@ export function ProductQuickAdd({
         setScreen("success");
       } else onClose();
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Save failed");
+      toast.error(errorMessage(error, "Could not save this service"));
     } finally {
       setSaving(false);
     }
@@ -848,7 +853,7 @@ export function QuickCell({
       await onSave(String(next));
       setEditing(false);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Could not save");
+      toast.error(errorMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
