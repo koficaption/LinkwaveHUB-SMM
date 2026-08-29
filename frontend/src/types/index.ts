@@ -131,6 +131,7 @@ export type Product = {
   stock?: number | null;
   delivery_method?: string | null;
   service_no?: number | string;
+  cancel_supported?: boolean;
 };
 
 export type RefillSummary = {
@@ -209,6 +210,16 @@ export type Order = {
   remains?: number | null;
   provider_order_id?: string | null;
   refill?: RefillSummary;
+  cancel?: {
+    supported: boolean;
+    eligible: boolean;
+    remains: number;
+    quantity: number;
+    delivered: number;
+    refundAmount: number;
+    reason?: string;
+  };
+  refunded_amount?: number | string;
   history?: { id: string; from_status: string | null; to_status: string; note?: string | null; created_at: string; actor_name?: string }[];
 };
 

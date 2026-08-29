@@ -100,7 +100,7 @@ export function orderGuide(product: Product): OrderGuide {
     "Wait until an order on the same link finishes before placing another on that link.",
     "Use a public profile, post, or video link. Do not send passwords.",
     refill.supported ? `Drops during the ${refill.days >= 365 ? "lifetime" : `${refill.days}-day`} refill window can be requested from Orders.` : null,
-    cancel.supported ? "This service can be cancelled anytime." : null,
+    cancel.supported ? "This service can be cancelled anytime. Remaining quantity is refunded to your wallet." : null,
   ].filter((item): item is string => Boolean(item && item.trim()));
 
   return {

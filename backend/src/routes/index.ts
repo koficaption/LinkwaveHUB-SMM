@@ -327,6 +327,9 @@ router.post("/orders", requireAuth, validate(orderSchema), asyncHandler(async (r
   });
   res.status(201).json(ok(order, "Order placed successfully"));
 }));
+router.post("/orders/:id/cancel", requireAuth, asyncHandler(async (req, res) => {
+  res.json(ok(await orders.cancelOrder(req.params.id, req.user!, clientIp(req)), "Order cancelled"));
+}));
 router.post("/orders/:id/refill", requireAuth, asyncHandler(async (req, res) => {
   res.status(201).json(ok(await refills.requestRefill(req.params.id, req.user!, clientIp(req)), "Refill requested"));
 }));

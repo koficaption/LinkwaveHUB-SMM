@@ -24,7 +24,7 @@ export function CancelBar({ supported }: { supported?: boolean }) {
   if (!supported) return null;
   return (
     <div className="rounded-xl bg-sky-100 px-3 py-2 text-sm font-semibold text-sky-900 dark:bg-sky-500/15 dark:text-sky-200">
-      Cancel anytime — you can stop this service after the order starts.
+      Cancel anytime — stop the order after it starts. Remaining quantity is refunded to your wallet.
     </div>
   );
 }

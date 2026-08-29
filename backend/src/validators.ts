@@ -138,6 +138,7 @@ export const productSchema = z.object({
   imageUrl: optionalLongText(4000),
   features: z.array(z.string()).optional(),
   refillSupported: z.boolean().optional(),
+  cancelSupported: z.boolean().optional(),
   refillDays: optionalPositiveInt(365),
   refillType: optionalLongText(80),
   refillServiceId: optionalLongText(160),

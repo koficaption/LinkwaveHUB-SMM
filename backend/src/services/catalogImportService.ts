@@ -231,6 +231,16 @@ export async function importProviderPackages(
     }
 
     const serviceIds = rows.map((row) => row.serviceId);
+    await query(
+      `UPDATE products
+       SET cancel_supported = (
+         features::text ~* 'cancel[[:space:]]*(anytime|any[[:space:]]*time|available|supported)'
+         AND features::text !~* 'no[[:space:]]*cancel'
+       )
+       WHERE provider_id = $1 AND provider_service_id = ANY($2::text[])`,
+      [providerId, serviceIds],
+      client
+    );
     const deactivated = await queryOne<{ count: string }>(
       `WITH updated AS (
          UPDATE products SET status = 'inactive', updated_at = NOW()

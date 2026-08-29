@@ -6,6 +6,7 @@ import { notify } from "./notificationService.js";
 import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } from "../providers/smm/index.js";
 import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
+import { remainingQuantity, remainingRefund, summarizeCancel } from "./cancelSupport.js";
 import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
@@ -15,6 +16,7 @@ import type { PoolClient } from "pg";
 const orderSelect = `
   o.*, p.name AS product_name, p.slug AS product_slug,
   p.refill_supported, p.refill_days, p.refill_limit, p.provider_refill_supported, p.refill_instructions,
+  p.cancel_supported, p.features AS product_features, p.description AS product_description,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.color AS platform_color, pl.icon AS platform_icon,
   c.name AS category_name,
   u.full_name AS customer_name, u.email AS customer_email,
@@ -419,7 +421,7 @@ export async function listOrders(opts: {
     params
   );
     return {
-    items: items.map((row) => withRefill(sanitizeOrder(row, opts.user?.role === "admin"))),
+    items: items.map((row) => decorateOrder(row, opts.user?.role === "admin")),
     total: Number(count?.count ?? 0),
     page,
     limit,
@@ -465,7 +467,7 @@ export async function getOrder(idOrPublic: string, user: AuthUser) {
      WHERE h.order_id = $1 ORDER BY h.created_at ASC`,
     [order.id]
   );
-  return { ...sanitizeOrder(order, user.role === "admin"), history, refill: summarizeRefill(order) };
+  return { ...decorateOrder(order, user.role === "admin"), history };
 }
 
 async function getOrderById(id: string, client?: PoolClient) {
@@ -570,43 +572,119 @@ export async function refundOrder(id: string, actor: AuthUser, note?: string, ip
 }
 
 export async function cancelApiOrder(idOrPublic: string, user: AuthUser, ip?: string) {
+  return cancelOrder(idOrPublic, user, ip, { viaApi: true });
+}
+
+export async function cancelOrder(
+  idOrPublic: string,
+  user: AuthUser,
+  ip?: string,
+  opts?: { viaApi?: boolean }
+) {
   const current = await queryOne<Record<string, unknown>>(
-    `SELECT * FROM orders WHERE id::text = $1 OR public_id = $1`,
+    `SELECT o.*, p.cancel_supported, p.features AS product_features, p.description AS product_description, p.name AS product_name
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     WHERE o.id::text = $1 OR o.public_id = $1`,
     [idOrPublic]
   );
   if (!current) throw new AppError("Order not found", 404);
   if (user.role !== "admin" && current.user_id !== user.id) throw new AppError("Order not found", 404);
 
-  const status = String(current.status);
-  if (["completed", "partial", "refunded", "cancelled", "failed"].includes(status)) {
-    throw new AppError("This order can no longer be cancelled", 400, "not_cancellable");
+  if (current.provider_order_id && !isMockProviderOrderId(current.provider_order_id)) {
+    await syncOrderFromProvider(String(current.id)).catch(() => undefined);
   }
-  if (status !== "pending" && current.provider_order_id) {
-    throw new AppError("This order is already with the provider and cannot be cancelled through the API", 400, "not_cancellable");
+
+  const fresh = await queryOne<Record<string, unknown>>(
+    `SELECT o.*, p.cancel_supported, p.features AS product_features, p.description AS product_description, p.name AS product_name
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     WHERE o.id = $1`,
+    [current.id]
+  );
+  const order = fresh ?? current;
+  const preview = summarizeCancel(order);
+  const viaApi = Boolean(opts?.viaApi);
+  const pendingUnsent = String(order.status) === "pending" && !order.provider_order_id;
+  if (!preview.supported && !(viaApi && pendingUnsent)) {
+    throw new AppError(preview.reason || "This service cannot be cancelled", 400, "not_cancellable");
+  }
+  if (!preview.eligible && !(viaApi && pendingUnsent && preview.refundAmount > 0)) {
+    throw new AppError(preview.reason || "This order can no longer be cancelled", 400, "not_cancellable");
+  }
+
+  const providerOrderId = order.provider_order_id ? String(order.provider_order_id) : "";
+  const liveProvider = Boolean(providerOrderId) && !isMockProviderOrderId(providerOrderId);
+  if (liveProvider) {
+    try {
+      await cancelProviderOrder(String(order.id));
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : "The provider could not cancel this order",
+        400,
+        "not_cancellable"
+      );
+    }
+    await syncOrderFromProvider(String(order.id)).catch(() => undefined);
+  }
+
+  const afterProvider = await queryOne<Record<string, unknown>>(
+    `SELECT o.*, p.cancel_supported, p.features AS product_features, p.description AS product_description, p.name AS product_name
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     WHERE o.id = $1`,
+    [order.id]
+  );
+  const latest = afterProvider ?? order;
+  if (["cancelled", "refunded"].includes(String(latest.status))) {
+    return getOrder(String(order.id), user);
+  }
+  const remains = remainingQuantity(latest);
+  if (remains <= 0) {
+    throw new AppError("Nothing is left to cancel. The order has already been delivered.", 400, "not_cancellable");
   }
 
   await withTransaction(async (client) => {
     const locked = await queryOne<Record<string, unknown>>(
       `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
-      [current.id],
+      [latest.id],
       client
     );
     if (!locked) throw new AppError("Order not found", 404);
     const from = String(locked.status);
-    if (["completed", "partial", "refunded", "cancelled", "failed"].includes(from)) {
+    if (["refunded", "cancelled", "failed"].includes(from)) {
       throw new AppError("This order can no longer be cancelled", 400, "not_cancellable");
     }
-    await refundOrderInternal(locked, user, client, "Cancelled through API");
-    await query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [locked.id], client);
+    const qty = remainingQuantity({ ...locked, remains: locked.remains ?? remains });
+    const amount = remainingRefund(Number(locked.charge), Number(locked.quantity), qty, Number(locked.refunded_amount || 0));
+    const note = amount > 0
+      ? `Customer cancelled. ${qty.toLocaleString()} remaining refunded.`
+      : "Customer cancelled.";
+    if (amount > 0) {
+      await refundOrderInternal(locked, user, client, note, amount);
+    }
+    await query(
+      `UPDATE orders SET status = 'cancelled', remains = $2, updated_at = NOW() WHERE id = $1`,
+      [locked.id, qty],
+      client
+    );
     await query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, note, changed_by)
-       VALUES ($1,'refunded','cancelled','Cancelled through API',$2)`,
-      [locked.id, user.id],
+       VALUES ($1,$2,'cancelled',$3,$4)`,
+      [locked.id, amount > 0 ? "refunded" : from, note, user.id],
       client
     );
   });
-  enqueueOrderWebhook(String(current.id), "order.cancelled").catch((err) => console.error("API webhook enqueue failed", err));
-  return getOrder(String(current.id), user);
+  await writeAudit({
+    actor: user,
+    action: "order.cancel",
+    targetType: "order",
+    targetId: String(order.id),
+    details: { remains, viaApi },
+    ip,
+  });
+  enqueueOrderWebhook(String(order.id), "order.cancelled").catch((err) => console.error("API webhook enqueue failed", err));
+  return getOrder(String(order.id), user);
 }
 
 function webhookEventForStatus(status: string) {
@@ -626,16 +704,22 @@ async function refundOrderInternal(
   order: Record<string, unknown>,
   actor: AuthUser,
   client: PoolClient,
-  note?: string
+  note?: string,
+  refundAmount?: number
 ) {
-  if (order.status === "refunded") throw new AppError("Order already refunded");
+  const charge = Number(order.charge) || 0;
+  const already = Number(order.refunded_amount) || 0;
+  const amount = Number((refundAmount ?? Math.max(0, charge - already)).toFixed(4));
+  if (amount <= 0) {
+    if (refundAmount == null) throw new AppError("Order already refunded");
+    return;
+  }
   const wallet = await queryOne<{ id: string; balance: string }>(
     `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
     [order.user_id],
     client
   );
   if (!wallet) throw new AppError("Wallet not found", 400);
-  const amount = Number(order.charge);
   const newBalance = Number((Number(wallet.balance) + amount).toFixed(4));
   await query(`UPDATE wallets SET balance = $2 WHERE id = $1`, [wallet.id, newBalance], client);
   await query(
@@ -644,10 +728,27 @@ async function refundOrderInternal(
     [wallet.id, order.user_id, amount, newBalance, order.public_id, note || `Refund for ${order.public_id}`, actor.id],
     client
   );
-  await query(`UPDATE orders SET status = 'refunded', admin_note = COALESCE($2, admin_note) WHERE id = $1`, [
-    order.id,
-    note ?? null,
-  ], client);
+  const nextRefunded = Number((already + amount).toFixed(4));
+  const full = nextRefunded >= charge - 0.0001;
+  await query(
+    `UPDATE orders
+     SET refunded_amount = $2,
+         status = CASE WHEN $3 THEN 'refunded' ELSE status END,
+         admin_note = COALESCE($4, admin_note)
+     WHERE id = $1`,
+    [order.id, nextRefunded, full, note ?? null],
+    client
+  );
+  if (order.reseller_id && Number(order.reseller_profit) > 0 && charge > 0) {
+    const claw = Number(((Number(order.reseller_profit) * amount) / charge).toFixed(4));
+    if (claw > 0) {
+      await query(
+        `UPDATE resellers SET profit_balance = GREATEST(0, profit_balance - $2), updated_at = NOW() WHERE id = $1`,
+        [order.reseller_id, claw],
+        client
+      );
+    }
+  }
   await query(
     `INSERT INTO order_status_history (order_id, from_status, to_status, note, changed_by)
      VALUES ($1,$2,'refunded',$3,$4)`,
@@ -659,7 +760,10 @@ async function refundOrderInternal(
     title: "Refund issued",
     body: `GHS ${amount.toFixed(2)} was refunded for order ${order.public_id}.`,
     type: "refund",
+    metadata: { orderId: order.id, publicId: order.public_id, amount },
   });
+  order.refunded_amount = nextRefunded;
+  if (full) order.status = "refunded";
 }
 
 export async function retryOrder(id: string, actor: AuthUser, ip?: string) {
@@ -747,6 +851,28 @@ async function shouldAutoSendOrders() {
   const settings = await getSettings();
   const orders = (settings.orders ?? {}) as { autoProcessing?: boolean };
   return orders.autoProcessing !== false;
+}
+
+async function cancelProviderOrder(id: string) {
+  const order = await loadOrderForProvider(id);
+  if (!order) throw new AppError("Order not found", 404);
+  const providerOrderId = order.provider_order_id ? String(order.provider_order_id) : "";
+  if (!providerOrderId || isMockProviderOrderId(providerOrderId)) return;
+  const apiKey = decryptProviderKey(order.api_key_encrypted);
+  const adapter = livePanelAdapter(order, apiKey);
+  if (!adapter.cancelOrder) {
+    throw new AppError("This provider does not support cancel", 400, "not_cancellable");
+  }
+  const result = await adapter.cancelOrder(providerOrderId, {
+    apiUrl: order.api_url as string | undefined,
+    apiKey,
+  });
+  if (!result.cancelled) {
+    throw new AppError(result.error || "The provider could not cancel this order", 400, "not_cancellable");
+  }
+  if (result.remains != null) {
+    await query(`UPDATE orders SET remains = $2, updated_at = NOW() WHERE id = $1`, [id, result.remains]);
+  }
 }
 
 async function loadOrderForProvider(id: string) {
@@ -881,7 +1007,7 @@ async function applyProviderSnapshot(order: Record<string, unknown>, result: Smm
   if (!nextStatus || nextStatus === localStatus) return true;
   if (localStatus === "refunded") return true;
 
-  if (nextStatus === "refunded") {
+  if (nextStatus === "refunded" || nextStatus === "cancelled") {
     const actor = await actorFromUserId(String(order.user_id));
     await withTransaction(async (client) => {
       const locked = await queryOne<Record<string, unknown>>(
@@ -889,10 +1015,20 @@ async function applyProviderSnapshot(order: Record<string, unknown>, result: Smm
         [id],
         client
       );
-      if (!locked || locked.status === "refunded") return;
-      await refundOrderInternal(locked, actor, client, `Refunded by provider (${result.status})`);
+      if (!locked || ["refunded", "cancelled"].includes(String(locked.status))) return;
+      const qty = remainingQuantity({ ...locked, remains: remains ?? locked.remains });
+      const amount = remainingRefund(Number(locked.charge), Number(locked.quantity), qty, Number(locked.refunded_amount || 0));
+      const note = nextStatus === "cancelled"
+        ? `Cancelled by provider. ${qty.toLocaleString()} remaining refunded.`
+        : `Refunded by provider (${result.status})`;
+      if (amount > 0) await refundOrderInternal(locked, actor, client, note, amount);
+      await query(
+        `UPDATE orders SET status = $2, remains = COALESCE($3, remains), updated_at = NOW() WHERE id = $1`,
+        [id, nextStatus, qty],
+        client
+      );
     });
-    enqueueOrderWebhook(id, "order.refunded").catch((err) => console.error("API webhook enqueue failed", err));
+    enqueueOrderWebhook(id, nextStatus === "cancelled" ? "order.cancelled" : "order.refunded").catch((err) => console.error("API webhook enqueue failed", err));
     return true;
   }
 
@@ -951,8 +1087,13 @@ async function announceProviderStatusChange(
   }
 }
 
-function withRefill(order: Record<string, unknown>) {
-  return { ...order, refill: summarizeRefill(order) };
+function decorateOrder(row: Record<string, unknown>, admin = false) {
+  const extras = { refill: summarizeRefill(row), cancel: summarizeCancel(row) };
+  const order = sanitizeOrder(row, admin);
+  delete order.product_features;
+  delete order.product_description;
+  delete order.cancel_supported;
+  return { ...order, ...extras };
 }
 
 function sanitizeOrder(row: Record<string, unknown>, admin = false) {

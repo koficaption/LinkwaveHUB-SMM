@@ -39,6 +39,13 @@ export type SmmRefillResult = {
   raw?: unknown;
 };
 
+export type SmmCancelResult = {
+  cancelled: boolean;
+  remains?: number;
+  error?: string;
+  raw?: unknown;
+};
+
 export interface SmmProviderAdapter {
   name: string;
   createOrder(input: SmmOrderInput, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmOrderResult>;
@@ -48,6 +55,7 @@ export interface SmmProviderAdapter {
   listServices(credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmService[]>;
   requestRefill?(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmRefillResult>;
   getRefillStatus?(providerRefillId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmRefillResult>;
+  cancelOrder?(providerOrderId: string, credentials: { apiUrl?: string; apiKey?: string }): Promise<SmmCancelResult>;
 }
 
 export const mockSmmAdapter: SmmProviderAdapter = {
@@ -73,6 +81,9 @@ export const mockSmmAdapter: SmmProviderAdapter = {
   },
   async requestRefill(providerOrderId) {
     return { refillId: `MOCK-RF-${Date.now()}`, status: "processing", raw: { order: providerOrderId } };
+  },
+  async cancelOrder() {
+    return { cancelled: true };
   },
   async getRefillStatus(providerRefillId) {
     return { refillId: providerRefillId, status: "completed" };
@@ -174,6 +185,22 @@ export const genericHttpAdapter: SmmProviderAdapter = {
       return { status: "requested", manual: true, error: "Provider does not support automatic refill.", raw: json };
     }
     return { refillId: String(json.refill), status: "processing", raw: json };
+  },
+  async cancelOrder(providerOrderId, credentials) {
+    requireLiveCredentials(credentials);
+    const json = await panelRequest<Record<string, unknown>>(credentials, {
+      action: "cancel",
+      orders: providerOrderId,
+    });
+    if (json.error) throw new Error(String(json.error));
+    const row = json[providerOrderId] && typeof json[providerOrderId] === "object" && !Array.isArray(json[providerOrderId])
+      ? json[providerOrderId] as Record<string, unknown>
+      : json;
+    if (row.error) throw new Error(String(row.error));
+    const flag = row.cancel;
+    const ok = flag === 1 || flag === true || flag === "1" || flag === undefined;
+    if (!ok) throw new Error("The provider could not cancel this order");
+    return { cancelled: true, remains: parseCount(row.remains), raw: json };
   },
   async getRefillStatus(providerRefillId, credentials) {
     if (!credentials.apiUrl || !credentials.apiKey) {

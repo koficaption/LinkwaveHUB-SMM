@@ -20,7 +20,9 @@ import { WaveDivider } from "@/components/dashboard/WaveDivider";
 import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
 import { MobileActionButtons } from "@/components/dashboard/AccountMenu";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
+import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { RequestRefillDialog } from "@/components/dashboard/RequestRefillDialog";
+import { CancelOrderDialog, cancelErrorMessage } from "@/components/dashboard/CancelOrderDialog";
 import { quoteKorapayFees } from "@/utils/korapayFees";
 import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
 import { getDisplayCurrency } from "@/utils/currency";
@@ -183,6 +185,7 @@ export function OrdersPage() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge>
               <RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} />
+              <CancelBadge supported={o.cancel?.supported} />
             </div>
             <Link to={`/app/orders/${o.public_id}`}><Button className="mt-4 w-full" variant="outline">View order</Button></Link>
           </Card>
@@ -203,6 +206,7 @@ export function OrderDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const order = useQuery({
     queryKey: ["order", id],
     queryFn: () => api<Order>(`/orders/${id}`),
@@ -226,6 +230,18 @@ export function OrderDetailPage() {
       await qc.invalidateQueries({ queryKey: ["my-orders"] });
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not request refill"),
+  });
+  const cancelling = useMutation({
+    mutationFn: () => api(`/orders/${id}/cancel`, { method: "POST" }),
+    onSuccess: async () => {
+      toast.success("Order cancelled. Remaining quantity was refunded to your wallet.");
+      setCancelOpen(false);
+      await qc.invalidateQueries({ queryKey: ["order", id] });
+      await qc.invalidateQueries({ queryKey: ["my-orders"] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.invalidateQueries({ queryKey: ["wallet"] });
+    },
+    onError: (e) => toast.error(cancelErrorMessage(e)),
   });
   if (order.isLoading) return <Skeleton className="h-64" />;
   if (!order.data) return <EmptyState title="Order not found" body="Check the order ID and try again." />;
@@ -276,6 +292,26 @@ export function OrderDetailPage() {
         )}
       </Card>
       <Card>
+        <h2 className="font-bold">Cancel</h2>
+        <div className="mt-3">
+          <CancelBadge supported={o.cancel?.supported} />
+        </div>
+        {o.cancel?.supported ? (
+          <dl className="mt-4 space-y-2 text-sm">
+            <Item label="Delivered" value={(o.cancel.delivered ?? 0).toLocaleString()} />
+            <Item label="Remaining" value={(o.cancel.remains ?? 0).toLocaleString()} />
+            <Item label="Refund if cancelled" value={money(o.cancel.refundAmount ?? 0)} />
+          </dl>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">This service cannot be cancelled after it starts.</p>
+        )}
+        {o.cancel?.eligible ? (
+          <Button className="mt-4 w-full" variant="danger" onClick={() => setCancelOpen(true)}>Cancel order</Button>
+        ) : o.cancel?.supported && o.cancel.reason ? (
+          <p className="mt-3 text-xs text-slate-500">{o.cancel.reason}</p>
+        ) : null}
+      </Card>
+      <Card>
         <h2 className="font-bold">Status timeline</h2>
         <ul className="mt-4 space-y-3 text-sm">
           {(o.history ?? []).map((h) => (
@@ -318,6 +354,14 @@ export function OrderDetailPage() {
           onConfirm={() => request.mutate()}
         />
       )}
+      {cancelOpen && (
+        <CancelOrderDialog
+          order={o}
+          pending={cancelling.isPending}
+          onClose={() => setCancelOpen(false)}
+          onConfirm={() => cancelling.mutate()}
+        />
+      )}
     </div>
   );
 }
@@ -345,7 +389,12 @@ export function OrdersTable({ data, loading }: { data: Order[]; loading?: boolea
               <td className="pr-4">{formatCount(o.remains)}</td>
               <td className="pr-4">{money(o.charge)}</td>
               <td className="pr-4"><Badge className={statusTone[o.status]}>{prettyStatus(o.status)}</Badge></td>
-              <td className="pr-4"><RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} /></td>
+              <td className="pr-4">
+                <div className="flex flex-wrap gap-1">
+                  <RefillBadge supported={o.refill?.refillSupported} days={o.refill?.refillDays} display={o.refill?.display} />
+                  <CancelBadge supported={o.cancel?.supported} />
+                </div>
+              </td>
               <td className="pr-4 text-slate-500">{formatDate(o.created_at)}</td>
               <td><Link to={`/app/orders/${o.public_id}`} className="font-semibold text-brand-700">View</Link></td>
             </tr>

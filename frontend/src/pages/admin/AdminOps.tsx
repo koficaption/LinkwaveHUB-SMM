@@ -249,6 +249,11 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
             <div><dt className="text-slate-500">Provider API</dt><dd>{refill.providerRefillSupported ? "Yes" : "Manual refill required"}</dd></div>
           </dl>
         ) : <p className="mt-2 text-sm text-slate-500">This service does not support refill.</p>}
+        {o.cancel?.supported && (
+          <p className="mt-3 text-sm text-slate-500">
+            Cancel anytime · remaining {Number(o.cancel.remains || 0).toLocaleString()} · refund {money(o.cancel.refundAmount || 0)}
+          </p>
+        )}
         {refill?.eligible && <Button className="mt-3" onClick={() => setConfirm(true)}>↻ Request refill</Button>}
         {!refills.data?.items.length && <p className="mt-3 text-sm text-slate-500">No refill requests yet.</p>}
         {!!refills.data?.items.length && (

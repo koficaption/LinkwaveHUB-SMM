@@ -2,6 +2,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
 import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
+import { productSupportsCancel } from "./cancelSupport.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -14,7 +15,7 @@ const productSelect = `
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
   p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit, p.contact_admin,
-  p.service_type, p.stock, p.delivery_method, p.service_no,
+  p.service_type, p.stock, p.delivery_method, p.service_no, p.cancel_supported,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -557,6 +558,12 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: d.name } });
+  if (row?.id) {
+    const cancel = typeof input.cancelSupported === "boolean"
+      ? Boolean(input.cancelSupported)
+      : productSupportsCancel({ name: d.name, description: d.description, features: d.features });
+    await query(`UPDATE products SET cancel_supported = $2 WHERE id = $1`, [row.id, cancel]);
+  }
   return getProduct(row!.id, { admin: true });
 }
 
@@ -689,6 +696,14 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       input.deliveryMethod === undefined ? null : input.deliveryMethod,
     ]
   );
+  if (input.cancelSupported !== undefined) {
+    await query(`UPDATE products SET cancel_supported = $2 WHERE id = $1`, [id, Boolean(input.cancelSupported)]);
+  } else if (features) {
+    await query(
+      `UPDATE products SET cancel_supported = $2 WHERE id = $1`,
+      [id, productSupportsCancel({ name: input.name ?? current.name, description: input.description ?? current.description, features })]
+    );
+  }
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
   return getProduct(id, { admin: true });
 }
