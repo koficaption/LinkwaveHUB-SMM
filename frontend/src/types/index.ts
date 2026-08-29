@@ -299,6 +299,7 @@ export type PublicSettings = {
     minimumPayout?: number;
   };
   payments?: {
+    minWalletDepositGhs?: number;
     korapayCustomerPaysFees?: boolean;
     korapayFeePercent?: number;
     korapayVatPercent?: number;

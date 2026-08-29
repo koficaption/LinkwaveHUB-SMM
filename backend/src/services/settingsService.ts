@@ -22,6 +22,7 @@ const defaults: Record<string, unknown> = {
   },
   payments: {
     autoApproveMock: true,
+    minWalletDepositGhs: 20,
     korapayCustomerPaysFees: true,
     korapayFeePercent: 1.5,
     korapayVatPercent: 15,
@@ -138,10 +139,25 @@ function publicLoginPopup(notes: Record<string, unknown> | undefined) {
   return { enabled: true as const, title, body, url, button };
 }
 
+export const DEFAULT_MIN_WALLET_DEPOSIT_GHS = 20;
+
+export function parseMinWalletDepositGhs(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_MIN_WALLET_DEPOSIT_GHS;
+  return Math.min(100_000, Math.round(n * 100) / 100);
+}
+
+export async function getMinWalletDepositGhs(): Promise<number> {
+  const all = await getSettings();
+  const payments = (all.payments as Record<string, unknown> | undefined) ?? {};
+  return parseMinWalletDepositGhs(payments.minWalletDepositGhs);
+}
+
 export async function getPublicSettings() {
   const all = await getSettings();
   const general = all.general as Record<string, unknown>;
   const channels = all.channels as { items?: { name: string; url: string; kind: string }[] };
+  const payments = (all.payments as Record<string, unknown> | undefined) ?? {};
   return {
     siteName: general.siteName,
     tagline: general.tagline,
@@ -157,10 +173,11 @@ export async function getPublicSettings() {
     loginPopup: publicLoginPopup(all.notifications as Record<string, unknown>),
     affiliates: all.affiliates,
     payments: {
-      korapayCustomerPaysFees: (all.payments as Record<string, unknown>)?.korapayCustomerPaysFees !== false,
-      korapayFeePercent: Number((all.payments as Record<string, unknown>)?.korapayFeePercent ?? 1.5),
-      korapayVatPercent: Number((all.payments as Record<string, unknown>)?.korapayVatPercent ?? 15),
-      korapayCurrencies: (all.payments as Record<string, unknown>)?.korapayCurrencies,
+      minWalletDepositGhs: parseMinWalletDepositGhs(payments.minWalletDepositGhs),
+      korapayCustomerPaysFees: payments.korapayCustomerPaysFees !== false,
+      korapayFeePercent: Number(payments.korapayFeePercent ?? 1.5),
+      korapayVatPercent: Number(payments.korapayVatPercent ?? 15),
+      korapayCurrencies: payments.korapayCurrencies,
     },
     resellers: {
       upgradeEnabled: (all.resellers as Record<string, unknown>).upgradeEnabled !== false,
@@ -220,6 +237,11 @@ export async function updateSettings(key: string, value: unknown, actor: AuthUse
     const nextPass = String(incoming.pass ?? "").trim();
     if (!nextPass) incoming.pass = current.pass ?? "";
     else if (!looksEncrypted(nextPass)) incoming.pass = encryptSecret(nextPass);
+    stored = incoming;
+  }
+  if (key === "payments" && stored && typeof stored === "object" && !Array.isArray(stored)) {
+    const incoming = { ...(stored as Record<string, unknown>) };
+    incoming.minWalletDepositGhs = parseMinWalletDepositGhs(incoming.minWalletDepositGhs);
     stored = incoming;
   }
   if (key === "notifications" && stored && typeof stored === "object" && !Array.isArray(stored)) {

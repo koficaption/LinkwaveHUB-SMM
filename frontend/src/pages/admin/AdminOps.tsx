@@ -12,6 +12,7 @@ import { RequestRefillDialog, submitRefill } from "@/components/dashboard/Reques
 import { KORAPAY_MARKETS } from "@/utils/korapayMarkets";
 import { normalizeHttpUrl, safeHttpUrl } from "@/utils/httpUrl";
 import { AnnouncementModal } from "@/components/dashboard/LoginAnnouncement";
+import { hasManualPaymentDetails, normalizeManualPaymentConfig } from "@/utils/paymentDetails";
 
 function isCardMethod(adapter?: string | null) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -583,7 +584,14 @@ export function AdminPayments() {
     queryFn: () => api<Paginated<Record<string, unknown>>>(`/admin/payments?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`),
   });
   const methods = useQuery({ queryKey: ["admin-methods"], queryFn: () => api<PaymentMethod[]>("/admin/payments/methods") });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
   const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
+  const savePayments = async (value: Record<string, unknown>) => {
+    await api("/admin/settings/payments", { method: "PUT", body: JSON.stringify({ value }) });
+    toast.success("Settings saved");
+    qc.invalidateQueries({ queryKey: ["settings"] });
+    qc.invalidateQueries({ queryKey: ["public-settings"] });
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -593,6 +601,7 @@ export function AdminPayments() {
         </div>
         <Button onClick={() => setEditing("new")}>Add manual method</Button>
       </div>
+      <WalletDepositsSettingsCard data={settings.data?.payments} onSave={savePayments} />
       <div className="grid gap-4 md:grid-cols-2">
         {methods.data?.map((m) => {
           const cfg = m.config ?? {};
@@ -606,11 +615,21 @@ export function AdminPayments() {
                 <Badge className={statusTone[m.is_enabled ? "active" : "inactive"]}>{m.is_enabled ? "Enabled" : "Disabled"}</Badge>
               </div>
               <div className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-                {cfg.network && <p>Network: {cfg.network}</p>}
-                {cfg.momoNumber && <p>Number: {cfg.momoNumber}</p>}
-                {cfg.accountName && <p>Account name: {cfg.accountName}</p>}
-                {cfg.bankName && <p>Bank: {cfg.bankName} {cfg.accountNumber}</p>}
-                {cfg.instructions && <p>{cfg.instructions}</p>}
+                {(() => {
+                  const details = normalizeManualPaymentConfig(cfg);
+                  if (!hasManualPaymentDetails(cfg) && m.adapter === "manual") {
+                    return <p className="text-amber-700">No Mobile Money or bank details yet. Tap Edit details to add them — customers see this on Add Funds.</p>;
+                  }
+                  return (
+                    <>
+                      {details.network && <p>Network: {details.network}</p>}
+                      {details.momoNumber && <p>Number: {details.momoNumber}</p>}
+                      {details.accountName && <p>Account name: {details.accountName}</p>}
+                      {(details.bankName || details.accountNumber) && <p>Bank: {[details.bankName, details.accountNumber].filter(Boolean).join(" · ")}</p>}
+                      {details.instructions && <p>{details.instructions}</p>}
+                    </>
+                  );
+                })()}
               </div>
               <div className="mt-4 flex gap-2">
                 <Button variant="outline" onClick={() => setEditing(m)}>Edit details</Button>
@@ -697,18 +716,18 @@ export function AdminPayments() {
 
 function PaymentMethodModal({ method, onClose }: { method: PaymentMethod | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const cfg = method?.config ?? {};
+  const cfg = normalizeManualPaymentConfig(method?.config);
   const [form, setForm] = useState({
     name: method?.name ?? "Mobile Money",
     description: method?.description ?? "Manual confirmation after the customer pays.",
     adapter: method?.adapter ?? "manual",
     isEnabled: method?.is_enabled !== false,
-    network: cfg.network ?? "MTN Mobile Money",
-    momoNumber: cfg.momoNumber ?? "",
-    accountName: cfg.accountName ?? "",
-    bankName: cfg.bankName ?? "",
-    accountNumber: cfg.accountNumber ?? "",
-    instructions: cfg.instructions ?? "",
+    network: cfg.network || "MTN Mobile Money",
+    momoNumber: cfg.momoNumber,
+    accountName: cfg.accountName,
+    bankName: cfg.bankName,
+    accountNumber: cfg.accountNumber,
+    instructions: cfg.instructions,
   });
   const set = (key: string, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   return (
@@ -928,6 +947,7 @@ export function AdminSettings() {
         <Button className="mt-4" onClick={() => save("channels", { items: items.filter((item) => item.name && item.url) })}>Save channels</Button>
       </Card>
       <OrdersSettingsCard data={settings.data?.orders} onSave={(value) => save("orders", value)} />
+      <WalletDepositsSettingsCard data={settings.data?.payments} onSave={(value) => save("payments", value)} />
       <KorapayFeesSettingsCard data={settings.data?.payments} onSave={(value) => save("payments", value)} />
       <AffiliateSettingsCard data={settings.data?.affiliates} onSave={(value) => save("affiliates", value)} />
       <LoyaltySettingsCard data={settings.data?.loyalty} onSave={(value) => save("loyalty", value)} />
@@ -1014,6 +1034,42 @@ function OrdersSettingsCard({
         maxPendingPerUser: Number(values.maxPendingPerUser || 20),
         refundWindowHours: Number(values.refundWindowHours || 48),
       })}>Save order settings</Button>
+    </Card>
+  );
+}
+
+function WalletDepositsSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    minWalletDepositGhs: String(source.minWalletDepositGhs ?? 20),
+  };
+  return (
+    <Card>
+      <h2 className="font-bold">Wallet deposits</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Customers cannot add less than this amount on Add Funds, for both Korapay and Mobile Money / bank.
+      </p>
+      <label className="mt-3 block max-w-xs">
+        <span className="label">Minimum deposit (GHS)</span>
+        <Input
+          type="number"
+          min="1"
+          step="1"
+          value={values.minWalletDepositGhs}
+          onChange={(e) => setForm({ ...values, minWalletDepositGhs: e.target.value })}
+        />
+      </label>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        minWalletDepositGhs: Number(values.minWalletDepositGhs || 20),
+      })}>Save deposit minimum</Button>
     </Card>
   );
 }

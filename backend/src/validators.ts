@@ -262,7 +262,7 @@ export const orderQuoteSchema = z.object({
 export const MIN_WALLET_DEPOSIT_GHS = 20;
 
 export const walletDepositSchema = z.object({
-  amount: z.number().min(MIN_WALLET_DEPOSIT_GHS, `Minimum deposit is GHS ${MIN_WALLET_DEPOSIT_GHS}`),
+  amount: z.number().min(1, "Enter a deposit amount of at least GHS 1"),
   methodCode: z.string().min(2).max(40),
   returnUrl: z.string().url().max(500).optional(),
   checkoutCurrency: z.string().trim().min(3).max(8).optional(),

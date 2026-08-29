@@ -10,7 +10,7 @@ import { publicProductName } from "@/utils/catalog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { ContactLinks, panelHelp } from "@/components/ContactLinks";
+import { ContactLinks, panelHelp, usePublicSettings } from "@/components/ContactLinks";
 import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
 import { safeHttpUrl } from "@/utils/httpUrl";
 import type { PaymentMethod } from "@/types";
@@ -26,13 +26,14 @@ import { CancelOrderDialog, cancelErrorMessage } from "@/components/dashboard/Ca
 import { quoteKorapayFees } from "@/utils/korapayFees";
 import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
 import { getDisplayCurrency } from "@/utils/currency";
+import { hasManualPaymentDetails, isManualPaymentMethod, normalizeManualPaymentConfig } from "@/utils/paymentDetails";
 
 function isCardMethod(adapter?: string | null) {
   const code = String(adapter || "").toLowerCase();
   return code === "korapay" || code === "paystack" || code === "card";
 }
 
-const MIN_WALLET_DEPOSIT_GHS = 20;
+const DEFAULT_MIN_WALLET_DEPOSIT_GHS = 20;
 
 function isAutomaticPending(p: NonNullable<Wallet["pending_deposits"]>[number]) {
   if (isCardMethod(p.adapter)) return true;
@@ -65,31 +66,44 @@ function UniquePaymentCode({ code }: { code?: string | null }) {
 function ManualPaymentDetails({
   cfg,
   amountHint,
+  title = "Mobile Money / bank details",
 }: {
   cfg?: PaymentMethod["config"];
   amountHint?: string;
+  title?: string;
 }) {
-  if (!cfg) return null;
+  const details = normalizeManualPaymentConfig(cfg);
+  if (!hasManualPaymentDetails(cfg)) {
+    return (
+      <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <p className="font-semibold text-slate-800 dark:text-slate-100">{title}</p>
+        <p className="mt-1">Admin has not published Mobile Money or bank details yet. Use Korapay or contact support.</p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-      <p className="font-semibold text-slate-800 dark:text-slate-100">Payment details</p>
+      <p className="font-semibold text-slate-800 dark:text-slate-100">{title}</p>
       {amountHint && <p className="mt-1">Send {amountHint}.</p>}
-      {cfg.network && cfg.momoNumber && (
+      {(details.network || details.momoNumber) && (
         <p className="mt-1">
-          {cfg.network}: <strong className="font-mono">{cfg.momoNumber}</strong>
-          <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(String(cfg.momoNumber), "Number copied")}>Copy</button>
-        </p>
-      )}
-      {cfg.accountName && <p>Name: <strong>{cfg.accountName}</strong></p>}
-      {(cfg.bankName || cfg.accountNumber) && (
-        <p>
-          Bank: {[cfg.bankName, cfg.accountNumber].filter(Boolean).join(" · ")}
-          {cfg.accountNumber ? (
-            <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(String(cfg.accountNumber), "Account copied")}>Copy</button>
+          {details.network ? `${details.network}: ` : "Number: "}
+          {details.momoNumber ? <strong className="font-mono">{details.momoNumber}</strong> : <span>number coming soon</span>}
+          {details.momoNumber ? (
+            <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(details.momoNumber, "Number copied")}>Copy</button>
           ) : null}
         </p>
       )}
-      {cfg.instructions && <p className="mt-1">{cfg.instructions}</p>}
+      {details.accountName && <p>Name: <strong>{details.accountName}</strong></p>}
+      {(details.bankName || details.accountNumber) && (
+        <p>
+          Bank: {[details.bankName, details.accountNumber].filter(Boolean).join(" · ")}
+          {details.accountNumber ? (
+            <button type="button" className="ml-2 text-xs font-semibold text-brand-700" onClick={() => void copyText(details.accountNumber, "Account copied")}>Copy</button>
+          ) : null}
+        </p>
+      )}
+      {details.instructions && <p className="mt-1">{details.instructions}</p>}
     </div>
   );
 }
@@ -409,6 +423,11 @@ export function WalletPage() {
   const qc = useQueryClient();
   const { me } = useAuth();
   const { verifying } = usePaystackReturn();
+  const settings = usePublicSettings();
+  const minDeposit = Math.max(
+    1,
+    Number(settings.data?.payments?.minWalletDepositGhs ?? DEFAULT_MIN_WALLET_DEPOSIT_GHS) || DEFAULT_MIN_WALLET_DEPOSIT_GHS
+  );
   const wallet = useQuery({
     queryKey: ["wallet"],
     queryFn: () => api<Wallet>("/wallet"),
@@ -416,7 +435,7 @@ export function WalletPage() {
   });
   const tx = useQuery({ queryKey: ["tx"], queryFn: () => api<Paginated<Record<string, unknown>>>("/wallet/transactions") });
   const methods = useQuery({ queryKey: ["pay-methods"], queryFn: () => api<PaymentMethod[]>("/payments/methods") });
-  const [amount, setAmount] = useState(String(MIN_WALLET_DEPOSIT_GHS));
+  const [amount, setAmount] = useState(String(DEFAULT_MIN_WALLET_DEPOSIT_GHS));
   const [method, setMethod] = useState("");
   const [checkoutCurrency, setCheckoutCurrency] = useState("");
   const [lastInstructions, setLastInstructions] = useState("");
@@ -424,6 +443,9 @@ export function WalletPage() {
     ?? methods.data?.find((m) => isCardMethod(m.adapter))
     ?? methods.data?.[0];
   const methodCode = method || selected?.code || "korapay";
+  const manualMethod = isManualPaymentMethod(selected?.adapter)
+    ? selected
+    : methods.data?.find((m) => isManualPaymentMethod(m.adapter));
   const korapayMarkets = filterKorapayMarkets(
     (selected?.config?.markets ?? []).map((item) => item.currency)
   );
@@ -479,7 +501,14 @@ export function WalletPage() {
   const korapaySelected = isCardMethod(selected?.adapter);
   const pendingKorapay = pending.filter((p) => isAutomaticPending(p) || (korapaySelected && !p.adapter));
   const pendingManual = pending.filter((p) => !isAutomaticPending(p) && !(korapaySelected && !p.adapter));
-  const belowMin = !Number.isFinite(depositAmount) || depositAmount < MIN_WALLET_DEPOSIT_GHS;
+  const belowMin = !Number.isFinite(depositAmount) || depositAmount < minDeposit;
+  useEffect(() => {
+    setAmount((current) => {
+      const n = Number(current);
+      if (!Number.isFinite(n) || n < minDeposit) return String(minDeposit);
+      return current;
+    });
+  }, [minDeposit]);
   usePendingKorapayVerify(pendingKorapay.map((p) => p.reference));
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -492,13 +521,13 @@ export function WalletPage() {
       <Card className="lg:col-span-1">
         <h2 className="font-bold">Add money</h2>
         <div className="mt-4 space-y-3">
-          {selected?.adapter === "manual" && <UniquePaymentCode code={paymentCode} />}
+          {manualMethod && <UniquePaymentCode code={paymentCode} />}
           <label className="block">
             <span className="label">Amount to add (GHS)</span>
-            <Input type="number" min={MIN_WALLET_DEPOSIT_GHS} step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            <p className="mt-1 text-xs text-slate-500">Minimum {money(MIN_WALLET_DEPOSIT_GHS, "GHS")}.</p>
+            <Input type="number" min={minDeposit} step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <p className="mt-1 text-xs text-slate-500">Minimum {money(minDeposit, "GHS")}.</p>
             {belowMin && (
-              <p className="mt-1 text-xs font-semibold text-rose-600">Enter at least {money(MIN_WALLET_DEPOSIT_GHS, "GHS")}.</p>
+              <p className="mt-1 text-xs font-semibold text-rose-600">Enter at least {money(minDeposit, "GHS")}.</p>
             )}
           </label>
           <Select value={methodCode} onChange={(e) => setMethod(e.target.value)}>
@@ -545,11 +574,22 @@ export function WalletPage() {
               </div>
             </div>
           )}
-          {selected?.adapter === "manual" && (
-            <ManualPaymentDetails cfg={cfg} amountHint={Number.isFinite(depositAmount) && depositAmount > 0 ? money(depositAmount) : undefined} />
+          {manualMethod && (
+            <>
+              <ManualPaymentDetails
+                cfg={manualMethod.config}
+                amountHint={Number.isFinite(depositAmount) && depositAmount > 0 ? money(depositAmount) : undefined}
+                title={korapaySelected ? "Or pay by Mobile Money / bank" : "Payment details"}
+              />
+              <p className="text-xs text-slate-500">
+                {korapaySelected
+                  ? "Korapay credits automatically. To pay by Mobile Money or bank, switch the method above to Mobile Money, send to these details with your unique code, then submit."
+                  : "Send the money first, then tap below. Admin matches your unique code and amount, confirms, and the balance appears in your account."}
+              </p>
+            </>
           )}
-          {selected?.adapter === "manual" && (
-            <p className="text-xs text-slate-500">Send the money first, then tap below. Admin matches your unique code and amount, confirms, and the balance appears in your account.</p>
+          {!manualMethod && korapaySelected && (
+            <p className="text-xs text-slate-500">Korapay confirms the payment automatically and credits your wallet. Admin can add Mobile Money or bank details under Payments.</p>
           )}
           <Button className="w-full" onClick={() => deposit.mutate()} disabled={deposit.isPending || verifying || belowMin}>
             {verifying ? "Confirming payment…" : deposit.isPending ? "Submitting…" : isCardMethod(selected?.adapter)
@@ -557,7 +597,7 @@ export function WalletPage() {
               : "I have paid — submit for confirmation"}
           </Button>
           {lastInstructions && <p className="text-sm text-slate-600 dark:text-slate-300">{lastInstructions}</p>}
-          {pendingManual.length > 0 && selected?.adapter === "manual" && (
+          {pendingManual.length > 0 && manualMethod && (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
               <p className="font-semibold text-amber-900 dark:text-amber-100">Waiting for admin confirmation</p>
               {pendingManual.map((p) => (

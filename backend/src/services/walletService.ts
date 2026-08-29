@@ -7,7 +7,6 @@ import { getPaymentAdapter } from "../providers/payment/index.js";
 import { ensureDepositCode } from "./depositCode.js";
 import { config } from "../config.js";
 import type { AuthUser } from "../middleware/auth.js";
-import { MIN_WALLET_DEPOSIT_GHS } from "../validators.js";
 import {
   getKorapayFeeSettings,
   isCardPaymentAdapter,
@@ -15,9 +14,42 @@ import {
   type KorapayFeeQuote,
 } from "./korapayFees.js";
 import { convertGhsToKorapay, getKorapayMarket, enabledKorapayMarkets } from "./korapayMarkets.js";
-import { getSettings } from "./settingsService.js";
+import { getMinWalletDepositGhs, getSettings } from "./settingsService.js";
+
+function configText(config: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = config[key];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function normalizeStoredPaymentConfig(config: Record<string, unknown> | null | undefined) {
+  const next = { ...(config ?? {}) };
+  const network = configText(next, "network", "momo_network", "momoNetwork");
+  const momoNumber = configText(next, "momoNumber", "momo_number", "walletNumber");
+  const accountName = configText(next, "accountName", "account_name", "momo_name", "momoName");
+  const bankName = configText(next, "bankName", "bank_name");
+  const accountNumber = configText(next, "accountNumber", "account_number");
+  const instructions = configText(next, "instructions", "note", "notes");
+  if (network) next.network = network;
+  if (momoNumber) next.momoNumber = momoNumber;
+  if (accountName) next.accountName = accountName;
+  if (bankName) next.bankName = bankName;
+  if (accountNumber) next.accountNumber = accountNumber;
+  if (instructions) next.instructions = instructions;
+  return next;
+}
+
+function publicPaymentConfig(config: Record<string, unknown> | null | undefined) {
+  const next = normalizeStoredPaymentConfig(config);
+  delete next.secretKey;
+  delete next.apiKey;
+  return next;
+}
 
 async function cancelBelowMinKorapayDeposits(userId: string) {
+  const minDeposit = await getMinWalletDepositGhs();
   await query(
     `UPDATE payments p
      SET status = 'cancelled', updated_at = NOW()
@@ -28,7 +60,7 @@ async function cancelBelowMinKorapayDeposits(userId: string) {
        AND COALESCE(p.metadata->>'purpose', 'deposit') = 'deposit'
        AND p.amount < $2
        AND m.adapter IN ('korapay', 'card', 'paystack')`,
-    [userId, MIN_WALLET_DEPOSIT_GHS]
+    [userId, minDeposit]
   );
 }
 
@@ -96,9 +128,7 @@ export async function listPaymentMethods(includeDisabled = false) {
   const all = await getSettings();
   const paymentsSettings = (all.payments as Record<string, unknown> | undefined) ?? {};
   return rows.map((row) => {
-    const methodConfig = { ...(row.config as Record<string, unknown> | null) };
-    delete methodConfig.secretKey;
-    delete methodConfig.apiKey;
+    const methodConfig = publicPaymentConfig(row.config as Record<string, unknown> | null);
     if (isCardPaymentAdapter(row.adapter)) {
       if (!methodConfig.publicKey && config.korapayPublicKey) {
         methodConfig.publicKey = config.korapayPublicKey;
@@ -252,8 +282,9 @@ export async function initiateDirectedPayment(
 }
 
 export async function initiateDeposit(user: AuthUser, amount: number, methodCode: string, returnUrl?: string, checkoutCurrency?: string) {
-  if (amount < MIN_WALLET_DEPOSIT_GHS) {
-    throw new AppError(`Minimum deposit is GHS ${MIN_WALLET_DEPOSIT_GHS}`, 400);
+  const minDeposit = await getMinWalletDepositGhs();
+  if (amount < minDeposit) {
+    throw new AppError(`Minimum deposit is GHS ${minDeposit}`, 400);
   }
   const method = await queryOne<Record<string, unknown>>(
     `SELECT * FROM payment_methods WHERE code = $1 AND is_enabled = TRUE`,
@@ -666,7 +697,7 @@ export async function createPaymentMethod(input: {
       input.adapter ?? "manual",
       input.isEnabled !== false,
       input.sortOrder ?? 10,
-      JSON.stringify(input.config ?? {}),
+      JSON.stringify(normalizeStoredPaymentConfig(input.config ?? {})),
     ]
   );
   await writeAudit({ actor, action: "payment_method.create", targetType: "payment_method", targetId: row?.id, ip });
@@ -683,7 +714,10 @@ export async function updatePaymentMethod(id: string, input: {
 }, actor: AuthUser, ip?: string) {
   const current = await queryOne<Record<string, unknown>>(`SELECT * FROM payment_methods WHERE id = $1`, [id]);
   if (!current) throw new AppError("Payment method not found", 404);
-  const nextConfig = { ...((current.config as Record<string, unknown>) || {}), ...(input.config || {}) };
+  const nextConfig = normalizeStoredPaymentConfig({
+    ...((current.config as Record<string, unknown>) || {}),
+    ...(input.config || {}),
+  });
   const row = await queryOne(
     `UPDATE payment_methods SET
        name = COALESCE($2, name),
