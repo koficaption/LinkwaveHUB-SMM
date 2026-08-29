@@ -1,11 +1,13 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 export type OrderOption = {
   value: string;
   label: string;
   badge?: string;
+  hint?: string;
 };
 
 const triggerClass =
@@ -17,12 +19,14 @@ export function SearchField({
   onChange,
   onCommit,
   placeholder = "Search",
+  autoFocus,
 }: {
   value?: string;
   defaultValue?: string;
   onChange?: (value: string) => void;
   onCommit?: (value: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <div className="relative">
@@ -30,6 +34,7 @@ export function SearchField({
       <input
         className="input h-12 rounded-xl pl-11 pr-4 text-[15px]"
         placeholder={placeholder}
+        autoFocus={autoFocus}
         value={onChange ? value : undefined}
         defaultValue={onChange ? undefined : defaultValue}
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
@@ -41,6 +46,18 @@ export function SearchField({
       />
     </div>
   );
+}
+
+function useMobileSheet() {
+  const [sheet, setSheet] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const apply = () => setSheet(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return sheet;
 }
 
 export function OrderSelect({
@@ -63,25 +80,93 @@ export function OrderSelect({
   clearable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const sheet = useMobileSheet();
   const selected = options.find((option) => option.value === value);
+  const searchable = options.length >= 8;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((option) =>
+      `${option.badge ?? ""} ${option.label} ${option.hint ?? ""}`.toLowerCase().includes(q)
+    );
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || sheet) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open, sheet]);
+
+  useEffect(() => {
+    if (!open || !sheet) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open, sheet]);
+
+  function pick(next: string) {
+    onChange(next);
+    setOpen(false);
+  }
+
+  const list = (
+    <>
+      {searchable ? (
+        <div className={cn(sheet ? "px-4 pb-3" : "px-2 pb-2 pt-2")}>
+          <SearchField value={query} onChange={setQuery} placeholder={`Search ${label.toLowerCase()}`} autoFocus={sheet} />
+        </div>
+      ) : null}
+      <ul
+        id={listId}
+        role="listbox"
+        className={cn(sheet ? "min-h-0 flex-1 overflow-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))]" : "max-h-80 overflow-auto py-1")}
+      >
+        {clearable ? (
+          <SelectOption selected={!value} onPick={() => pick("")} stacked={sheet}>
+            {placeholder}
+          </SelectOption>
+        ) : null}
+        {filtered.map((option) => (
+          <SelectOption
+            key={option.value}
+            selected={option.value === value}
+            stacked={sheet}
+            onPick={() => pick(option.value)}
+          >
+            {option.badge ? <IdBadge>{option.badge}</IdBadge> : null}
+            <span className="min-w-0 flex-1">
+              <span className="block whitespace-normal leading-snug">{option.label}</span>
+              {option.hint ? <span className="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400">{option.hint}</span> : null}
+            </span>
+          </SelectOption>
+        ))}
+        {filtered.length === 0 ? (
+          <li className="px-3 py-6 text-center text-sm text-slate-500">No matching {label.toLowerCase()}</li>
+        ) : null}
+      </ul>
+    </>
+  );
 
   return (
     <label className="block">
@@ -106,39 +191,31 @@ export function OrderSelect({
           <span className="min-w-0 flex-1 truncate">{selected?.label || placeholder}</span>
           <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
         </button>
-        {open && (
-          <ul
-            id={listId}
-            role="listbox"
-            className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-card dark:border-slate-700 dark:bg-slate-900"
-          >
-            {clearable ? (
-              <SelectOption
-                selected={!value}
-                onPick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-              >
-                {placeholder}
-              </SelectOption>
-            ) : null}
-            {options.map((option) => (
-              <SelectOption
-                key={option.value}
-                selected={option.value === value}
-                onPick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                {option.badge ? <IdBadge>{option.badge}</IdBadge> : null}
-                <span className="min-w-0 truncate">{option.label}</span>
-              </SelectOption>
-            ))}
-          </ul>
+        {open && !sheet && (
+          <div className="absolute z-40 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card dark:border-slate-700 dark:bg-slate-900">
+            {list}
+          </div>
         )}
       </div>
+      {open && sheet && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex flex-col bg-white dark:bg-slate-950">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] dark:border-slate-800">
+                <p className="text-lg font-extrabold">{label}</p>
+                <button
+                  type="button"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-700 dark:text-slate-100"
+                  onClick={() => setOpen(false)}
+                  aria-label={`Close ${label}`}
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              {list}
+            </div>,
+            document.body
+          )
+        : null}
     </label>
   );
 }
@@ -155,10 +232,12 @@ function SelectOption({
   selected,
   onPick,
   children,
+  stacked,
 }: {
   selected: boolean;
   onPick: () => void;
   children: ReactNode;
+  stacked?: boolean;
 }) {
   return (
     <li>
@@ -167,7 +246,8 @@ function SelectOption({
         role="option"
         aria-selected={selected}
         className={cn(
-          "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-brand-50 dark:text-slate-100 dark:hover:bg-slate-800",
+          "flex w-full items-start gap-2 px-3 text-left text-sm text-slate-800 hover:bg-brand-50 dark:text-slate-100 dark:hover:bg-slate-800",
+          stacked ? "min-h-14 py-3" : "py-2.5",
           selected && "bg-brand-50 font-semibold dark:bg-slate-800"
         )}
         onClick={onPick}

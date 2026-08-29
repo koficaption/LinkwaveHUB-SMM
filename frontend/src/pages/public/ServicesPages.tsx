@@ -14,7 +14,7 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productRefill } from "@/utils/refill";
 import { productCancel } from "@/utils/cancel";
-import { publicCategoryName, publicProductName, isEachPrice, priceUnitSuffix } from "@/utils/catalog";
+import { publicCategoryName, publicProductName, publicServiceBadge, isEachPrice, priceUnitSuffix } from "@/utils/catalog";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
 import { FilterSelect, ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
@@ -71,7 +71,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
         {products.isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
         {products.data?.items.map((p) => (
           <Card key={p.id}>
-            <p className="text-xs font-mono text-muted">#{p.provider_service_id || p.id.slice(0, 8)}</p>
+            {publicServiceBadge(p) ? <p className="text-xs font-semibold text-muted">#{publicServiceBadge(p)}</p> : null}
             <h3 className="mt-1 font-bold">{publicProductName(p.name)}</h3>
             <p className="mt-1 text-sm text-muted">{p.platform_name} · {publicCategoryName(p.category_name)}</p>
             <p className="mt-3 text-xl font-extrabold text-brand-700">{money(p.display_price_per_1000 ?? p.price_per_1000)} <span className="text-xs font-medium text-muted">{priceUnitSuffix(p)}</span></p>
@@ -100,7 +100,7 @@ export function ServicesPage({ embedded = false }: { embedded?: boolean }) {
               {products.isLoading && <tr><td colSpan={11} className="p-4"><Skeleton className="h-24" /></td></tr>}
               {products.data?.items.map((p) => (
                 <tr key={p.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-3 font-mono text-xs">{p.provider_service_id || p.id.slice(0, 8)}</td>
+                  <td className="px-3 py-3 font-mono text-xs">{publicServiceBadge(p) || "—"}</td>
                   <td className="px-3 py-3">
                     <span className="inline-flex items-center gap-1.5">
                       <PlatformIcon name={p.platform_icon} color={p.platform_color} className="h-4 w-4" />

@@ -24,6 +24,7 @@ export function CustomerLayout() {
     { to: "/app/services", label: "Services", icon: <Boxes className="h-5 w-5" /> },
     { to: "/app/wallet", label: "Add Funds", icon: <CreditCard className="h-5 w-5" /> },
     { to: "/app/support", label: "Support Tickets", icon: <Ticket className="h-5 w-5" /> },
+    { to: "/app/notifications", label: "Notifications", icon: <Bell className="h-5 w-5" /> },
   ];
   if (me?.user.role === "reseller") {
     items.push(

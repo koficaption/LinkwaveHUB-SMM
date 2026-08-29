@@ -69,3 +69,21 @@ export function publicProductName(name?: string | null) {
 export function isSellableProductName(name?: string | null) {
   return /[A-Za-z]{3,}/.test(publicProductName(name));
 }
+
+function looksLikeUuidToken(value: string) {
+  return /^[0-9a-f]{8}(-[0-9a-f]{4}){0,3}(-[0-9a-f]{12})?$/i.test(value.trim());
+}
+
+/** Customer-facing service ID. Never a UUID fragment. */
+export function publicServiceBadge(product: {
+  service_no?: number | string | null;
+  provider_service_id?: string | number | null;
+  id?: string;
+}) {
+  if (product.service_no != null && String(product.service_no).trim() !== "") {
+    return String(product.service_no).trim();
+  }
+  const provider = String(product.provider_service_id ?? "").trim();
+  if (provider && !looksLikeUuidToken(provider) && provider.length <= 16) return provider;
+  return "";
+}

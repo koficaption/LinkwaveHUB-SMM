@@ -13,7 +13,7 @@ import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollow
 import { ServiceCatalogFilters, categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
 import { OrderSelect } from "@/components/dashboard/OrderSelect";
 import { productRefill } from "@/utils/refill";
-import { publicProductName, isEachPrice, isProviderCategory, priceUnitSuffix } from "@/utils/catalog";
+import { publicProductName, publicServiceBadge, isEachPrice, isProviderCategory, priceUnitSuffix } from "@/utils/catalog";
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
@@ -113,7 +113,7 @@ export function NewOrderPanel() {
   }, [platformId, visibleCategories, categoryId]);
 
   function serviceLabel(p: Product) {
-    return `${publicProductName(p.name)} | ${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`;
+    return publicProductName(p.name);
   }
 
   return (
@@ -154,8 +154,9 @@ export function NewOrderPanel() {
             disabled={!canLoadServices}
             options={visibleProducts.map((p) => ({
               value: p.id,
-              badge: String(p.provider_service_id || p.id.slice(0, 8)),
+              badge: publicServiceBadge(p) || undefined,
               label: serviceLabel(p),
+              hint: `${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`,
             }))}
           />
         )}

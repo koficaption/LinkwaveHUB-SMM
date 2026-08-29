@@ -210,14 +210,14 @@ export function AppShell({
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#F6FAF9] dark:bg-slate-950">
-      <header className="z-50 flex h-[4.25rem] shrink-0 items-center justify-between gap-3 bg-white px-4 shadow-nav dark:bg-slate-900 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="z-50 flex h-[4.25rem] shrink-0 items-center justify-between gap-2 bg-white px-3 shadow-nav dark:bg-slate-900 sm:gap-3 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           {brand ? (
-            <Link to={home} className="truncate text-lg font-extrabold" style={{ color: brand.color || "#0D9488" }}>
+            <Link to={home} className="truncate text-base font-extrabold sm:text-lg" style={{ color: brand.color || "#0D9488" }}>
               {brand.name}
             </Link>
           ) : (
-            <BrandLogo to={home} />
+            <BrandLogo to={home} className="max-w-full" />
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">

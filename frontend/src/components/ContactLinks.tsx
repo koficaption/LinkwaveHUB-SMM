@@ -222,7 +222,7 @@ export function HelpBar({
   if (!items.length && hideTickets) return null;
 
   return (
-    <div ref={root} className="pointer-events-none fixed bottom-5 right-4 z-50 flex flex-col items-end gap-3 sm:right-5">
+    <div ref={root} className="pointer-events-none fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-50 flex flex-col items-end gap-3 sm:right-5">
       {open && (
         <div className="pointer-events-auto w-[min(18.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-black/20 dark:border-slate-700 dark:bg-slate-900">
           <p className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
@@ -274,10 +274,10 @@ export function HelpBar({
         aria-expanded={open}
         aria-label={open ? "Close help" : "Open help"}
         onClick={() => setOpen((value) => !value)}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-3 text-base font-semibold text-white shadow-fab hover:bg-brand-700"
+        className="pointer-events-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-fab hover:bg-brand-700 sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3 sm:text-base sm:font-semibold"
       >
         {open ? <X className="h-5 w-5" strokeWidth={2.25} /> : <Headphones className="h-5 w-5" strokeWidth={2.25} />}
-        Help
+        <span className="hidden sm:inline">Help</span>
       </button>
     </div>
   );

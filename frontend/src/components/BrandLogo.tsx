@@ -94,7 +94,7 @@ export function BrandLogo({
   ) : (
     <span className={cn("inline-flex min-w-0 items-center", variant === "full" ? "flex-col items-start gap-2" : "gap-2", className)}>
       <span className="inline-flex items-center gap-2">
-        <BrandMark className={variant === "full" ? "h-14 w-14 sm:h-16 sm:w-16" : "h-9 w-9 sm:h-10 sm:w-10"} />
+        <BrandMark className={variant === "full" ? "h-14 w-14 sm:h-16 sm:w-16" : "h-8 w-8 max-[380px]:hidden sm:h-10 sm:w-10"} />
         {variant !== "mark" && <Wordmark compact={variant !== "full"} />}
       </span>
       {variant === "full" && (
