@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Newspaper } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { api, formatDate } from "@/api/client";
-import { EmptyState, Skeleton } from "@/components/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { api, ApiError, formatDate } from "@/api/client";
+import { ConfirmDialog, EmptyState, Skeleton } from "@/components/ui";
 import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
 import { safeHttpUrl } from "@/utils/httpUrl";
 
@@ -16,9 +18,20 @@ type Note = {
 };
 
 export function NewsPanel() {
+  const qc = useQueryClient();
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const notes = useQuery({
     queryKey: ["notifications"],
     queryFn: () => api<Note[]>("/notifications"),
+  });
+  const removing = useMutation({
+    mutationFn: (id: string) => api(`/notifications/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Notification deleted");
+      setConfirmId(null);
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not delete notification"),
   });
 
   return (
@@ -40,11 +53,16 @@ export function NewsPanel() {
         <ul className="space-y-4">
           {notes.data?.map((n) => (
             <li key={n.id} className="rounded-xl bg-brand-50/70 p-3 dark:bg-slate-800">
-              {n.created_at && (
-                <p className="mb-2 inline-flex rounded-full bg-brand-600/90 px-3 py-1 text-xs font-semibold text-white">
-                  {formatDate(n.created_at)}
-                </p>
-              )}
+              <div className="flex items-start justify-between gap-3">
+                {n.created_at ? (
+                  <p className="mb-2 inline-flex rounded-full bg-brand-600/90 px-3 py-1 text-xs font-semibold text-white">
+                    {formatDate(n.created_at)}
+                  </p>
+                ) : <span />}
+                <button type="button" className="shrink-0 text-sm font-semibold text-rose-600" onClick={() => setConfirmId(n.id)}>
+                  Delete
+                </button>
+              </div>
               <p className="font-semibold text-slate-900 dark:text-white">{n.title}</p>
               <LinkedText text={n.body} className="mt-1 text-sm text-muted" />
               {safeHttpUrl(n.metadata?.linkUrl) ? (
@@ -61,6 +79,15 @@ export function NewsPanel() {
           </Link>
         )}
       </div>
+      <ConfirmDialog
+        open={Boolean(confirmId)}
+        title="Delete notification"
+        body="Remove this notification from your inbox."
+        danger
+        confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
+        onClose={() => { if (!removing.isPending) setConfirmId(null); }}
+        onConfirm={() => { if (confirmId && !removing.isPending) removing.mutate(confirmId); }}
+      />
     </section>
   );
 }

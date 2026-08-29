@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -67,6 +68,15 @@ export async function markAllRead(userId: string) {
   await query(`UPDATE notifications SET is_read = TRUE WHERE user_id = $1`, [userId]);
 }
 
+export async function deleteNotification(id: string, userId: string) {
+  const row = await queryOne(`DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id`, [id, userId]);
+  if (!row) throw new AppError("Notification not found", 404);
+}
+
+export async function deleteAllNotifications(userId: string) {
+  await query(`DELETE FROM notifications WHERE user_id = $1`, [userId]);
+}
+
 export async function audienceCounts() {
   const row = await queryOne<{ customers: string; resellers: string; child_panels: string; all_users: string }>(`
     SELECT
@@ -113,12 +123,14 @@ export async function broadcastNotification(input: {
   const linkUrl = safeHttpUrl(input.linkUrl);
   const linkLabel = String(input.linkLabel ?? "").trim().slice(0, 80) || (linkUrl ? "Join channel" : undefined);
   const popup = input.popup !== false;
+  const broadcastId = randomUUID();
   const { sql, params } = recipientWhere(input.audience, input.userId, 4);
   const recipientMeta = JSON.stringify({
     audience: input.audience,
     sentBy: input.actor.id,
     sentByName: input.actor.full_name,
     popup,
+    broadcastId,
     ...(linkUrl ? { linkUrl, linkLabel } : {}),
   });
 
@@ -143,10 +155,11 @@ export async function broadcastNotification(input: {
       metadata: unknown;
       created_at: string;
     }>(
-      `INSERT INTO notifications (user_id, title, body, type, metadata)
-       VALUES (NULL, $1, $2, 'broadcast', $3::jsonb)
+      `INSERT INTO notifications (id, user_id, title, body, type, metadata)
+       VALUES ($1, NULL, $2, $3, 'broadcast', $4::jsonb)
        RETURNING id, title, body, type, metadata, created_at`,
       [
+        broadcastId,
         input.title,
         input.body,
         JSON.stringify({
@@ -156,6 +169,7 @@ export async function broadcastNotification(input: {
           sentByName: input.actor.full_name,
           userId: input.userId ?? null,
           popup,
+          broadcastId,
           ...(linkUrl ? { linkUrl, linkLabel } : {}),
         }),
       ],
@@ -174,4 +188,54 @@ export async function broadcastNotification(input: {
   });
 
   return { ...result.log, recipientCount: result.recipientCount };
+}
+
+export async function deleteBroadcast(id: string, actor: AuthUser, ip?: string) {
+  const row = await queryOne<{
+    id: string;
+    title: string;
+    body: string;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  }>(
+    `SELECT id, title, body, metadata, created_at
+     FROM notifications
+     WHERE id = $1 AND type = 'broadcast' AND user_id IS NULL`,
+    [id]
+  );
+  if (!row) throw new AppError("Notification not found", 404);
+
+  const sentBy = typeof row.metadata?.sentBy === "string" ? row.metadata.sentBy : "";
+  const retracted = await withTransaction(async (client) => {
+    const copies = await query<{ id: string }>(
+      `DELETE FROM notifications
+       WHERE type = 'admin'
+         AND (
+           metadata->>'broadcastId' = $1::text
+           OR (
+             COALESCE(metadata->>'broadcastId', '') = ''
+             AND title = $2
+             AND body = $3
+             AND COALESCE(metadata->>'sentBy', '') = $4
+             AND created_at BETWEEN $5::timestamptz - interval '2 minutes'
+                               AND $5::timestamptz + interval '2 minutes'
+           )
+         )
+       RETURNING id`,
+      [id, row.title, row.body, sentBy, row.created_at],
+      client
+    );
+    await query(`DELETE FROM notifications WHERE id = $1`, [id], client);
+    return copies.length;
+  });
+
+  await writeAudit({
+    actor,
+    action: "notification.delete",
+    targetType: "notification",
+    targetId: id,
+    details: { title: row.title, retracted },
+    ip,
+  });
+  return { deleted: true, retracted };
 }

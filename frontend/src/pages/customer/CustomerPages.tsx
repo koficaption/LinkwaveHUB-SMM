@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { api, money, formatDate, ApiError } from "@/api/client";
 import type { Order, Paginated, RefillRecord, Wallet } from "@/types";
-import { Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, PageHeader, Pagination, Select, Skeleton, Textarea } from "@/components/ui";
 import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { publicProductName } from "@/utils/catalog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -698,18 +698,40 @@ function TicketModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
 export function NotificationsPage() {
   const qc = useQueryClient();
+  const [confirm, setConfirm] = useState<string | "all" | null>(null);
   const notes = useQuery({ queryKey: ["notifications"], queryFn: () => api<Record<string, unknown>[]>("/notifications") });
+  const removing = useMutation({
+    mutationFn: (id: string | "all") => id === "all"
+      ? api("/notifications", { method: "DELETE" })
+      : api(`/notifications/${id}`, { method: "DELETE" }),
+    onSuccess: (_data, id) => {
+      toast.success(id === "all" ? "Notifications deleted" : "Notification deleted");
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not delete notification"),
+  });
   return (
     <Card>
-      <div className="mb-4 flex justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-extrabold">Notifications</h1>
-        <Button variant="outline" onClick={async () => { await api("/notifications/read-all", { method: "POST" }); qc.invalidateQueries({ queryKey: ["notifications"] }); }}>Mark all read</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={async () => { await api("/notifications/read-all", { method: "POST" }); qc.invalidateQueries({ queryKey: ["notifications"] }); }}>Mark all read</Button>
+          {notes.data?.length ? (
+            <Button variant="outline" onClick={() => setConfirm("all")}>Delete all</Button>
+          ) : null}
+        </div>
       </div>
       {!notes.data?.length && !notes.isLoading && <EmptyState title="You're all caught up." body="No notifications right now." />}
       <ul className="space-y-3">
         {notes.data?.map((n) => (
           <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
-            <p className="font-semibold">{String(n.title)}</p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-semibold">{String(n.title)}</p>
+              <button type="button" className="shrink-0 text-sm font-semibold text-rose-600" onClick={() => setConfirm(String(n.id))}>
+                Delete
+              </button>
+            </div>
             <LinkedText text={String(n.body ?? "")} className="mt-1 text-sm text-slate-500" />
             {n.created_at ? <p className="mt-1 text-xs text-slate-400">{formatDate(String(n.created_at))}</p> : null}
             {typeof (n.metadata as { publicId?: string } | undefined)?.publicId === "string" && (
@@ -730,6 +752,15 @@ export function NotificationsPage() {
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm === "all" ? "Delete all notifications" : "Delete notification"}
+        body={confirm === "all" ? "This clears every item in your inbox." : "Remove this notification from your inbox."}
+        danger
+        confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
+        onClose={() => { if (!removing.isPending) setConfirm(null); }}
+        onConfirm={() => { if (confirm && !removing.isPending) removing.mutate(confirm); }}
+      />
     </Card>
   );
 }

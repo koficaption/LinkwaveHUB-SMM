@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, money, ApiError, errorMessage } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
-import { Badge, Button, Card, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Card, ConfirmDialog, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
 import { OrderSelect, SearchField } from "@/components/dashboard/OrderSelect";
 import { prettyStatus, statusTone, formatCount } from "@/utils/cn";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
@@ -1619,6 +1619,7 @@ export function AdminNotifications() {
   const [audience, setAudience] = useState("customers");
   const [userSearch, setUserSearch] = useState("");
   const [picked, setPicked] = useState<User | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const counts = useQuery({
     queryKey: ["admin-notification-counts"],
     queryFn: () => api<{ customers: number; resellers: number; child_panels: number; all: number }>("/admin/notifications/counts"),
@@ -1663,6 +1664,17 @@ export function AdminNotifications() {
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (e) => toast.error(errorMessage(e, "Failed to send")),
+  });
+  const removing = useMutation({
+    mutationFn: (id: string) => api(`/admin/notifications/${id}`, { method: "DELETE" }),
+    onSuccess: (data) => {
+      const retracted = Number((data as { retracted?: number } | null)?.retracted ?? 0);
+      toast.success(retracted ? `Notification deleted from ${retracted} inbox${retracted === 1 ? "" : "es"}` : "Notification deleted");
+      setConfirmId(null);
+      qc.invalidateQueries({ queryKey: ["admin-notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e) => toast.error(errorMessage(e, "Could not delete notification")),
   });
 
   return (
@@ -1764,9 +1776,14 @@ export function AdminNotifications() {
             const meta = (n.metadata ?? {}) as Record<string, unknown>;
             return (
               <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <p className="font-semibold">{String(n.title)}</p>
-                  <p className="text-xs text-slate-500">{formatDate(String(n.created_at))}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-slate-500">{formatDate(String(n.created_at))}</p>
+                    <button type="button" className="text-sm font-semibold text-rose-600" onClick={() => setConfirmId(String(n.id))}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm text-slate-500">{String(n.body)}</p>
                 {safeHttpUrl(String(meta.linkUrl ?? "")) ? (
@@ -1784,6 +1801,15 @@ export function AdminNotifications() {
           }) : <p className="text-sm text-slate-500">No admin notifications sent yet.</p>}
         </ul>
       </Card>
+      <ConfirmDialog
+        open={Boolean(confirmId)}
+        title="Delete notification"
+        body="This removes it from the Sent list and from every customer's inbox."
+        danger
+        confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
+        onClose={() => { if (!removing.isPending) setConfirmId(null); }}
+        onConfirm={() => { if (confirmId && !removing.isPending) removing.mutate(confirmId); }}
+      />
     </div>
   );
 }

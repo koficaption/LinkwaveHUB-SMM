@@ -172,6 +172,12 @@ export function LoginAnnouncement() {
     if (standing && !standingSeen(me.user.id)) setItem(standing);
   }, [me, onAdmin, settings.isLoading, notes.isLoading, unreadPopup, standing, item]);
 
+  useEffect(() => {
+    if (!item?.id || notes.isLoading) return;
+    if ((notes.data ?? []).some((note) => note.id === item.id)) return;
+    setItem(null);
+  }, [item, notes.data, notes.isLoading]);
+
   if (!item || onAdmin) return null;
 
   const close = async () => {

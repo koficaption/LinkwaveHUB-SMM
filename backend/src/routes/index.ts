@@ -375,6 +375,14 @@ router.post("/notifications/read-all", requireAuth, asyncHandler(async (req, res
   await notifications.markAllRead(req.user!.id);
   res.json(ok(null));
 }));
+router.delete("/notifications/:id", requireAuth, asyncHandler(async (req, res) => {
+  await notifications.deleteNotification(req.params.id, req.user!.id);
+  res.json(ok(null, "Notification deleted"));
+}));
+router.delete("/notifications", requireAuth, asyncHandler(async (req, res) => {
+  await notifications.deleteAllNotifications(req.user!.id);
+  res.json(ok(null, "Notifications deleted"));
+}));
 
 router.get("/reseller/me", requireAuth, requireRole("reseller", "admin"), asyncHandler(async (req, res) => {
   res.json(ok(await resellers.resellerStats(req.user!.id)));
@@ -726,6 +734,9 @@ admin.post("/notifications", validate(adminBroadcastSchema), asyncHandler(async 
     actor: req.user!,
     ip: clientIp(req),
   }), "Notification sent"));
+}));
+admin.delete("/notifications/:id", asyncHandler(async (req, res) => {
+  res.json(ok(await notifications.deleteBroadcast(req.params.id, req.user!, clientIp(req)), "Notification deleted"));
 }));
 
 admin.get("/settings", asyncHandler(async (_req, res) => res.json(ok(await settings.getAdminSettings()))));
