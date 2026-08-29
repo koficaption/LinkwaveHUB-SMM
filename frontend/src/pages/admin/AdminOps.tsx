@@ -11,6 +11,7 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { RequestRefillDialog, submitRefill } from "@/components/dashboard/RequestRefillDialog";
 import { KORAPAY_MARKETS } from "@/utils/korapayMarkets";
 import { normalizeHttpUrl, safeHttpUrl } from "@/utils/httpUrl";
+import { AnnouncementModal } from "@/components/dashboard/LoginAnnouncement";
 
 function isCardMethod(adapter?: string | null) {
   return adapter === "korapay" || adapter === "paystack" || adapter === "card";
@@ -1494,7 +1495,7 @@ function NotificationSettingsCard({
         depositNotifications: values.depositNotifications === "true",
       })}>Save notifications</Button>
       <p className="mt-3 text-xs text-slate-500">
-        To pop a channel join message on login, open <Link to="/admin/notifications" className="font-semibold text-brand-700">Notifications</Link> and save the login popup.
+        To show a channel join window on the customer dashboard, open <Link to="/admin/notifications" className="font-semibold text-brand-700">Notifications</Link> and save the login popup.
       </p>
     </Card>
   );
@@ -1513,12 +1514,19 @@ function LoginPopupSettingsCard() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<Record<string, Record<string, unknown>>>("/admin/settings") });
   const source = settings.data?.notifications ?? {};
   const [form, setForm] = useState<Record<string, string> | null>(null);
+  const [preview, setPreview] = useState(false);
   const values = form ?? {
     loginPopupEnabled: String(source.loginPopupEnabled === true),
     loginPopupTitle: String(source.loginPopupTitle ?? "Join our channel"),
     loginPopupBody: String(source.loginPopupBody ?? "Get updates, promos, and faster support. Tap below to join."),
     loginPopupUrl: String(source.loginPopupUrl ?? ""),
     loginPopupButton: String(source.loginPopupButton ?? "Join channel"),
+  };
+  const previewItem = {
+    title: values.loginPopupTitle.trim() || "Join our channel",
+    body: values.loginPopupBody.trim() || "Get updates, promos, and faster support. Tap below to join.",
+    url: normalizeHttpUrl(values.loginPopupUrl) || undefined,
+    button: values.loginPopupButton.trim() || "Join channel",
   };
   const save = useMutation({
     mutationFn: async () => {
@@ -1542,7 +1550,7 @@ function LoginPopupSettingsCard() {
       });
     },
     onSuccess: () => {
-      toast.success("Login popup saved");
+      toast.success("Login popup saved. Customers see it on their dashboard.");
       qc.invalidateQueries({ queryKey: ["settings"] });
       qc.invalidateQueries({ queryKey: ["public-settings"] });
     },
@@ -1552,13 +1560,14 @@ function LoginPopupSettingsCard() {
     <Card>
       <h2 className="font-bold">Login popup</h2>
       <p className="mt-1 text-sm text-slate-500">
-        When a customer or reseller signs in, this pops up on their screen with your channel link so they can join.
+        This is a window on the customer dashboard — not the Notifications list. Turn it On, paste your channel link, then Save.
+        Admin screens do not show it; use Preview, or open the user dashboard at /app.
       </p>
       <div className="mt-3 space-y-3">
         <label className="block">
-          <span className="label">Show on login</span>
+          <span className="label">Show on dashboard</span>
           <Select value={values.loginPopupEnabled} onChange={(e) => setForm({ ...values, loginPopupEnabled: e.target.value })}>
-            <option value="true">On — pop up after sign-in</option>
+            <option value="true">On — window on the customer dashboard</option>
             <option value="false">Off</option>
           </Select>
         </label>
@@ -1580,9 +1589,22 @@ function LoginPopupSettingsCard() {
           <Input value={values.loginPopupButton} onChange={(e) => setForm({ ...values, loginPopupButton: e.target.value })} placeholder="Join channel" />
         </label>
       </div>
-      <Button className="mt-4" disabled={save.isPending || settings.isLoading} onClick={() => save.mutate()}>
-        {save.isPending ? "Saving…" : "Save login popup"}
-      </Button>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button disabled={save.isPending || settings.isLoading} onClick={() => save.mutate()}>
+          {save.isPending ? "Saving…" : "Save login popup"}
+        </Button>
+        <Button variant="outline" type="button" onClick={() => setPreview(true)}>Preview popup</Button>
+      </div>
+      {preview ? (
+        <AnnouncementModal
+          item={previewItem}
+          onClose={() => setPreview(false)}
+          onPrimary={() => {
+            if (previewItem.url) window.open(previewItem.url, "_blank", "noopener,noreferrer");
+            setPreview(false);
+          }}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -1647,7 +1669,7 @@ export function AdminNotifications() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Notifications</h1>
-        <p className="mt-1 text-sm text-slate-500">Send an announcement, or show your channel link as a popup the next time someone signs in.</p>
+        <p className="mt-1 text-sm text-slate-500">Send an inbox announcement, and optionally pop it up as a window on the customer dashboard. The Login popup card is a standing channel-join window.</p>
       </div>
       <LoginPopupSettingsCard />
       <Card>
@@ -1672,8 +1694,8 @@ export function AdminNotifications() {
           <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
             <input type="checkbox" className="mt-1" checked={popup} onChange={(e) => setPopup(e.target.checked)} />
             <span>
-              <span className="block font-semibold">Pop up when they next log in</span>
-              <span className="text-xs text-slate-500">Shows this message on their screen after sign-in, with the join button if you added a link.</span>
+              <span className="block font-semibold">Show as a popup on their dashboard</span>
+              <span className="text-xs text-slate-500">Customers see this window on /app until they dismiss it. It also stays in their Notifications inbox.</span>
             </span>
           </label>
           <fieldset>
@@ -1755,7 +1777,7 @@ export function AdminNotifications() {
                 <p className="mt-1 text-xs text-slate-400">
                   {audienceLabels[String(meta.audience)] ?? "Audience"} · {String(meta.recipientCount ?? 0)} recipients
                   {meta.sentByName ? ` · ${String(meta.sentByName)}` : ""}
-                  {meta.popup === true ? " · Login popup" : ""}
+                  {meta.popup === true ? " · Dashboard popup" : ""}
                 </p>
               </li>
             );
