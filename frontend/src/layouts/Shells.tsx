@@ -230,7 +230,7 @@ export function AppShell({
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          {me?.wallet && <CurrencyButton />}
+          {me?.wallet && home !== "/admin" && <CurrencyButton />}
           {home === "/app" && (
             <Link
               to="/app/notifications"
