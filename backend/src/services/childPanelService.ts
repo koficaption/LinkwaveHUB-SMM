@@ -193,7 +193,7 @@ export async function placeChildPanelOrder(user: AuthUser, input: {
     type: "child_panel",
     metadata: { publicId: created.public_id },
   });
-  const admins = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND status = 'active'`);
+  const admins = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL`);
   for (const admin of admins) {
     await notify({
       userId: admin.id,

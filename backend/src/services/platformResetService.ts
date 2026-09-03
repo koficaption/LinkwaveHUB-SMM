@@ -3,7 +3,7 @@ import { query, queryOne } from "../db.js";
 export const PRIMARY_ADMIN_EMAIL = "owussamuel18@gmail.com";
 
 export async function ensurePrimaryAdmin() {
-  const admin = await queryOne<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
+  const admin = await queryOne<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND deleted_at IS NULL LIMIT 1`);
   if (admin) return;
   const restored = await queryOne<{ email: string }>(
     `UPDATE users

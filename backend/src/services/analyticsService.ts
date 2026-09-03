@@ -16,9 +16,9 @@ export async function adminOverview() {
     today_orders: string;
   }>(`
     SELECT
-      (SELECT COUNT(*) FROM users) AS total_users,
-      (SELECT COUNT(*) FROM users WHERE role = 'customer') AS total_customers,
-      (SELECT COUNT(*) FROM users WHERE role = 'reseller') AS total_resellers,
+      (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) AS total_users,
+      (SELECT COUNT(*) FROM users WHERE role = 'customer' AND deleted_at IS NULL) AS total_customers,
+      (SELECT COUNT(*) FROM users WHERE role = 'reseller' AND deleted_at IS NULL) AS total_resellers,
       (SELECT COUNT(*) FROM orders) AS total_orders,
       (SELECT COUNT(*) FROM orders WHERE status = 'pending') AS pending_orders,
       (SELECT COUNT(*) FROM orders WHERE status = 'completed') AS completed_orders,

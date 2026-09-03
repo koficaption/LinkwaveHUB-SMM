@@ -16,7 +16,7 @@ function recipientWhere(audience: BroadcastAudience, userId: string | undefined,
     index += 1;
     return placeholder;
   };
-  const clauses = [`u.status = 'active'`, `u.role <> 'admin'`];
+  const clauses = [`u.status = 'active'`, `u.role <> 'admin'`, `u.deleted_at IS NULL`];
   if (audience === "user") {
     if (!userId) throw new AppError("Select a user to notify", 400);
     clauses.push(`u.id = ${next(userId)}`);
@@ -89,7 +89,7 @@ export async function audienceCounts() {
       )::text AS child_panels,
       COUNT(*) FILTER (WHERE u.role IN ('customer', 'reseller'))::text AS all_users
     FROM users u
-    WHERE u.status = 'active' AND u.role <> 'admin'
+    WHERE u.status = 'active' AND u.role <> 'admin' AND u.deleted_at IS NULL
   `);
   return {
     customers: Number(row?.customers ?? 0),

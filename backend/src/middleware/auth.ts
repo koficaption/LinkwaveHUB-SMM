@@ -47,11 +47,11 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     const token = readToken(req);
     if (!token) return next();
     const payload = verifyToken(token);
-    const user = await queryOne<AuthUser>(
-      `SELECT id, email, full_name, role, status FROM users WHERE id = $1`,
+    const user = await queryOne<AuthUser & { deleted_at?: string | null }>(
+      `SELECT id, email, full_name, role, status, deleted_at FROM users WHERE id = $1`,
       [payload.id]
     );
-    if (user && user.status === "active") req.user = user;
+    if (user && user.status === "active" && !user.deleted_at) req.user = user;
     next();
   } catch {
     next();
@@ -63,11 +63,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const token = readToken(req);
     if (!token) throw new AppError("Authentication required", 401);
     const payload = verifyToken(token);
-    const user = await queryOne<AuthUser>(
-      `SELECT id, email, full_name, role, status FROM users WHERE id = $1`,
+    const user = await queryOne<AuthUser & { deleted_at?: string | null }>(
+      `SELECT id, email, full_name, role, status, deleted_at FROM users WHERE id = $1`,
       [payload.id]
     );
-    if (!user) throw new AppError("Account not found", 401);
+    if (!user || user.deleted_at) throw new AppError("Account not found", 401);
     if (user.status === "suspended") throw new AppError("Account is suspended", 403);
     if (user.status !== "active") throw new AppError("Account is not active", 403);
     req.user = user;

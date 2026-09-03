@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { newDepositCode, signToken } from "../utils.js";
+import { ACCOUNT_REMOVED_MESSAGE, newDepositCode, normalizePersonName, signToken } from "../utils.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { attachPanelCustomer } from "./resellerService.js";
@@ -49,8 +49,18 @@ type GoogleProfile = {
   email: string;
   email_verified?: boolean | string;
   name?: string;
+  given_name?: string;
+  family_name?: string;
   picture?: string;
 };
+
+function googleDisplayName(profile: GoogleProfile) {
+  return normalizePersonName(
+    profile.name
+    || [profile.given_name, profile.family_name].filter(Boolean).join(" ")
+    || profile.email.split("@")[0]
+  );
+}
 
 export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string, storeSlug?: string) {
   if (!config.googleClientId || !config.googleClientSecret) {
@@ -115,19 +125,27 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
   if (!verified) throw new AppError("Google email is not verified", 401);
 
   const result = await withTransaction(async (client) => {
-    let user = await queryOne(
-      `SELECT ${publicUser} FROM users WHERE google_id = $1 OR LOWER(email) = $2`,
+    let user = await queryOne<{
+      id: string;
+      email: string;
+      role: string;
+      status: string;
+      deleted_at?: string | null;
+    }>(
+      `SELECT ${publicUser}, deleted_at FROM users WHERE google_id = $1 OR LOWER(email) = $2`,
       [profile.sub, email],
       client
     );
     let created = false;
+
+    if (user?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 403);
 
     if (!user) {
       user = await queryOne(
         `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code, deposit_code)
          VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5, $6)
          RETURNING ${publicUser}`,
-        [email, profile.name || email.split("@")[0], profile.sub, profile.picture ?? null, newReferralCode(), newDepositCode()],
+        [email, googleDisplayName(profile), profile.sub, profile.picture ?? null, newReferralCode(), newDepositCode()],
         client
       );
       await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id], client);

@@ -31,7 +31,7 @@ export async function findReferrerByCode(code?: string | null, client?: Queryabl
   const cleaned = code.trim().replace(/^.*[?&]ref=/i, "").split(/[/?#]/)[0];
   if (!cleaned) return null;
   return queryOne<{ id: string; full_name: string; referral_code: string }>(
-    `SELECT id, full_name, referral_code FROM users WHERE UPPER(referral_code) = UPPER($1)`,
+    `SELECT id, full_name, referral_code FROM users WHERE UPPER(referral_code) = UPPER($1) AND deleted_at IS NULL`,
     [cleaned],
     client
   );

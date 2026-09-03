@@ -77,7 +77,7 @@ export async function listResellerCustomers(userId: string) {
             (SELECT COALESCE(SUM(o.charge), 0) FROM orders o WHERE o.user_id = u.id AND o.reseller_id = $1) AS spent
      FROM users u
      LEFT JOIN wallets w ON w.user_id = u.id
-     WHERE u.panel_reseller_id = $1
+     WHERE u.panel_reseller_id = $1 AND u.deleted_at IS NULL
      ORDER BY u.created_at DESC`,
     [reseller.id]
   );
@@ -91,7 +91,7 @@ export async function getResellerCustomer(userId: string, customerId: string) {
             COALESCE(w.balance, 0) AS balance
      FROM users u
      LEFT JOIN wallets w ON w.user_id = u.id
-     WHERE u.id = $1 AND u.panel_reseller_id = $2`,
+     WHERE u.id = $1 AND u.panel_reseller_id = $2 AND u.deleted_at IS NULL`,
     [customerId, reseller.id]
   );
   if (!customer) throw new AppError("Customer not found", 404);
@@ -113,7 +113,7 @@ export async function listResellers(status?: string) {
       (SELECT COUNT(*)::int FROM orders o WHERE o.reseller_id = r.id) AS order_count,
       (SELECT COALESCE(SUM(reseller_profit),0) FROM orders o WHERE o.reseller_id = r.id) AS total_profit
      FROM resellers r
-     JOIN users u ON u.id = r.user_id
+     JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
      LEFT JOIN wallets w ON w.user_id = u.id
      ${where}
      ORDER BY r.created_at DESC`,
@@ -124,7 +124,7 @@ export async function listResellers(status?: string) {
 export async function getReseller(id: string) {
   const reseller = await queryOne(
     `SELECT r.*, u.full_name, u.email, w.balance AS wallet_balance
-     FROM resellers r JOIN users u ON u.id = r.user_id
+     FROM resellers r JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
      LEFT JOIN wallets w ON w.user_id = u.id
      WHERE r.id = $1 OR r.user_id::text = $1 OR r.store_slug = $1`,
     [id]
@@ -746,7 +746,7 @@ export async function requestResellerWithdrawal(userId: string, input: {
       body: `Your ₵${amount.toFixed(2)} Mobile Money payout is pending. Admin will send it to ${input.momoNumber}.`,
       type: "reseller",
     });
-    const admins = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND status = 'active'`);
+    const admins = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL`);
     for (const admin of admins) {
       await notify({
         userId: admin.id,

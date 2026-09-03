@@ -71,7 +71,7 @@ export async function requireApiKey(req: Request, res: Response, next: NextFunct
     const row = await queryOne<Record<string, unknown>>(
       `SELECT k.id, k.developer_id, k.user_id, k.name, k.key_prefix, k.secret_hash, k.status, k.permissions, k.allowed_ips AS key_ips,
               d.status AS developer_status, d.plan, d.rate_limit_per_minute, d.allowed_ips AS developer_ips,
-              u.id AS account_id, u.email, u.full_name, u.role, u.status AS user_status
+              u.id AS account_id, u.email, u.full_name, u.role, u.status AS user_status, u.deleted_at
        FROM api_keys k
        JOIN api_developers d ON d.id = k.developer_id
        JOIN users u ON u.id = k.user_id
@@ -84,6 +84,7 @@ export async function requireApiKey(req: Request, res: Response, next: NextFunct
     }
     if (row.status !== "active") throw new AppError("API key is not active", 403, "key_inactive");
     if (row.developer_status !== "approved") throw new AppError("API access is not approved", 403, "developer_inactive");
+    if (row.deleted_at) throw new AppError("Account is not active", 403, "account_inactive");
     if (row.user_status === "suspended") throw new AppError("Account is suspended", 403, "account_suspended");
     if (row.user_status !== "active") throw new AppError("Account is not active", 403, "account_inactive");
 

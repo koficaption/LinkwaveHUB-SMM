@@ -748,11 +748,12 @@ export async function listAllWallets(search?: string) {
   let where = "";
   if (search) {
     params.push(`%${search}%`);
-    where = `WHERE u.email ILIKE $1 OR u.full_name ILIKE $1 OR u.deposit_code ILIKE $1`;
+    where = `AND (u.email ILIKE $1 OR u.full_name ILIKE $1 OR u.deposit_code ILIKE $1)`;
   }
   return query(
     `SELECT w.*, u.full_name, u.email, u.role, u.status AS user_status, u.deposit_code
-     FROM wallets w JOIN users u ON u.id = w.user_id ${where}
+     FROM wallets w JOIN users u ON u.id = w.user_id
+     WHERE u.deleted_at IS NULL ${where}
      ORDER BY w.balance DESC`,
     params
   );

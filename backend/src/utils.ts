@@ -48,6 +48,21 @@ export function publicChildPanelId(): string {
   return `CP-${date}-${rand}`;
 }
 
+export const ACCOUNT_REMOVED_MESSAGE = "This account was removed. Contact support if that is a mistake.";
+
+export function normalizePersonName(value: string): string {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) return cleaned;
+  const parts = cleaned.split(" ");
+  if (parts.length >= 2 && parts.length % 2 === 0) {
+    const half = parts.length / 2;
+    const left = parts.slice(0, half).join(" ");
+    const right = parts.slice(half).join(" ");
+    if (left.toLowerCase() === right.toLowerCase()) return left;
+  }
+  return cleaned;
+}
+
 export function normalizeDomain(raw: string): string {
   return String(raw || "")
     .trim()

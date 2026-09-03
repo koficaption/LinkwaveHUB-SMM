@@ -316,7 +316,7 @@ export function AdminUsers() {
   const removing = useMutation({
     mutationFn: (id: string) => api<{ deleted?: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("User deleted");
+      toast.success("User removed. They cannot sign in or register with that email again.");
       setConfirmId(null);
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
@@ -386,8 +386,8 @@ export function AdminUsers() {
         open={Boolean(confirmId)}
         title="Delete user"
         body={confirmUser
-          ? `Delete ${confirmUser.full_name} (${confirmUser.email})? This removes the account, wallet, orders, and payments. It cannot be undone.`
-          : "Delete this account, wallet, orders, and payments? This cannot be undone."}
+          ? `Remove ${confirmUser.full_name} (${confirmUser.email})? They disappear from Users and cannot sign in or create a new account with that email.`
+          : "Remove this account? They disappear from Users and cannot sign in or create a new account with that email."}
         danger
         confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
         onClose={() => { if (!removing.isPending) setConfirmId(null); }}
@@ -439,7 +439,7 @@ export function AdminUserDetail() {
   const removing = useMutation({
     mutationFn: () => api<{ deleted?: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("User deleted");
+      toast.success("User removed. They cannot sign in or register with that email again.");
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["admin-wallets"] });
@@ -470,7 +470,7 @@ export function AdminUserDetail() {
       <ConfirmDialog
         open={confirmDelete}
         title="Delete user"
-        body={`Delete ${u.full_name} (${u.email})? This removes the account, wallet, orders, and payments. It cannot be undone.`}
+        body={`Remove ${u.full_name} (${u.email})? They disappear from Users and cannot sign in or create a new account with that email.`}
         danger
         confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
         onClose={() => { if (!removing.isPending) setConfirmDelete(false); }}

@@ -3,7 +3,7 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { config } from "../config.js";
 import { passwordResetEmail, sendMail, mailConfigured } from "../mailer.js";
-import { hashPassword, makeSlug, newDepositCode, signToken, uniqueSlug, verifyPassword } from "../utils.js";
+import { ACCOUNT_REMOVED_MESSAGE, hashPassword, makeSlug, newDepositCode, normalizePersonName, signToken, uniqueSlug, verifyPassword } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
@@ -28,7 +28,11 @@ export async function registerUser(input: {
   storeSlug?: string;
   ip?: string;
 }) {
-  const existing = await queryOne(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [input.email]);
+  const existing = await queryOne<{ id: string; deleted_at: string | null }>(
+    `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
+    [input.email]
+  );
+  if (existing?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 409);
   if (existing) throw new AppError("An account with this email already exists", 409);
 
   const result = await withTransaction(async (client) => {
@@ -38,7 +42,7 @@ export async function registerUser(input: {
       `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code, deposit_code)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)
        RETURNING ${publicUser}`,
-      [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode(), newDepositCode()],
+      [input.email.toLowerCase(), passwordHash, normalizePersonName(input.fullName), input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode(), newDepositCode()],
       client
     );
     if (!user) throw new AppError("Unable to create account", 500);
@@ -101,11 +105,15 @@ export async function loginUser(email: string, password: string, ip?: string, us
     last_login_at: string | null;
     created_at: string;
     password_hash: string | null;
+    deleted_at: string | null;
   }>(
-    `SELECT ${publicUser}, password_hash FROM users WHERE LOWER(email) = LOWER($1)`,
+    `SELECT ${publicUser}, password_hash, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [email]
   );
-  if (!user) throw new AppError("Invalid email or password", 401);
+  if (!user || user.deleted_at) {
+    if (user?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 403);
+    throw new AppError("Invalid email or password", 401);
+  }
   if (!user.password_hash) {
     throw new AppError("This account uses Google sign-in. Continue with Google instead.", 401);
   }
@@ -124,15 +132,16 @@ export async function loginUser(email: string, password: string, ip?: string, us
     });
   }
 
-  const { password_hash: _, ...safe } = user;
+  const { password_hash: _, deleted_at: _deleted, ...safe } = user;
   const token = signToken({ id: user.id, role: user.role, email: user.email });
   if (storeSlug) await attachPanelCustomer(user.id, storeSlug);
   return { user: safe, token };
 }
 
 export async function getMe(userId: string) {
-  const user = await queryOne(`SELECT ${publicUser} FROM users WHERE id = $1`, [userId]);
-  if (!user) throw new AppError("User not found", 404);
+  const row = await queryOne<Record<string, unknown> & { deleted_at?: string | null }>(`SELECT ${publicUser}, deleted_at FROM users WHERE id = $1`, [userId]);
+  if (!row || row.deleted_at) throw new AppError("User not found", 404);
+  const { deleted_at: _removed, ...user } = row;
   const walletRow = await queryOne<{ id: string; balance: string; currency: string }>(
     `SELECT id, balance, currency FROM wallets WHERE user_id = $1`,
     [userId]
@@ -168,7 +177,7 @@ export async function updateProfile(userId: string, input: {
 }) {
   const user = await queryOne(
     `UPDATE users SET full_name = $2, phone = $3, whatsapp_number = $4, gender = COALESCE($5, gender) WHERE id = $1 RETURNING ${publicUser}`,
-    [userId, input.fullName, input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null]
+    [userId, normalizePersonName(input.fullName), input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null]
   );
   return user;
 }
@@ -188,12 +197,12 @@ const GENERIC_RESET_MESSAGE = "If an account exists for that email, we sent a re
 
 export async function requestPasswordReset(input: { email: string; origin?: string; ip?: string }) {
   const email = input.email.trim().toLowerCase();
-  const user = await queryOne<{ id: string; email: string; full_name: string; status: string }>(
-    `SELECT id, email, full_name, status FROM users WHERE LOWER(email) = $1`,
+  const user = await queryOne<{ id: string; email: string; full_name: string; status: string; deleted_at: string | null }>(
+    `SELECT id, email, full_name, status, deleted_at FROM users WHERE LOWER(email) = $1`,
     [email]
   );
 
-  if (!user || user.status === "suspended") {
+  if (!user || user.status === "suspended" || user.deleted_at) {
     return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
   }
 

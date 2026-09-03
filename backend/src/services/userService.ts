@@ -1,6 +1,6 @@
-import { query, queryOne, withTransaction } from "../db.js";
+import { query, queryOne } from "../db.js";
 import { AppError } from "../errors.js";
-import { hashPassword, like, newDepositCode, parsePagination } from "../utils.js";
+import { ACCOUNT_REMOVED_MESSAGE, hashPassword, like, newDepositCode, normalizePersonName, parsePagination } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { PRIMARY_ADMIN_EMAIL } from "./platformResetService.js";
@@ -25,7 +25,8 @@ export async function listUsers(opts: { search?: string; role?: string; status?:
     params.push(opts.status);
     where.push(`status = $${params.length}`);
   }
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  where.push("deleted_at IS NULL");
+  const whereSql = `WHERE ${where.join(" AND ")}`;
   const count = await queryOne<{ count: string }>(`SELECT COUNT(*) FROM users ${whereSql}`, params);
   params.push(p.limit, p.offset);
   const items = await query(
@@ -36,7 +37,7 @@ export async function listUsers(opts: { search?: string; role?: string; status?:
 }
 
 export async function getUserDetail(id: string) {
-  const user = await queryOne(`SELECT ${publicUser} FROM users WHERE id = $1`, [id]);
+  const user = await queryOne(`SELECT ${publicUser} FROM users WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!user) throw new AppError("User not found", 404);
   const wallet = await queryOne(`SELECT * FROM wallets WHERE user_id = $1`, [id]);
   const orders = await query(
@@ -65,20 +66,25 @@ export async function createUser(input: {
   role: string;
   phone?: string;
 }, actor: AuthUser, ip?: string) {
-  const exists = await queryOne(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [input.email]);
+  const exists = await queryOne<{ id: string; deleted_at: string | null }>(
+    `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
+    [input.email]
+  );
+  if (exists?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 409);
   if (exists) throw new AppError("Email already in use", 409);
   const hash = await hashPassword(input.password);
+  const fullName = normalizePersonName(input.fullName);
   const user = await queryOne(
     `INSERT INTO users (email, password_hash, full_name, phone, role, status, deposit_code)
      VALUES ($1,$2,$3,$4,$5,'active',$6) RETURNING ${publicUser}`,
-    [input.email.toLowerCase(), hash, input.fullName, input.phone ?? null, input.role, newDepositCode()]
+    [input.email.toLowerCase(), hash, fullName, input.phone ?? null, input.role, newDepositCode()]
   );
   await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id]);
   if (input.role === "reseller") {
     await query(
       `INSERT INTO resellers (user_id, status, store_name, store_slug)
        VALUES ($1, 'active', $2, $3)`,
-      [user!.id, `${input.fullName} Store`, `store-${user!.id.slice(0, 8)}`]
+      [user!.id, `${fullName} Store`, `store-${user!.id.slice(0, 8)}`]
     );
   }
   await writeAudit({ actor, action: "user.create", targetType: "user", targetId: user!.id, ip });
@@ -93,7 +99,7 @@ export async function updateUser(id: string, input: Record<string, unknown>, act
       role = COALESCE($4, role),
       status = COALESCE($5, status)
      WHERE id = $1 RETURNING ${publicUser}`,
-    [id, input.fullName ?? null, input.phone ?? null, input.role ?? null, input.status ?? null]
+    [id, input.fullName != null ? normalizePersonName(String(input.fullName)) : null, input.phone ?? null, input.role ?? null, input.status ?? null]
   );
   if (!user) throw new AppError("User not found", 404);
   if (input.status === "suspended") {
@@ -109,29 +115,31 @@ export async function updateUser(id: string, input: Record<string, unknown>, act
 
 export async function deleteUser(id: string, actor: AuthUser, ip?: string) {
   if (id === actor.id) throw new AppError("You cannot delete your own account");
-  const target = await queryOne<{ email: string; role: string; full_name: string }>(
-    `SELECT email, role, full_name FROM users WHERE id = $1`,
+  const target = await queryOne<{ email: string; role: string; full_name: string; deleted_at: string | null }>(
+    `SELECT email, role, full_name, deleted_at FROM users WHERE id = $1`,
     [id]
   );
   if (!target) throw new AppError("User not found", 404);
+  if (target.deleted_at) return { deleted: true };
   if (String(target.email).toLowerCase() === PRIMARY_ADMIN_EMAIL) {
     throw new AppError("This admin account cannot be deleted", 400);
   }
   if (target.role === "admin") {
     const others = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) FROM users WHERE role = 'admin' AND id <> $1`,
+      `SELECT COUNT(*) FROM users WHERE role = 'admin' AND id <> $1 AND deleted_at IS NULL`,
       [id]
     );
     if (Number(others?.count ?? 0) < 1) throw new AppError("Cannot delete the last admin", 400);
   }
 
-  await withTransaction(async (client) => {
-    await query(`DELETE FROM refills WHERE user_id = $1`, [id], client);
-    await query(`DELETE FROM payments WHERE user_id = $1`, [id], client);
-    await query(`DELETE FROM orders WHERE user_id = $1`, [id], client);
-    const deleted = await queryOne(`DELETE FROM users WHERE id = $1 RETURNING id`, [id], client);
-    if (!deleted) throw new AppError("User not found", 404);
-  });
+  const deleted = await queryOne(
+    `UPDATE users
+     SET deleted_at = NOW(), status = 'suspended', updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING id`,
+    [id]
+  );
+  if (!deleted) throw new AppError("User not found", 404);
 
   await writeAudit({
     actor,
