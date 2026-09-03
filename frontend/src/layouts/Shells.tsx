@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronDown, Menu, Moon, Sun, X } from "lucide-react";
+import { Bell, ChevronDown, Menu, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth, useTheme } from "@/contexts/AuthContext";
@@ -12,13 +12,14 @@ import { cn } from "@/utils/cn";
 import { api } from "@/api/client";
 import { panelAuthPath, persistPanelSlug } from "@/utils/panel";
 import type { PanelStore } from "@/types";
+import { unreadNotificationCount, useNotifications } from "@/hooks/useNotifications";
 
 const publicLinks = [
   { to: "/", label: "Home" },
   { to: "/services", label: "Services" },
 ];
 
-export type AppNavItem = { to: string; label: string; icon: React.ReactNode; end?: boolean };
+export type AppNavItem = { to: string; label: string; icon: React.ReactNode; end?: boolean; badge?: number };
 export type AppNavGroup = { label?: string; items: AppNavItem[] };
 
 export function PublicLayout() {
@@ -205,8 +206,16 @@ export function AppShell({
   const { me, logout } = useAuth();
   const { dark, setDark } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
-  const navGroups = groups ?? [{ items: items ?? [] }];
+  const notes = useNotifications(home === "/app");
+  const unread = unreadNotificationCount(notes.data);
+  const navGroups = (groups ?? [{ items: items ?? [] }]).map((group) => ({
+    ...group,
+    items: group.items.map((item) => (
+      item.to === "/app/notifications" ? { ...item, badge: unread } : item
+    )),
+  }));
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#F6FAF9] dark:bg-slate-950">
@@ -222,6 +231,20 @@ export function AppShell({
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {me?.wallet && <CurrencyButton />}
+          {home === "/app" && (
+            <Link
+              to="/app/notifications"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-800 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              aria-label={unread ? `${unread} unread notifications` : "Notifications"}
+            >
+              <Bell className="h-5 w-5" />
+              {unread > 0 && (
+                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[11px] font-bold leading-5 text-white">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </Link>
+          )}
           <button onClick={() => setDark(!dark)} className="hidden rounded-xl p-2 text-slate-600 hover:bg-brand-50 sm:inline-flex dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Toggle theme">
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
@@ -286,6 +309,17 @@ export function AppShell({
         {open && <button className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu overlay" />}
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10">
           <div className="container-dashboard">
+            {home === "/app" && unread > 0 && location.pathname !== "/app/notifications" && (
+              <Link
+                to="/app/notifications"
+                className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-100"
+              >
+                <span>
+                  You have {unread} new notification{unread === 1 ? "" : "s"}.
+                </span>
+                <span className="shrink-0 underline">View</span>
+              </Link>
+            )}
             <Outlet />
           </div>
         </main>
@@ -349,8 +383,20 @@ function SidebarLink({ item, home, onNavigate }: { item: AppNavItem; home: strin
         )
       }
     >
-      {item.icon}
-      {item.label}
+      {({ isActive }) => (
+        <>
+          {item.icon}
+          <span className="flex-1">{item.label}</span>
+          {item.badge ? (
+            <span className={cn(
+              "min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold leading-5",
+              isActive ? "bg-brand-600 text-white" : "bg-white text-brand-700"
+            )}>
+              {item.badge > 99 ? "99+" : item.badge}
+            </span>
+          ) : null}
+        </>
+      )}
     </NavLink>
   );
 }

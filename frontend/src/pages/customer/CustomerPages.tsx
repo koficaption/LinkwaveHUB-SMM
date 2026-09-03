@@ -23,6 +23,7 @@ import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { RequestRefillDialog } from "@/components/dashboard/RequestRefillDialog";
 import { CancelOrderDialog, cancelErrorMessage } from "@/components/dashboard/CancelOrderDialog";
+import { isUnreadNote, useNotifications } from "@/hooks/useNotifications";
 import { quoteKorapayFees } from "@/utils/korapayFees";
 import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
 import { getDisplayCurrency } from "@/utils/currency";
@@ -788,7 +789,7 @@ function TicketModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 export function NotificationsPage() {
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState<string | "all" | null>(null);
-  const notes = useQuery({ queryKey: ["notifications"], queryFn: () => api<Record<string, unknown>[]>("/notifications") });
+  const notes = useNotifications();
   const removing = useMutation({
     mutationFn: (id: string | "all") => id === "all"
       ? api("/notifications", { method: "DELETE" })
@@ -814,28 +815,39 @@ export function NotificationsPage() {
       {!notes.data?.length && !notes.isLoading && <EmptyState title="You're all caught up." body="No notifications right now." />}
       <ul className="space-y-3">
         {notes.data?.map((n) => (
-          <li key={String(n.id)} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
+          <li
+            key={String(n.id)}
+            className={`cursor-pointer rounded-xl border p-3 ${isUnreadNote(n) ? "border-brand-200 bg-brand-50/70 dark:border-brand-800 dark:bg-brand-500/10" : "border-slate-100 dark:border-slate-800"}`}
+            onClick={async () => {
+              if (!isUnreadNote(n)) return;
+              await api(`/notifications/${n.id}/read`, { method: "POST" }).catch(() => undefined);
+              qc.invalidateQueries({ queryKey: ["notifications"] });
+            }}
+          >
             <div className="flex items-start justify-between gap-3">
-              <p className="font-semibold">{String(n.title)}</p>
-              <button type="button" className="shrink-0 text-sm font-semibold text-rose-600" onClick={() => setConfirm(String(n.id))}>
+              <p className="font-semibold">
+                {String(n.title)}
+                {isUnreadNote(n) ? <span className="ml-2 rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-bold text-white">New</span> : null}
+              </p>
+              <button type="button" className="shrink-0 text-sm font-semibold text-rose-600" onClick={(e) => { e.stopPropagation(); setConfirm(String(n.id)); }}>
                 Delete
               </button>
             </div>
             <LinkedText text={String(n.body ?? "")} className="mt-1 text-sm text-slate-500" />
             {n.created_at ? <p className="mt-1 text-xs text-slate-400">{formatDate(String(n.created_at))}</p> : null}
-            {typeof (n.metadata as { publicId?: string } | undefined)?.publicId === "string" && (
-              <Link to={`/app/orders/${(n.metadata as { publicId: string }).publicId}`} className="mt-2 inline-block text-sm font-semibold text-brand-700">
+            {n.metadata?.publicId && (
+              <Link to={`/app/orders/${n.metadata.publicId}`} className="mt-2 inline-block text-sm font-semibold text-brand-700">
                 View order
               </Link>
             )}
-            {safeHttpUrl(String((n.metadata as { linkUrl?: string } | undefined)?.linkUrl ?? "")) ? (
+            {safeHttpUrl(String(n.metadata?.linkUrl ?? "")) ? (
               <a
-                href={safeHttpUrl(String((n.metadata as { linkUrl?: string }).linkUrl))}
+                href={safeHttpUrl(String(n.metadata?.linkUrl))}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 ml-3 inline-block text-sm font-semibold text-brand-700"
               >
-                {String((n.metadata as { linkLabel?: string }).linkLabel || "Join channel")}
+                {n.metadata?.linkLabel || "Join channel"}
               </a>
             ) : null}
           </li>

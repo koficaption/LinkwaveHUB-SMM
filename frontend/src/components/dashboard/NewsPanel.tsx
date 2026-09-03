@@ -1,29 +1,18 @@
 import { useState } from "react";
 import { Newspaper } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError, formatDate } from "@/api/client";
 import { ConfirmDialog, EmptyState, Skeleton } from "@/components/ui";
 import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
 import { safeHttpUrl } from "@/utils/httpUrl";
-
-type Note = {
-  id: string;
-  title: string;
-  body: string;
-  created_at?: string;
-  is_read?: boolean;
-  metadata?: { linkUrl?: string; linkLabel?: string } | null;
-};
+import { isUnreadNote, useNotifications } from "@/hooks/useNotifications";
 
 export function NewsPanel() {
   const qc = useQueryClient();
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const notes = useQuery({
-    queryKey: ["notifications"],
-    queryFn: () => api<Note[]>("/notifications"),
-  });
+  const notes = useNotifications();
   const removing = useMutation({
     mutationFn: (id: string) => api(`/notifications/${id}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -52,11 +41,12 @@ export function NewsPanel() {
         )}
         <ul className="space-y-4">
           {notes.data?.map((n) => (
-            <li key={n.id} className="rounded-xl bg-brand-50/70 p-3 dark:bg-slate-800">
+            <li key={n.id} className={`rounded-xl p-3 ${isUnreadNote(n) ? "bg-brand-50 dark:bg-brand-500/10" : "bg-slate-50 dark:bg-slate-800"}`}>
               <div className="flex items-start justify-between gap-3">
                 {n.created_at ? (
                   <p className="mb-2 inline-flex rounded-full bg-brand-600/90 px-3 py-1 text-xs font-semibold text-white">
                     {formatDate(n.created_at)}
+                    {isUnreadNote(n) ? " · New" : ""}
                   </p>
                 ) : <span />}
                 <button type="button" className="shrink-0 text-sm font-semibold text-rose-600" onClick={() => setConfirmId(n.id)}>
@@ -64,7 +54,7 @@ export function NewsPanel() {
                 </button>
               </div>
               <p className="font-semibold text-slate-900 dark:text-white">{n.title}</p>
-              <LinkedText text={n.body} className="mt-1 text-sm text-muted" />
+              <LinkedText text={n.body ?? ""} className="mt-1 text-sm text-muted" />
               {safeHttpUrl(n.metadata?.linkUrl) ? (
                 <a href={safeHttpUrl(n.metadata?.linkUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-brand-700">
                   {n.metadata?.linkLabel || "Join channel"}
