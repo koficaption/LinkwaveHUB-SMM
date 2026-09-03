@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, formatDate, money, ApiError, errorMessage } from "@/api/client";
@@ -302,31 +302,63 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
 }
 
 export function AdminUsers() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
-  const users = useQuery({
-    queryKey: ["admin-users", search, role],
-    queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(search)}&role=${role}`),
-  });
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const users = useQuery({
+    queryKey: ["admin-users", search, role, status, page],
+    queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}&page=${page}&limit=50`),
+  });
+  const removing = useMutation({
+    mutationFn: (id: string) => api<{ deleted?: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("User deleted");
+      setConfirmId(null);
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-wallets"] });
+    },
+    onError: (e) => toast.error(errorMessage(e, "Could not delete user")),
+  });
+  const confirmUser = users.data?.items.find((u) => u.id === confirmId);
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold">Users</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">Users</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {users.data ? `${users.data.total.toLocaleString()} accounts` : "Customers, resellers, and admins."}
+            {" "}Newest signups are first — older accounts stay on later pages.
+          </p>
+        </div>
         <Button onClick={() => setOpen(true)}>Create user</Button>
       </div>
-      <div className="mt-4 flex gap-3">
-        <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <Select value={role} onChange={(e) => setRole(e.target.value)} className="max-w-40">
+      <div className="mt-4 flex flex-wrap gap-3">
+        <SearchField
+          placeholder="Search name, email, phone, or payment code"
+          value={search}
+          onChange={(value) => { setSearch(value); setPage(1); }}
+        />
+        <Select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} className="max-w-40">
           <option value="">All roles</option>
           <option value="customer">Customer</option>
           <option value="reseller">Reseller</option>
           <option value="admin">Admin</option>
         </Select>
+        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="max-w-40">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+          <option value="pending">Pending</option>
+        </Select>
       </div>
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Name","Email","Code","Role","Status",""].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead><tr className="text-slate-500">{["Name","Email","Code","Role","Status","Joined",""].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
           <tbody>
             {users.data?.items.map((u) => (
               <tr key={u.id} className="border-t border-slate-100 dark:border-slate-800">
@@ -335,13 +367,32 @@ export function AdminUsers() {
                 <td className="p-2 font-mono text-xs font-semibold">{u.deposit_code || "—"}</td>
                 <td className="p-2 capitalize">{u.role}</td>
                 <td className="p-2"><Badge className={statusTone[u.status]}>{u.status}</Badge></td>
-                <td className="p-2"><Link className="font-semibold text-brand-700" to={`/admin/users/${u.id}`}>View</Link></td>
+                <td className="p-2 text-slate-500">{formatDate(u.created_at)}</td>
+                <td className="p-2 space-x-3 whitespace-nowrap">
+                  <Link className="font-semibold text-brand-700" to={`/admin/users/${u.id}`}>View</Link>
+                  <button type="button" className="font-semibold text-rose-600" onClick={() => setConfirmId(u.id)}>Delete</button>
+                </td>
               </tr>
             ))}
+            {users.data && !users.data.items.length && (
+              <tr><td className="p-3 text-slate-500" colSpan={7}>No users match these filters.</td></tr>
+            )}
           </tbody>
         </table>
+        {users.data && <Pagination page={page} total={users.data.total} limit={users.data.limit} onPage={setPage} />}
       </Card>
-      {open && <CreateUserModal onClose={() => setOpen(false)} />}
+      {open && <CreateUserModal onClose={() => { setOpen(false); setPage(1); }} />}
+      <ConfirmDialog
+        open={Boolean(confirmId)}
+        title="Delete user"
+        body={confirmUser
+          ? `Delete ${confirmUser.full_name} (${confirmUser.email})? This removes the account, wallet, orders, and payments. It cannot be undone.`
+          : "Delete this account, wallet, orders, and payments? This cannot be undone."}
+        danger
+        confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
+        onClose={() => { if (!removing.isPending) setConfirmId(null); }}
+        onConfirm={() => { if (confirmId && !removing.isPending) removing.mutate(confirmId); }}
+      />
     </div>
   );
 }
@@ -375,7 +426,9 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
 
 export function AdminUserDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const detail = useQuery({
     queryKey: ["user", id],
     queryFn: () => api<{ user: User; wallet: Record<string, unknown>; orders: Record<string, unknown>[]; transactions: Record<string, unknown>[]; stats: Record<string, unknown> }>(`/admin/users/${id}`),
@@ -383,6 +436,17 @@ export function AdminUserDetail() {
   const u = detail.data?.user;
   const [amount, setAmount] = useState("10");
   const [reason, setReason] = useState("Admin adjustment");
+  const removing = useMutation({
+    mutationFn: () => api<{ deleted?: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("User deleted");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-wallets"] });
+      navigate("/admin/users");
+    },
+    onError: (e) => toast.error(errorMessage(e, "Could not delete user")),
+  });
   if (!u) return null;
   return (
     <div className="space-y-4">
@@ -395,13 +459,23 @@ export function AdminUserDetail() {
               <p className="mt-1 text-sm">Payment code: <span className="font-mono font-bold">{u.deposit_code}</span></p>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={async () => { await api(`/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ status: u.status === "suspended" ? "active" : "suspended" }) }); qc.invalidateQueries({ queryKey: ["user", id] }); }}>{u.status === "suspended" ? "Activate" : "Suspend"}</Button>
             <Button variant="outline" onClick={async () => { const password = prompt("New password (min 8 characters)"); if (!password) return; await api(`/admin/users/${u.id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }); toast.success("Password reset"); }}>Reset password</Button>
+            <Button variant="danger" onClick={() => setConfirmDelete(true)}>Delete</Button>
           </div>
         </div>
         <p className="mt-3 text-sm">Wallet: {money(Number(detail.data?.wallet?.balance ?? 0))} · Orders: {String(detail.data?.stats?.order_count ?? 0)} · Spent: {money(Number(detail.data?.stats?.total_spent ?? 0))}</p>
       </Card>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete user"
+        body={`Delete ${u.full_name} (${u.email})? This removes the account, wallet, orders, and payments. It cannot be undone.`}
+        danger
+        confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
+        onClose={() => { if (!removing.isPending) setConfirmDelete(false); }}
+        onConfirm={() => { if (!removing.isPending) removing.mutate(); }}
+      />
       <Card>
         <h2 className="font-bold">Wallet adjustment</h2>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -1691,7 +1765,7 @@ export function AdminNotifications() {
   });
   const users = useQuery({
     queryKey: ["admin-notify-users", userSearch],
-    queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(userSearch)}&status=active`),
+    queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(userSearch)}&status=active&limit=50`),
     enabled: audience === "user" && userSearch.trim().length >= 2,
   });
   const recipientCount = audience === "user"

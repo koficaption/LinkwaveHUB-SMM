@@ -1,8 +1,9 @@
-import { query, queryOne } from "../db.js";
+import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { hashPassword, like, newDepositCode, parsePagination } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
+import { PRIMARY_ADMIN_EMAIL } from "./platformResetService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at, deposit_code`;
@@ -108,14 +109,38 @@ export async function updateUser(id: string, input: Record<string, unknown>, act
 
 export async function deleteUser(id: string, actor: AuthUser, ip?: string) {
   if (id === actor.id) throw new AppError("You cannot delete your own account");
-  const orders = await queryOne(`SELECT id FROM orders WHERE user_id = $1 LIMIT 1`, [id]);
-  if (orders) {
-    await query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [id]);
-    await writeAudit({ actor, action: "user.suspend", targetType: "user", targetId: id, ip, details: { reason: "delete_blocked_has_orders" } });
-    return { suspended: true };
+  const target = await queryOne<{ email: string; role: string; full_name: string }>(
+    `SELECT email, role, full_name FROM users WHERE id = $1`,
+    [id]
+  );
+  if (!target) throw new AppError("User not found", 404);
+  if (String(target.email).toLowerCase() === PRIMARY_ADMIN_EMAIL) {
+    throw new AppError("This admin account cannot be deleted", 400);
   }
-  await query(`DELETE FROM users WHERE id = $1`, [id]);
-  await writeAudit({ actor, action: "user.delete", targetType: "user", targetId: id, ip });
+  if (target.role === "admin") {
+    const others = await queryOne<{ count: string }>(
+      `SELECT COUNT(*) FROM users WHERE role = 'admin' AND id <> $1`,
+      [id]
+    );
+    if (Number(others?.count ?? 0) < 1) throw new AppError("Cannot delete the last admin", 400);
+  }
+
+  await withTransaction(async (client) => {
+    await query(`DELETE FROM refills WHERE user_id = $1`, [id], client);
+    await query(`DELETE FROM payments WHERE user_id = $1`, [id], client);
+    await query(`DELETE FROM orders WHERE user_id = $1`, [id], client);
+    const deleted = await queryOne(`DELETE FROM users WHERE id = $1 RETURNING id`, [id], client);
+    if (!deleted) throw new AppError("User not found", 404);
+  });
+
+  await writeAudit({
+    actor,
+    action: "user.delete",
+    targetType: "user",
+    targetId: id,
+    ip,
+    details: { email: target.email, role: target.role, name: target.full_name },
+  });
   return { deleted: true };
 }
 

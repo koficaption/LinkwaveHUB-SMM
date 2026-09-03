@@ -3,6 +3,7 @@ import { query, queryOne } from "../db.js";
 export async function adminOverview() {
   const row = await queryOne<{
     total_users: string;
+    total_customers: string;
     total_resellers: string;
     total_orders: string;
     pending_orders: string;
@@ -15,7 +16,8 @@ export async function adminOverview() {
     today_orders: string;
   }>(`
     SELECT
-      (SELECT COUNT(*) FROM users WHERE role = 'customer') AS total_users,
+      (SELECT COUNT(*) FROM users) AS total_users,
+      (SELECT COUNT(*) FROM users WHERE role = 'customer') AS total_customers,
       (SELECT COUNT(*) FROM users WHERE role = 'reseller') AS total_resellers,
       (SELECT COUNT(*) FROM orders) AS total_orders,
       (SELECT COUNT(*) FROM orders WHERE status = 'pending') AS pending_orders,
@@ -29,6 +31,7 @@ export async function adminOverview() {
   `);
   return {
     totalUsers: Number(row?.total_users ?? 0),
+    totalCustomers: Number(row?.total_customers ?? 0),
     totalResellers: Number(row?.total_resellers ?? 0),
     totalOrders: Number(row?.total_orders ?? 0),
     pendingOrders: Number(row?.pending_orders ?? 0),

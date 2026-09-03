@@ -16,6 +16,7 @@ export function AdminOverview() {
   const o = overview.data;
   const cards = [
     ["Total users", o?.totalUsers],
+    ["Customers", o?.totalCustomers],
     ["Resellers", o?.totalResellers],
     ["Total orders", o?.totalOrders],
     ["Pending", o?.pendingOrders],

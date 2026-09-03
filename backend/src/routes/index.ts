@@ -577,6 +577,7 @@ admin.get("/users", asyncHandler(async (req, res) => {
     role: req.query.role as string | undefined,
     status: req.query.status as string | undefined,
     page: Number(req.query.page || 1),
+    limit: Number(req.query.limit || 50),
   })));
 }));
 admin.post("/users", validate(userCreateSchema), asyncHandler(async (req, res) => {
