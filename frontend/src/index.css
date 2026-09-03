@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@layer base {
+  * {
+    @apply border-slate-200 dark:border-slate-800;
+  }
+
+  body {
+    @apply bg-[#F6FAF9] text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .container-dashboard {
+    @apply mx-auto w-full max-w-7xl;
+  }
+
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[15px] font-bold text-slate-900 dark:text-slate-200;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-transparent bg-brand-50 px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-600 focus:bg-white focus:ring-4 focus:ring-brand-600/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-400 dark:focus:bg-slate-900;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .page-title {
+    @apply text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-slate-500;
+  }
+
+  .stat-3d-scene {
+    perspective: 920px;
+    transform-style: preserve-3d;
+    animation: stat-3d-float 6.5s ease-in-out infinite;
+    animation-delay: var(--stat-delay, 0s);
+  }
+
+  .stat-card {
+    --rx: 0deg;
+    --ry: 0deg;
+    --gx: 50%;
+    --gy: 20%;
+    position: relative;
+    transform: rotateX(var(--rx)) rotateY(var(--ry)) translateZ(10px);
+    transform-style: preserve-3d;
+    transition: transform 120ms ease-out, box-shadow 160ms ease-out;
+    will-change: transform;
+  }
+
+  .stat-card:hover {
+    box-shadow: 0 22px 40px -16px rgb(8 127 104 / 0.38);
+  }
+
+  .stat-card::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at var(--gx) var(--gy), rgb(255 255 255 / 0.5), transparent 58%);
+    opacity: 0;
+    transition: opacity 160ms ease;
+  }
+
+  .stat-card:hover::after {
+    opacity: 1;
+  }
+
+  .stat-icon-frame {
+    position: relative;
+    border: 1.5px solid #087F68;
+    border-radius: 14px;
+    background: #fff;
+    transform: translateZ(28px);
+    transform-style: preserve-3d;
+    box-shadow: 0 10px 18px -12px rgb(8 127 104 / 0.55);
+  }
+
+  .stat-icon-frame::before,
+  .stat-icon-frame::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 1.5px solid rgb(8 127 104 / 0.55);
+    border-radius: 18px;
+    pointer-events: none;
+    animation: stat-icon-ring 2.4s ease-out infinite;
+    animation-delay: var(--stat-delay, 0s);
+  }
+
+  .stat-icon-frame::after {
+    animation-delay: calc(var(--stat-delay, 0s) + 1.2s);
+  }
+
+  .dark .stat-icon-frame {
+    background: rgb(15 23 42 / 0.8);
+    border-color: #3FA090;
+  }
+
+  .dark .stat-icon-frame::before,
+  .dark .stat-icon-frame::after {
+    border-color: rgb(63 160 144 / 0.55);
+  }
+
+  .stat-icon-art {
+    transform-style: preserve-3d;
+    animation: stat-3d-icon 3.6s ease-in-out infinite;
+    animation-delay: var(--stat-delay, 0s);
+    filter: drop-shadow(0 8px 6px rgb(15 23 42 / 0.18));
+  }
+
+  .stat-icon-art img {
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .stat-card-copy {
+    transform: translateZ(16px);
+  }
+}
+
+@keyframes stat-3d-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 14px); }
+}
+
+@keyframes stat-3d-icon {
+  0%, 100% { transform: rotateY(-14deg) rotateX(8deg) translateZ(0); }
+  50% { transform: rotateY(14deg) rotateX(-6deg) translateZ(10px); }
+}
+
+@keyframes stat-icon-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.16);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-3d-scene,
+  .stat-icon-frame::before,
+  .stat-icon-frame::after,
+  .stat-icon-art {
+    animation: none;
+  }
+
+  .stat-card,
+  .stat-icon-frame,
+  .stat-card-copy {
+    transform: none;
+  }
+}
