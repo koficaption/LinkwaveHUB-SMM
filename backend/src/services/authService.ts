@@ -3,7 +3,8 @@ import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { config } from "../config.js";
 import { passwordResetEmail, sendMail, mailConfigured } from "../mailer.js";
-import { ACCOUNT_REMOVED_MESSAGE, hashPassword, makeSlug, newDepositCode, normalizePersonName, signToken, uniqueSlug, verifyPassword } from "../utils.js";
+import { hashPassword, makeSlug, newDepositCode, normalizePersonName, signToken, uniqueSlug, verifyPassword } from "../utils.js";
+import { restoreDeletedAccount } from "./userService.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
@@ -39,7 +40,7 @@ export async function registerUser(input: {
     `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [input.email]
   );
-  if (existing?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 409);
+  if (existing?.deleted_at) await restoreDeletedAccount(existing.id);
   if (existing) throw new AppError("An account with this email already exists", 409);
 
   const result = await withTransaction(async (client) => {
@@ -117,9 +118,13 @@ export async function loginUser(email: string, password: string, ip?: string, us
     `SELECT ${publicUser}, password_hash, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [email]
   );
-  if (!user || user.deleted_at) {
-    if (user?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 403);
+  if (!user) {
     throw new AppError("Invalid email or password", 401);
+  }
+  if (user.deleted_at) {
+    await restoreDeletedAccount(user.id);
+    user.status = "active";
+    user.deleted_at = null;
   }
   if (!user.password_hash) {
     throw new AppError("This account uses Google sign-in. Continue with Google instead.", 401);
@@ -209,7 +214,12 @@ export async function requestPasswordReset(input: { email: string; origin?: stri
     [email]
   );
 
-  if (!user || user.status === "suspended" || user.deleted_at) {
+  if (!user) {
+    return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
+  }
+  if (user.deleted_at) {
+    await restoreDeletedAccount(user.id);
+  } else if (user.status === "suspended") {
     return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
   }
 

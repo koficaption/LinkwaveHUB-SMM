@@ -2,7 +2,8 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
-import { ACCOUNT_REMOVED_MESSAGE, newDepositCode, normalizePersonName, signToken } from "../utils.js";
+import { newDepositCode, normalizePersonName, signToken } from "../utils.js";
+import { restoreDeletedAccount } from "./userService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { attachPanelCustomer } from "./resellerService.js";
@@ -138,7 +139,11 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
     );
     let created = false;
 
-    if (user?.deleted_at) throw new AppError(ACCOUNT_REMOVED_MESSAGE, 403);
+    if (user?.deleted_at) {
+      await restoreDeletedAccount(user.id, client);
+      user.status = "active";
+      user.deleted_at = null;
+    }
 
     if (!user) {
       user = await queryOne(
