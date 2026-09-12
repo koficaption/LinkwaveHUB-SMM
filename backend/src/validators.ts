@@ -23,6 +23,8 @@ export const registerSchema = z.object({
   storeName: optionalText(80, 2),
   referralCode: optionalText(40),
   storeSlug: optionalText(80, 2),
+  recaptchaToken: optionalText(4000),
+  website: z.string().max(200).optional(),
 });
 
 export const loginSchema = z.object({
@@ -139,6 +141,7 @@ export const productSchema = z.object({
   features: z.array(z.string()).optional(),
   refillSupported: z.boolean().optional(),
   cancelSupported: z.boolean().optional(),
+  customComments: z.boolean().optional(),
   refillDays: optionalPositiveInt(365),
   refillType: optionalLongText(80),
   refillServiceId: optionalLongText(160),
@@ -229,6 +232,7 @@ export const apiV1OrderSchema = z.object({
   quantity: z.coerce.number().int().positive(),
   target: z.string().min(3).max(500).optional(),
   link: z.string().min(3).max(500).optional(),
+  comments: optionalText(8000),
 }).superRefine((value, ctx) => {
   if (!value.service && !value.service_id && !value.productId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "service is required", path: ["service"] });
@@ -250,6 +254,7 @@ export const orderSchema = z.object({
   quantity: z.coerce.number().int().positive(),
   target: z.string().min(3).max(500),
   storeSlug: z.string().max(80).optional(),
+  comments: optionalText(8000),
 });
 
 export const orderQuoteSchema = z.object({

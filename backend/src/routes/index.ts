@@ -324,6 +324,7 @@ router.post("/orders", requireAuth, validate(orderSchema), asyncHandler(async (r
     quantity: req.body.quantity,
     target: req.body.target,
     storeSlug: req.body.storeSlug,
+    comments: req.body.comments,
   });
   res.status(201).json(ok(order, "Order placed successfully"));
 }));

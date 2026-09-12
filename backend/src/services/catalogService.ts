@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { like, makeSlug, uniqueSlug } from "../utils.js";
-import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
+import { looksLikeProviderCategory, publicCategoryName, publicProductDescription, publicProductName, isSellableProductName, isCustomStorefrontCategory, isPublicStorefrontCategory, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail, looksLikeCustomComments } from "./catalogClassify.js";
 import { productSupportsCancel } from "./cancelSupport.js";
 import { parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
@@ -15,7 +15,7 @@ const productSelect = `
   p.refill_supported, p.refill_days, p.refill_type, p.refill_service_id, p.refill_instructions,
   p.refill_limit, p.provider_refill_supported, p.reseller_available, p.api_available,
   p.api_price_per_1000, p.api_min_quantity, p.api_max_quantity, p.price_unit, p.contact_admin,
-  p.service_type, p.stock, p.delivery_method, p.service_no, p.cancel_supported,
+  p.service_type, p.stock, p.delivery_method, p.service_no, p.cancel_supported, p.custom_comments,
   (p.price_per_1000 - p.cost_per_1000) AS profit_per_1000,
   pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon,
   pl.color AS platform_color, pl.icon_url AS platform_icon_url,
@@ -558,11 +558,17 @@ export async function createProduct(input: Record<string, unknown>, actor: AuthU
     ]
   );
   await writeAudit({ actor, action: "product.create", targetType: "product", targetId: row?.id, ip, details: { name: d.name } });
-  if (row?.id) {
+    if (row?.id) {
     const cancel = typeof input.cancelSupported === "boolean"
       ? Boolean(input.cancelSupported)
       : productSupportsCancel({ name: d.name, description: d.description, features: d.features });
-    await query(`UPDATE products SET cancel_supported = $2 WHERE id = $1`, [row.id, cancel]);
+    const customComments = typeof input.customComments === "boolean"
+      ? Boolean(input.customComments)
+      : looksLikeCustomComments({ name: d.name, description: d.description == null ? null : String(d.description), features: d.features });
+    await query(
+      `UPDATE products SET cancel_supported = $2, custom_comments = $3 WHERE id = $1`,
+      [row.id, cancel, customComments]
+    );
   }
   return getProduct(row!.id, { admin: true });
 }
@@ -704,6 +710,19 @@ export async function updateProduct(id: string, input: Record<string, unknown>, 
       [id, productSupportsCancel({ name: input.name ?? current.name, description: input.description ?? current.description, features })]
     );
   }
+  if (input.customComments !== undefined) {
+    await query(`UPDATE products SET custom_comments = $2 WHERE id = $1`, [id, Boolean(input.customComments)]);
+  } else if (features || input.name || input.description) {
+    await query(
+      `UPDATE products SET custom_comments = $2 WHERE id = $1`,
+      [id, looksLikeCustomComments({
+        name: String(input.name ?? current.name ?? ""),
+        description: input.description === undefined ? (current.description == null ? null : String(current.description)) : (input.description == null ? null : String(input.description)),
+        features: features ?? current.features,
+        customComments: current.custom_comments,
+      })]
+    );
+  }
   await writeAudit({ actor, action: "product.update", targetType: "product", targetId: id, ip });
   return getProduct(id, { admin: true });
 }
@@ -757,6 +776,7 @@ export async function duplicateProduct(id: string, actor: AuthUser, ip?: string)
       serviceType: current.service_type,
       stock: current.stock == null ? null : Number(current.stock),
       deliveryMethod: current.delivery_method,
+      customComments: Boolean(current.custom_comments),
     },
     actor,
     ip
@@ -838,6 +858,12 @@ function sanitizeProduct(row: Record<string, unknown>, reseller: boolean, admin:
   product.display_price_per_1000 = display;
   product.price_unit = perUnit ? "each" : "per_1000";
   product.contact_admin = Boolean(product.contact_admin) || looksLikeContactAdminProduct(String(product.name || ""));
+  product.custom_comments = looksLikeCustomComments({
+    name: String(product.name || ""),
+    description: product.description as string | null,
+    features: product.features,
+    customComments: product.custom_comments,
+  });
   if (!admin && product.contact_admin && looksLikeContactAdminProduct(String(product.name || ""))) {
     product.min_quantity = 1;
     product.max_quantity = Math.max(Number(product.max_quantity) || 1, 1_000_000);
@@ -864,6 +890,7 @@ export function toApiService(product: Record<string, unknown>) {
     delivery: product.avg_delivery_time,
     delivery_type: product.delivery_type,
     status: product.status,
+    custom_comments: Boolean(product.custom_comments),
   };
 }
 

@@ -50,6 +50,7 @@ type FormState = {
   features: string;
   refillSupported: boolean;
   cancelSupported: boolean;
+  customComments: boolean;
   refillDays: number;
   refillType: string;
   refillServiceId: string;
@@ -105,6 +106,7 @@ function initialForm(product: Product | null, platforms: Platform[], categories:
     features: (product?.features ?? []).join("\n"),
     refillSupported: productRefill(product ?? {}).supported,
     cancelSupported: product?.cancel_supported === true || productCancel(product ?? {}).supported,
+    customComments: product?.custom_comments === true || /custom\s*comments?/i.test(`${product?.name || ""} ${(product?.features || []).join(" ")}`),
     refillDays: productRefill(product ?? {}).days || 30,
     refillType: product?.refill_type ?? "",
     refillServiceId: product?.refill_service_id ?? "",
@@ -150,6 +152,7 @@ function payloadFromForm(form: FormState) {
     features: form.features.split("\n").map((s) => s.trim()).filter(Boolean),
     refillSupported: refillOn,
     cancelSupported: Boolean(form.cancelSupported),
+    customComments: Boolean(form.customComments),
     refillDays: refillOn ? Math.max(1, Number(form.refillDays) || 30) : undefined,
     refillType: refillOn ? (form.refillType.trim() || null) : null,
     refillServiceId: refillOn ? (form.refillServiceId.trim() || null) : null,
@@ -601,6 +604,16 @@ export function ProductQuickAdd({
                       placeholder="No"
                       clearable={false}
                       options={[{ value: "no", label: "No" }, { value: "yes", label: "Yes — remaining quantity is refunded" }]}
+                    />
+                  )}
+                  {showRefill && (
+                    <OrderSelect
+                      label="Custom comments"
+                      value={form.customComments ? "yes" : "no"}
+                      onChange={(value) => set("customComments", value === "yes")}
+                      placeholder="No"
+                      clearable={false}
+                      options={[{ value: "no", label: "No" }, { value: "yes", label: "Yes — customer types the comments they want" }]}
                     />
                   )}
                   {form.refillSupported && showRefill && (

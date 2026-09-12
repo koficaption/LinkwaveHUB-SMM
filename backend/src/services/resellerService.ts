@@ -199,7 +199,7 @@ export async function getPublicStorefront(slug: string, opts: {
   const products = await query(
     `SELECT p.id, p.name, p.slug, p.description, p.min_quantity, p.max_quantity,
             p.avg_delivery_time, p.delivery_type, p.features, p.image_url, p.price_unit,
-            p.refill_supported, p.refill_days, p.platform_id, p.category_id,
+            p.refill_supported, p.refill_days, p.custom_comments, p.platform_id, p.category_id,
             pl.name AS platform_name, pl.slug AS platform_slug, pl.icon AS platform_icon, pl.color AS platform_color,
             c.name AS category_name, c.slug AS category_slug,
             COALESCE(rp.selling_price,

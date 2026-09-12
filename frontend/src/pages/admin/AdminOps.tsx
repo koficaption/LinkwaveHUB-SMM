@@ -233,6 +233,7 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
         <div><dt className="text-slate-500">Charge</dt><dd className="font-medium">{money(o.charge)}</dd></div>
         {o.profit != null && <div><dt className="text-slate-500">Profit</dt><dd className="font-medium">{money(o.profit)}</dd></div>}
         <div className="sm:col-span-2"><dt className="text-slate-500">Target</dt><dd className="break-all font-medium">{o.target}</dd></div>
+        {o.comments ? <div className="sm:col-span-2"><dt className="text-slate-500">Comments</dt><dd className="whitespace-pre-wrap break-words font-medium">{o.comments}</dd></div> : null}
         <div><dt className="text-slate-500">Provider</dt><dd className="font-medium">{o.provider_name || "—"}</dd></div>
         <div><dt className="text-slate-500">Provider order</dt><dd className="font-mono text-xs">{o.provider_order_id || "—"}</dd></div>
         {o.admin_note ? <div className="sm:col-span-2"><dt className="text-slate-500">Provider note</dt><dd className="break-words font-medium text-rose-600">{o.admin_note}</dd></div> : null}
@@ -966,6 +967,7 @@ export function AdminSettings() {
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">Settings</h1>
       <GoogleOAuthSettingsCard />
+      <RecaptchaSettingsCard data={settings.data?.security} onSave={(value) => save("security", value)} />
       <Card>
         <h2 className="font-bold">Business & customer service</h2>
         <p className="mt-1 text-sm text-slate-500">These details appear on the website footer, the bottom help bar, and the support page.</p>
@@ -1065,6 +1067,56 @@ function GoogleOAuthSettingsCard() {
         <code className="flex-1 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-800">{redirectUri}</code>
         <button type="button" className="text-xs font-semibold text-brand-700" onClick={() => copy(redirectUri)}>Copy</button>
       </div>
+    </Card>
+  );
+}
+
+function RecaptchaSettingsCard({
+  data,
+  onSave,
+}: {
+  data?: Record<string, unknown>;
+  onSave: (value: Record<string, unknown>) => Promise<void>;
+}) {
+  const source = data ?? {};
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form ?? {
+    recaptchaEnabled: String(source.recaptchaEnabled !== false),
+    recaptchaSiteKey: String(source.recaptchaSiteKey ?? ""),
+    recaptchaSecretKey: "",
+  };
+  const secretSet = Boolean(source.recaptchaSecretSet);
+  return (
+    <Card>
+      <h2 className="font-bold">Google verification (stop bot signups)</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Adds the “I’m not a robot” box on Create account. Create a reCAPTCHA v2 checkbox key at
+        {" "}<a className="font-semibold text-brand-700" href="https://www.google.com/recaptcha/admin" target="_blank" rel="noreferrer">Google reCAPTCHA</a>
+        {" "}and add <span className="font-mono">linkboostgrowth.site</span> as a domain. Leave the secret blank to keep the saved one.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="label">Require verification on register</span>
+          <Select value={values.recaptchaEnabled} onChange={(e) => setForm({ ...values, recaptchaEnabled: e.target.value })}>
+            <option value="true">On — bots cannot create accounts without the box</option>
+            <option value="false">Off</option>
+          </Select>
+        </label>
+        <label className="block">
+          <span className="label">Site key (public)</span>
+          <Input value={values.recaptchaSiteKey} onChange={(e) => setForm({ ...values, recaptchaSiteKey: e.target.value })} placeholder="6L..." />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="label">Secret key {secretSet ? "(saved — paste a new one only to replace)" : ""}</span>
+          <PasswordInput value={values.recaptchaSecretKey} onChange={(e) => setForm({ ...values, recaptchaSecretKey: e.target.value })} placeholder={secretSet ? "••••••••" : "Paste secret key"} />
+        </label>
+      </div>
+      <Button className="mt-4" onClick={() => onSave({
+        ...source,
+        recaptchaEnabled: values.recaptchaEnabled === "true",
+        recaptchaSiteKey: values.recaptchaSiteKey.trim(),
+        recaptchaSecretKey: values.recaptchaSecretKey.trim(),
+      })}>Save Google verification</Button>
     </Card>
   );
 }

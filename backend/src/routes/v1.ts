@@ -58,6 +58,7 @@ v1Router.post("/orders", requireScope("orders:create"), validate(apiV1OrderSchem
     productId,
     quantity: req.body.quantity,
     target,
+    comments: req.body.comments,
     viaApi: true,
     apiKeyId: req.apiKey!.id,
   });

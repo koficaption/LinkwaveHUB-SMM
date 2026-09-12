@@ -132,6 +132,7 @@ export type Product = {
   delivery_method?: string | null;
   service_no?: number | string;
   cancel_supported?: boolean;
+  custom_comments?: boolean;
 };
 
 export type RefillSummary = {
@@ -191,6 +192,7 @@ export type Order = {
   product_id: string;
   quantity: number;
   target: string;
+  comments?: string | null;
   charge: number | string;
   cost?: number | string;
   profit?: number | string;
@@ -309,6 +311,10 @@ export type PublicSettings = {
     upgradeEnabled?: boolean;
     upgradeFee?: number;
     upgradeNote?: string;
+  };
+  security?: {
+    enabled?: boolean;
+    siteKey?: string;
   };
 };
 

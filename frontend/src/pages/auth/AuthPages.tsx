@@ -11,7 +11,8 @@ import { ApiError, api, errorMessage } from "@/api/client";
 import { storedReferralCode, persistReferralCode } from "@/pages/customer/AffiliatePages";
 import { BrandLogo } from "@/components/BrandLogo";
 import { activeStoreSlug, persistPanelSlug, storedPanelSlug, panelAuthPath } from "@/utils/panel";
-import type { PanelStore } from "@/types";
+import type { PanelStore, PublicSettings } from "@/types";
+import { RecaptchaBox } from "@/components/auth/RecaptchaBox";
 
 const loginSchema = z.object({ email: z.string().email("Enter a valid email"), password: z.string().min(1, "Password is required") });
 const registerSchema = z.object({
@@ -204,6 +205,13 @@ export function RegisterPage() {
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", gender: "", storeName: "" } });
+  const [website, setWebsite] = useState("");
+  const [recaptchaToken, setRecaptchaToken] = useState("");
+  const publicSettings = useQuery({
+    queryKey: ["public-settings"],
+    queryFn: () => api<PublicSettings>("/settings/public"),
+  });
+  const recaptcha = publicSettings.data?.security;
   return (
     <AuthCard
       title={store.data ? `Join ${store.data.store_name}` : "Create your account"}
@@ -225,6 +233,10 @@ export function RegisterPage() {
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
           try {
+            if (recaptcha?.enabled && !recaptchaToken) {
+              toast.error("Complete the Google verification to create an account");
+              return;
+            }
             const me = await register({
               fullName: values.fullName.trim(),
               email: values.email.trim(),
@@ -236,6 +248,8 @@ export function RegisterPage() {
               storeName: values.storeName?.trim() || undefined,
               referralCode: invitedBy,
               storeSlug,
+              recaptchaToken: recaptchaToken || undefined,
+              website: website || undefined,
             });
             toast.success("Account created");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
@@ -258,6 +272,18 @@ export function RegisterPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...form.register("password")} />
         </Field>
+        <div className="h-0 overflow-hidden opacity-0" aria-hidden="true">
+          <label>
+            Website
+            <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          </label>
+        </div>
+        {recaptcha?.enabled && recaptcha.siteKey && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Google verification</p>
+            <RecaptchaBox siteKey={recaptcha.siteKey} onToken={setRecaptchaToken} />
+          </div>
+        )}
         <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional. Gender sets your dashboard avatar.</p>
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}

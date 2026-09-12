@@ -1,7 +1,8 @@
 import { query, queryOne } from "../db.js";
 import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
-import { encryptSecret, looksEncrypted, safeHttpUrl } from "../utils.js";
+import { config } from "../config.js";
+import { decryptSecret, encryptSecret, looksEncrypted, safeHttpUrl } from "../utils.js";
 
 const defaults: Record<string, unknown> = {
   general: {
@@ -101,6 +102,11 @@ const defaults: Record<string, unknown> = {
     pass: "",
     from: "LinkBoost Growth SMM <support@linkboostgrowth.com>",
   },
+  security: {
+    recaptchaEnabled: true,
+    recaptchaSiteKey: "",
+    recaptchaSecretKey: "",
+  },
 };
 
 function mergeSetting(key: string, stored: unknown) {
@@ -184,6 +190,38 @@ export async function getPublicSettings() {
       upgradeFee: Number((all.resellers as Record<string, unknown>).upgradeFee ?? 0),
       upgradeNote: String((all.resellers as Record<string, unknown>).upgradeNote ?? ""),
     },
+    security: await getPublicRecaptcha(),
+  };
+}
+
+function readRecaptchaSecret(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (looksEncrypted(raw)) {
+    try {
+      return decryptSecret(raw).trim();
+    } catch {
+      return "";
+    }
+  }
+  return raw;
+}
+
+export async function getRecaptchaConfig() {
+  const all = await getSettings();
+  const security = ((all.security as Record<string, unknown> | undefined) ?? {});
+  const siteKey = String(security.recaptchaSiteKey || config.recaptchaSiteKey || "").trim();
+  const secret = readRecaptchaSecret(security.recaptchaSecretKey) || String(config.recaptchaSecretKey || "").trim();
+  const enabled = security.recaptchaEnabled !== false;
+  const required = enabled && Boolean(siteKey && secret);
+  return { enabled, siteKey, secret, required };
+}
+
+export async function getPublicRecaptcha() {
+  const cfg = await getRecaptchaConfig();
+  return {
+    enabled: cfg.required,
+    siteKey: cfg.required ? cfg.siteKey : undefined,
   };
 }
 
@@ -226,11 +264,26 @@ export async function getAdminSettings() {
   const passSet = Boolean(mail.pass);
   mail.pass = "";
   mail.passSet = passSet;
-  return { ...all, mail };
+  const security = { ...((all.security as Record<string, unknown> | undefined) ?? {}) };
+  const secretSet = Boolean(security.recaptchaSecretKey);
+  security.recaptchaSecretKey = "";
+  security.recaptchaSecretSet = secretSet;
+  return { ...all, mail, security };
 }
 
 export async function updateSettings(key: string, value: unknown, actor: AuthUser, ip?: string) {
   let stored = value;
+  if (key === "security" && value && typeof value === "object" && !Array.isArray(value)) {
+    const incoming = { ...(value as Record<string, unknown>) };
+    const current = ((await getSettings()).security as Record<string, unknown> | undefined) ?? {};
+    incoming.recaptchaSiteKey = String(incoming.recaptchaSiteKey ?? "").trim();
+    const nextSecret = String(incoming.recaptchaSecretKey ?? "").trim();
+    if (!nextSecret) incoming.recaptchaSecretKey = current.recaptchaSecretKey ?? "";
+    else if (!looksEncrypted(nextSecret)) incoming.recaptchaSecretKey = encryptSecret(nextSecret);
+    incoming.recaptchaEnabled = incoming.recaptchaEnabled !== false;
+    delete incoming.recaptchaSecretSet;
+    stored = incoming;
+  }
   if (key === "mail" && value && typeof value === "object" && !Array.isArray(value)) {
     const incoming = { ...(value as Record<string, unknown>) };
     const current = ((await getSettings()).mail as Record<string, unknown> | undefined) ?? {};
@@ -259,8 +312,12 @@ export async function updateSettings(key: string, value: unknown, actor: AuthUse
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
     [key, JSON.stringify(stored), actor.id]
   );
-  const auditDetails = key === "mail" && stored && typeof stored === "object"
-    ? { ...(stored as Record<string, unknown>), pass: (stored as Record<string, unknown>).pass ? "[set]" : "" }
+  const auditDetails = (key === "mail" || key === "security") && stored && typeof stored === "object"
+    ? {
+        ...(stored as Record<string, unknown>),
+        pass: (stored as Record<string, unknown>).pass ? "[set]" : "",
+        recaptchaSecretKey: (stored as Record<string, unknown>).recaptchaSecretKey ? "[set]" : "",
+      }
     : stored;
   await writeAudit({ actor, action: "settings.update", targetType: "settings", targetId: key, details: auditDetails, ip });
   return getAdminSettings();

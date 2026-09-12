@@ -7,7 +7,7 @@ import { adapterForLiveProvider, isMockProviderOrderId, mapPanelOrderStatus } fr
 import type { SmmStatusResult } from "../providers/smm/index.js";
 import { summarizeRefill } from "./refillService.js";
 import { remainingQuantity, remainingRefund, summarizeCancel } from "./cancelSupport.js";
-import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail } from "./catalogClassify.js";
+import { publicProductName, looksLikePerUnitProduct, looksLikeContactAdminProduct, looksLikeWhatsAppOrEmail, looksLikeCustomComments, parseCustomComments } from "./catalogClassify.js";
 import { getSettings } from "./settingsService.js";
 import { enqueueOrderWebhook } from "./apiWebhookService.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -163,9 +163,44 @@ export async function placeOrder(input: {
   viaApi?: boolean;
   apiKeyId?: string;
   manual?: boolean;
+  comments?: string;
 }) {
   const target = input.target.trim();
   const isManual = Boolean(input.manual);
+  const productMeta = await queryOne<{
+    name: string;
+    description: string | null;
+    features: unknown;
+    custom_comments: boolean | null;
+    min_quantity: number;
+    max_quantity: number;
+  }>(
+    `SELECT name, description, features, custom_comments, min_quantity, max_quantity FROM products WHERE id = $1`,
+    [input.productId]
+  );
+  const parsedComments = parseCustomComments(input.comments);
+  const needsComments = looksLikeCustomComments({
+    name: productMeta?.name,
+    description: productMeta?.description,
+    features: productMeta?.features,
+    customComments: productMeta?.custom_comments,
+  });
+  let quantity = input.quantity;
+  let comments: string | null = null;
+  if (needsComments) {
+    if (!parsedComments.count) {
+      throw new AppError("Type the comments you want, one per line", 400);
+    }
+    const minQty = Number(productMeta?.min_quantity || 1);
+    const maxQty = Number(productMeta?.max_quantity || parsedComments.count);
+    if (parsedComments.count < minQty || parsedComments.count > maxQty) {
+      throw new AppError(`Enter between ${minQty.toLocaleString()} and ${maxQty.toLocaleString()} comments, one per line`, 400);
+    }
+    quantity = parsedComments.count;
+    comments = parsedComments.comments;
+  } else if (parsedComments.count) {
+    comments = parsedComments.comments;
+  }
   if (isManual) {
     if (!looksLikeWhatsAppOrEmail(target)) {
       throw new AppError("Enter a WhatsApp number or email");
@@ -175,7 +210,7 @@ export async function placeOrder(input: {
   }
 
   const created = await withTransaction(async (client) => {
-    const quote = await quoteOrder(input.productId, input.quantity, input.user, input.storeSlug, {
+    const quote = await quoteOrder(input.productId, quantity, input.user, input.storeSlug, {
       viaApi: input.viaApi,
       manual: isManual,
     });
@@ -211,23 +246,24 @@ export async function placeOrder(input: {
     const priceUnit = quote.priceUnit ?? "per_1000";
     const resellerProfit =
       quote.resellerId != null
-        ? Number((quote.charge - calcCharge(quote.resellerCost, input.quantity, priceUnit)).toFixed(4))
+        ? Number((quote.charge - calcCharge(quote.resellerCost, quantity, priceUnit)).toFixed(4))
         : 0;
-    const platformProfit = Number((calcCharge(quote.resellerId ? quote.resellerCost : Number(quote.product.price_per_1000), input.quantity, priceUnit) - quote.cost).toFixed(4));
+    const platformProfit = Number((calcCharge(quote.resellerId ? quote.resellerCost : Number(quote.product.price_per_1000), quantity, priceUnit) - quote.cost).toFixed(4));
 
     const order = await queryOne(
       `INSERT INTO orders (
-        public_id, user_id, product_id, reseller_id, quantity, target,
+        public_id, user_id, product_id, reseller_id, quantity, target, comments,
         charge, cost, profit, reseller_profit, status, provider_id, source, api_key_id, admin_note
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',$12,$13,$14,$15)
       RETURNING *`,
       [
         publicId,
         input.user.id,
         input.productId,
         quote.resellerId,
-        input.quantity,
+        quantity,
         target,
+        comments,
         charge,
         quote.cost,
         quote.resellerId ? platformProfit : quote.profit,
@@ -245,7 +281,7 @@ export async function placeOrder(input: {
     await query(
       `INSERT INTO order_items (order_id, product_id, quantity, unit_price, total)
        VALUES ($1,$2,$3,$4,$5)`,
-      [order!.id, input.productId, input.quantity, quote.unitPricePer1000, charge],
+      [order!.id, input.productId, quantity, quote.unitPricePer1000, charge],
       client
     );
     await query(
@@ -290,7 +326,7 @@ export async function placeOrder(input: {
       userId: null,
       title: isManual ? "Paid order to fulfill" : "New order",
       body: isManual
-        ? `${input.user.full_name} paid GHS ${quote.charge} for ${quote.product.name}. Qty ${input.quantity}. ${target}`
+        ? `${input.user.full_name} paid GHS ${quote.charge} for ${quote.product.name}. Qty ${quantity}. ${target}`
         : `${input.user.full_name} placed ${publicId} for ${quote.product.name}.`,
       type: "order",
       metadata: { orderId: order!.id, publicId, manual: isManual },
@@ -936,6 +972,7 @@ async function submitOrderToProvider(id: string, actor: AuthUser, ip?: string) {
         serviceId: String(order.provider_service_id),
         link: String(order.target),
         quantity: Number(order.quantity),
+        comments: order.comments ? String(order.comments) : undefined,
       },
       { apiUrl: order.api_url as string | undefined, apiKey }
     );

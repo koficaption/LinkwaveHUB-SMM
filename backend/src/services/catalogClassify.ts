@@ -7,6 +7,7 @@ const GENERIC_ONLY = /^(like|likes|subscribers?|members?|followers?|views?|comme
 export const CANONICAL_CATEGORIES: { name: string; slug: string; sort: number; test: RegExp }[] = [
   { name: "Followers", slug: "followers", sort: 10, test: /follower|\bfollow\b/i },
   { name: "Likes", slug: "likes", sort: 20, test: /\blikes?\b|\blikers\b/i },
+  { name: "Likes + Views", slug: "likes-views", sort: 25, test: /likes?\s*(?:\+|\/|&|and|,)\s*views?|views?\s*(?:\+|\/|&|and|,)\s*likes?/i },
   { name: "Views", slug: "views", sort: 30, test: /view|watch|play/i },
   { name: "Comments", slug: "comments", sort: 40, test: /comment/i },
   { name: "Shares", slug: "shares", sort: 50, test: /share|repost|retweet/i },
@@ -163,7 +164,42 @@ function earliestServiceType(text: string) {
   return best;
 }
 
+const LIKES_VIEWS_COMBO =
+  /likes?\s*(?:\+|\/|&|and|,)\s*views?|views?\s*(?:\+|\/|&|and|,)\s*likes?|\blikes?\s+views?\b|\bviews?\s+likes?\b/i;
+
+export function looksLikeLikesViewsCombo(text?: string | null) {
+  return LIKES_VIEWS_COMBO.test(String(text || ""));
+}
+
+export function looksLikeCustomComments(input: {
+  name?: string | null;
+  description?: string | null;
+  features?: unknown;
+  providerType?: string | null;
+  customComments?: unknown;
+} = {}) {
+  if (input.customComments === true) return true;
+  const features = Array.isArray(input.features)
+    ? input.features.map((item) => String(item)).join(" ")
+    : String(input.features || "");
+  const text = `${input.name || ""} ${input.description || ""} ${features} ${input.providerType || ""}`;
+  if (/no\s*custom\s*comments?/i.test(text)) return false;
+  return /custom\s*comments?/i.test(text);
+}
+
+export function parseCustomComments(text?: string | null) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return { comments: lines.join("\n"), count: lines.length, lines };
+}
+
 export function detectServiceCategory(panelCategory: string, serviceName: string) {
+  const combined = `${serviceName} ${panelCategory}`;
+  if (looksLikeLikesViewsCombo(combined)) {
+    return { name: "Likes + Views", slug: "likes-views", sort: 25 };
+  }
   const fromName = earliestServiceType(serviceName);
   if (fromName) return { name: fromName.name, slug: fromName.slug, sort: fromName.sort };
   const fromPanel = earliestServiceType(panelCategory);

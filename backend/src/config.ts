@@ -80,6 +80,8 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: configuredGoogleRedirectUri(publicUrl),
+  recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY ?? "",
+  recaptchaSecretKey: process.env.RECAPTCHA_SECRET_KEY ?? "",
   korapayPublicKey: process.env.KORAPAY_PUBLIC_KEY || process.env.PAYSTACK_PUBLIC_KEY || "",
   korapaySecretKey: process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "",
   korapayEncryptionKey: process.env.KORAPAY_ENCRYPTION_KEY || process.env.PAYSTACK_ENCRYPTION_KEY || "",

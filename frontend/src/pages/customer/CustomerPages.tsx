@@ -280,6 +280,12 @@ export function OrderDetailPage() {
           <Item label="Remaining" value={formatCount(o.remains)} />
           <Item label="Amount" value={money(o.charge)} />
           <Item label="Target" value={o.target} />
+          {o.comments ? (
+            <div className="sm:col-span-2">
+              <dt className="text-slate-500">Comments</dt>
+              <dd className="whitespace-pre-wrap break-words font-medium">{o.comments}</dd>
+            </div>
+          ) : null}
           <Item label="Created" value={formatDate(o.created_at)} />
           <Item label="Last updated" value={formatDate(o.updated_at)} />
         </dl>

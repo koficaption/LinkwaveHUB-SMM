@@ -102,6 +102,7 @@ export async function seed() {
   const categories = [
     ["Followers", "followers", "UserPlus"],
     ["Likes", "likes", "Heart"],
+    ["Likes + Views", "likes-views", "Heart"],
     ["Views", "views", "Eye"],
     ["Comments", "comments", "MessageCircle"],
     ["Shares", "shares", "Share2"],
@@ -124,8 +125,8 @@ export async function seed() {
   }
 
   const assignments: [string, string[]][] = [
-    ["tiktok", ["followers", "likes", "views", "comments", "shares", "saves"]],
-    ["instagram", ["followers", "likes", "views", "comments", "saves"]],
+    ["tiktok", ["followers", "likes", "likes-views", "views", "comments", "shares", "saves"]],
+    ["instagram", ["followers", "likes", "likes-views", "views", "comments", "saves"]],
     ["youtube", ["subscribers", "views", "likes", "watch-time", "comments"]],
     ["facebook", ["followers", "likes", "views", "reactions", "shares"]],
     ["x", ["followers", "likes", "views", "shares"]],
@@ -162,7 +163,8 @@ export async function seed() {
     { platform: "tiktok", category: "followers", name: "TikTok Followers — Fast Delivery", description: "High-quality TikTok followers with gradual refill-friendly delivery.", min: 100, max: 100000, price: 18, cost: 11, reseller: 14, delivery: "gradual", time: "0-6 hours", features: ["Refill 30 days", "Real-looking profiles", "No password required"], serviceId: "1001" },
     { platform: "tiktok", category: "likes", name: "TikTok Likes — Instant Start", description: "Boost video social proof with fast TikTok likes.", min: 50, max: 200000, price: 4.5, cost: 2.2, reseller: 3.2, delivery: "instant", time: "0-30 minutes", features: ["Instant start", "Stable delivery"], serviceId: "1002" },
     { platform: "tiktok", category: "views", name: "TikTok Views — High Retention", description: "Increase video reach with high-retention views.", min: 1000, max: 1000000, price: 1.8, cost: 0.7, reseller: 1.2, delivery: "instant", time: "0-1 hour", features: ["Fast start", "Safe for For You page"], serviceId: "1003" },
-    { platform: "tiktok", category: "comments", name: "TikTok Custom Comments", description: "Random positive comments or custom comments on request.", min: 10, max: 5000, price: 35, cost: 22, reseller: 28, delivery: "gradual", time: "1-12 hours", features: ["Custom text supported", "Natural pacing"], serviceId: "1004" },
+    { platform: "tiktok", category: "likes-views", name: "TikTok Likes + Views", description: "Combined likes and views for the same video.", min: 100, max: 200000, price: 5.5, cost: 2.8, reseller: 4, delivery: "instant", time: "0-1 hour", features: ["Likes and views together"], serviceId: "1005" },
+    { platform: "tiktok", category: "comments", name: "TikTok Custom Comments", description: "Random positive comments or custom comments on request.", min: 10, max: 5000, price: 35, cost: 22, reseller: 28, delivery: "gradual", time: "1-12 hours", features: ["Custom comments", "Natural pacing"], serviceId: "1004" },
     { platform: "instagram", category: "followers", name: "Instagram Followers — Premium", description: "Premium Instagram followers for personal brands and shops.", min: 100, max: 50000, price: 28, cost: 18, reseller: 22, delivery: "gradual", time: "0-12 hours", features: ["30-day refill", "Mixed quality"], serviceId: "2001" },
     { platform: "instagram", category: "likes", name: "Instagram Likes — Fast", description: "Likes for posts and reels with quick start.", min: 50, max: 100000, price: 6, cost: 3, reseller: 4.5, delivery: "instant", time: "0-20 minutes", features: ["Works on posts & reels"], serviceId: "2002" },
     { platform: "instagram", category: "views", name: "Instagram Reel Views", description: "Reel views to improve distribution.", min: 500, max: 500000, price: 2.4, cost: 1.0, reseller: 1.7, delivery: "instant", time: "0-1 hour", features: ["Reel optimized"], serviceId: "2003" },

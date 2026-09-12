@@ -1,7 +1,7 @@
 import { query, queryOne, withTransaction } from "../db.js";
 import { AppError } from "../errors.js";
 import { makeSlug } from "../utils.js";
-import { detectPlatform, detectServiceCategory, isSellableProductName, publicProductName } from "./catalogClassify.js";
+import { detectPlatform, detectServiceCategory, isSellableProductName, looksLikeCustomComments, publicProductName } from "./catalogClassify.js";
 import { parsePanelFlag, parseRefillHint } from "./refillParse.js";
 import { writeAudit } from "./auditService.js";
 import { getSettings } from "./settingsService.js";
@@ -133,8 +133,11 @@ export async function importProviderPackages(
       const providerRefill = parsePanelFlag(service.refill);
       const hint = parseRefillHint(`${rawName} ${displayName}`, "", providerRefill);
       const refill = hint.supported;
+      const providerType = service.type ? String(service.type) : "";
+      const customComments = looksLikeCustomComments({ name: displayName, providerType });
       const features = [
-        service.type ? String(service.type) : "",
+        providerType,
+        customComments ? "Custom comments" : "",
         refill ? (hint.days === 365 ? "Lifetime refill" : `${hint.days} day refill`) : "No refill",
         service.cancel ? "Cancel anytime" : "",
       ].filter(Boolean);
@@ -236,6 +239,16 @@ export async function importProviderPackages(
        SET cancel_supported = (
          features::text ~* 'cancel[[:space:]]*(anytime|any[[:space:]]*time|available|supported)'
          AND features::text !~* 'no[[:space:]]*cancel'
+       )
+       WHERE provider_id = $1 AND provider_service_id = ANY($2::text[])`,
+      [providerId, serviceIds],
+      client
+    );
+    await query(
+      `UPDATE products
+       SET custom_comments = (
+         name ~* 'custom[[:space:]]*comments?'
+         OR features::text ~* 'custom[[:space:]]*comments?'
        )
        WHERE provider_id = $1 AND provider_service_id = ANY($2::text[])`,
       [providerId, serviceIds],

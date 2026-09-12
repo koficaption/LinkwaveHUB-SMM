@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, money, ApiError, errorMessage } from "@/api/client";
 import type { Category, LoyaltyMe, Paginated, Platform, Product } from "@/types";
-import { Button, EmptyState, Input, Skeleton } from "@/components/ui";
+import { Button, EmptyState, Input, Skeleton, Textarea } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefillBadge } from "@/components/dashboard/RefillBadge";
 import { CancelBadge } from "@/components/dashboard/CancelBadge";
@@ -13,7 +13,7 @@ import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollow
 import { ServiceCatalogFilters, categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
 import { OrderSelect } from "@/components/dashboard/OrderSelect";
 import { productRefill } from "@/utils/refill";
-import { publicProductName, publicServiceBadge, isEachPrice, isProviderCategory, priceUnitSuffix } from "@/utils/catalog";
+import { publicProductName, publicServiceBadge, isEachPrice, isProviderCategory, priceUnitSuffix, looksLikeCustomComments, parseCustomComments } from "@/utils/catalog";
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
@@ -27,6 +27,7 @@ export function NewOrderPanel() {
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [target, setTarget] = useState("");
+  const [comments, setComments] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
@@ -62,7 +63,11 @@ export function NewOrderPanel() {
     .sort((a, b) => publicProductName(a.name).localeCompare(publicProductName(b.name)));
 
   const selected = visibleProducts.find((p) => p.id === productId);
-  const qty = Number(quantity || selected?.min_quantity || 0);
+  const customComments = looksLikeCustomComments(selected);
+  const commentLines = parseCustomComments(comments);
+  const qty = customComments
+    ? commentLines.length || Number(quantity || selected?.min_quantity || 0)
+    : Number(quantity || selected?.min_quantity || 0);
   const each = isEachPrice(selected);
   const quote = useOrderQuote(selected, qty, {
     storeSlug: me?.panel?.store_slug,
@@ -73,7 +78,12 @@ export function NewOrderPanel() {
 
   useEffect(() => {
     if (selected) setQuantity(String(selected.min_quantity));
+    setComments("");
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (customComments && commentLines.length) setQuantity(String(commentLines.length));
+  }, [customComments, comments]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -83,12 +93,14 @@ export function NewOrderPanel() {
           productId: selected?.id,
           quantity: qty,
           target,
+          comments: customComments ? commentLines.join("\n") : undefined,
           storeSlug: me?.panel?.store_slug,
         }),
       }),
     onSuccess: async () => {
       toast.success("Order placed successfully");
       setTarget("");
+      setComments("");
       await qc.invalidateQueries({ queryKey: ["me"] });
       await qc.invalidateQueries({ queryKey: ["my-orders"] });
       await qc.invalidateQueries({ queryKey: ["wallet"] });
@@ -192,8 +204,14 @@ export function NewOrderPanel() {
           className="mt-5 space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800"
           onSubmit={(e) => {
             e.preventDefault();
+            if (customComments && !commentLines.length) {
+              toast.error("Type the comments you want, one per line");
+              return;
+            }
             if (qty < selected.min_quantity || qty > selected.max_quantity) {
-              toast.error(`Quantity must be between ${selected.min_quantity.toLocaleString()} and ${selected.max_quantity.toLocaleString()}`);
+              toast.error(customComments
+                ? `Enter between ${selected.min_quantity.toLocaleString()} and ${selected.max_quantity.toLocaleString()} comments, one per line`
+                : `Quantity must be between ${selected.min_quantity.toLocaleString()} and ${selected.max_quantity.toLocaleString()}`);
               return;
             }
             if (target.trim().length < 3) {
@@ -215,9 +233,29 @@ export function NewOrderPanel() {
             <span className="label">Target / Link</span>
             <Input placeholder="https://..." value={target} onChange={(e) => setTarget(e.target.value)} />
           </label>
+          {customComments && (
+            <label className="block">
+              <span className="label">Comments you want</span>
+              <Textarea
+                placeholder={"Nice video!\nThis is fire\nLove this"}
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-muted">
+                Type one comment per line. Quantity is the number of lines ({commentLines.length.toLocaleString()}).
+              </span>
+            </label>
+          )}
           <label className="block">
-            <span className="label">{each ? "Quantity (packages)" : "Quantity"}</span>
-            <Input type="number" min={selected.min_quantity} max={selected.max_quantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            <span className="label">{each ? "Quantity (packages)" : customComments ? "Quantity (from comments)" : "Quantity"}</span>
+            <Input
+              type="number"
+              min={selected.min_quantity}
+              max={selected.max_quantity}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              readOnly={customComments}
+            />
           </label>
           <div className="grid gap-3 rounded-2xl bg-brand-50 p-4 text-sm dark:bg-slate-800 sm:grid-cols-2">
             <p>

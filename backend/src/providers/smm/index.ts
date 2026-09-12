@@ -4,6 +4,7 @@ export type SmmOrderInput = {
   serviceId: string;
   link: string;
   quantity: number;
+  comments?: string;
 };
 
 export type SmmOrderResult = {
@@ -102,12 +103,14 @@ export const genericHttpAdapter: SmmProviderAdapter = {
     if (!input.serviceId || input.serviceId === "0") {
       throw new Error("This product has no provider service ID. Re-import the catalog or set the panel service ID.");
     }
-    const json = await panelRequest<{ order?: string | number; error?: string }>(credentials, {
+    const payload: Record<string, string> = {
       action: "add",
       service: input.serviceId,
       link: input.link,
       quantity: String(input.quantity),
-    });
+    };
+    if (input.comments) payload.comments = input.comments;
+    const json = await panelRequest<{ order?: string | number; error?: string }>(credentials, payload);
     if (json.error) throw new Error(String(json.error));
     if (json.order == null || String(json.order).trim() === "") {
       throw new Error("Provider did not return an order ID");

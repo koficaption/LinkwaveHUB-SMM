@@ -74,6 +74,31 @@ function looksLikeUuidToken(value: string) {
   return /^[0-9a-f]{8}(-[0-9a-f]{4}){0,3}(-[0-9a-f]{12})?$/i.test(value.trim());
 }
 
+export function looksLikeCustomComments(product?: {
+  name?: string | null;
+  description?: string | null;
+  features?: unknown;
+  custom_comments?: boolean | null;
+  category_name?: string | null;
+  category_slug?: string | null;
+} | null) {
+  if (!product) return false;
+  if (product.custom_comments === true) return true;
+  const features = Array.isArray(product.features)
+    ? product.features.map((item) => String(item)).join(" ")
+    : String(product.features || "");
+  const text = `${product.name || ""} ${product.description || ""} ${features} ${product.category_name || ""} ${product.category_slug || ""}`;
+  if (/no\s*custom\s*comments?/i.test(text)) return false;
+  return /custom\s*comments?/i.test(text);
+}
+
+export function parseCustomComments(text?: string | null) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 /** Customer-facing service ID. Never a UUID fragment. */
 export function publicServiceBadge(product: {
   service_no?: number | string | null;

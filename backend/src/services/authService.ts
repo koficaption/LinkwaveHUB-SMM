@@ -8,6 +8,7 @@ import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { getPublicSettings } from "./settingsService.js";
+import { verifyRecaptchaToken } from "./recaptchaService.js";
 import { attachPanelCustomer, getPanelForUser } from "./resellerService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
@@ -27,7 +28,13 @@ export async function registerUser(input: {
   referralCode?: string;
   storeSlug?: string;
   ip?: string;
+  recaptchaToken?: string;
+  website?: string;
 }) {
+  if (String(input.website || "").trim()) {
+    throw new AppError("Unable to create account", 400);
+  }
+  await verifyRecaptchaToken(input.recaptchaToken, input.ip);
   const existing = await queryOne<{ id: string; deleted_at: string | null }>(
     `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [input.email]
