@@ -590,6 +590,9 @@ admin.get("/users/:id", asyncHandler(async (req, res) => {
 admin.patch("/users/:id", validate(userUpdateSchema), asyncHandler(async (req, res) => {
   res.json(ok(await users.updateUser(req.params.id, req.body, req.user!, clientIp(req))));
 }));
+admin.delete("/users/:id", asyncHandler(async (req, res) => {
+  res.json(ok(await users.deleteUser(req.params.id, req.user!, clientIp(req)), "User removed"));
+}));
 admin.post("/users/:id/reset-password", asyncHandler(async (req, res) => {
   const body = z.object({ password: z.string().min(8) }).parse(req.body);
   await users.resetPassword(req.params.id, body.password, req.user!, clientIp(req));

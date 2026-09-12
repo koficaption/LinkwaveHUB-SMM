@@ -40,7 +40,41 @@ export async function registerUser(input: {
     `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [input.email]
   );
-  if (existing?.deleted_at) await restoreDeletedAccount(existing.id);
+  if (existing?.deleted_at) {
+    const passwordHash = await hashPassword(input.password);
+    const user = await queryOne(
+      `UPDATE users SET
+         deleted_at = NULL,
+         status = 'active',
+         password_hash = $2,
+         full_name = $3,
+         phone = COALESCE($4, phone),
+         whatsapp_number = COALESCE($5, whatsapp_number),
+         gender = COALESCE($6, gender),
+         last_login_at = NOW(),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING ${publicUser}`,
+      [
+        existing.id,
+        passwordHash,
+        normalizePersonName(input.fullName),
+        input.phone ?? null,
+        input.whatsappNumber ?? null,
+        input.gender ?? null,
+      ]
+    );
+    if (!user) throw new AppError("Unable to create account", 500);
+    const token = signToken({ id: user.id, role: user.role, email: user.email });
+    const panel = input.asReseller ? null : await attachPanelCustomer(user.id, input.storeSlug);
+    await notify({
+      userId: user.id,
+      title: panel ? `Welcome back to ${panel.store_name}` : "Welcome back to LinkBoost Growth",
+      body: "Your account is ready again. Add funds to your wallet to start placing orders.",
+      type: "account",
+    });
+    return { user, token };
+  }
   if (existing) throw new AppError("An account with this email already exists", 409);
 
   const result = await withTransaction(async (client) => {

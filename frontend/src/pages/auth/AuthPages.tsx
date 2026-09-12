@@ -280,8 +280,8 @@ export function RegisterPage() {
         </div>
         {recaptcha?.enabled && recaptcha.siteKey && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Google verification</p>
-            <p className="text-xs text-slate-500">Tick I’m not a robot, then create the account.</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">I’m not a robot</p>
+            <p className="text-xs text-slate-500">Tick the box, wait for the check mark, then create the account.</p>
             <RecaptchaBox siteKey={recaptcha.siteKey} onToken={setRecaptchaToken} />
           </div>
         )}

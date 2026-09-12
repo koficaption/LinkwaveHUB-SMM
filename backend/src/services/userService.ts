@@ -3,6 +3,7 @@ import { AppError } from "../errors.js";
 import { hashPassword, like, newDepositCode, normalizePersonName, parsePagination } from "../utils.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
+import { PRIMARY_ADMIN_EMAIL } from "./platformResetService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, last_login_ip, created_at, updated_at, deposit_code`;
@@ -69,7 +70,6 @@ export async function createUser(input: {
     `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [input.email]
   );
-  if (exists?.deleted_at) await restoreDeletedAccount(exists.id);
   if (exists) throw new AppError("Email already in use", 409);
   const hash = await hashPassword(input.password);
   const fullName = normalizePersonName(input.fullName);
@@ -110,6 +110,45 @@ export async function updateUser(id: string, input: Record<string, unknown>, act
     await writeAudit({ actor, action: "user.update", targetType: "user", targetId: id, ip, details: input });
   }
   return user;
+}
+
+export async function deleteUser(id: string, actor: AuthUser, ip?: string) {
+  if (id === actor.id) throw new AppError("You cannot delete your own account");
+  const target = await queryOne<{ email: string; role: string; full_name: string; deleted_at: string | null }>(
+    `SELECT email, role, full_name, deleted_at FROM users WHERE id = $1`,
+    [id]
+  );
+  if (!target) throw new AppError("User not found", 404);
+  if (target.deleted_at) return { deleted: true };
+  if (String(target.email).toLowerCase() === PRIMARY_ADMIN_EMAIL) {
+    throw new AppError("This admin account cannot be deleted", 400);
+  }
+  if (target.role === "admin") {
+    const others = await queryOne<{ count: string }>(
+      `SELECT COUNT(*) FROM users WHERE role = 'admin' AND id <> $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (Number(others?.count ?? 0) < 1) throw new AppError("Cannot delete the last admin", 400);
+  }
+
+  const deleted = await queryOne(
+    `UPDATE users
+     SET deleted_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING id`,
+    [id]
+  );
+  if (!deleted) throw new AppError("User not found", 404);
+
+  await writeAudit({
+    actor,
+    action: "user.delete",
+    targetType: "user",
+    targetId: id,
+    ip,
+    details: { email: target.email, role: target.role, name: target.full_name, blocked: false },
+  });
+  return { deleted: true };
 }
 
 export async function restoreDeletedAccount(id: string, client?: Queryable) {

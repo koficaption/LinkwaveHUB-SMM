@@ -8,6 +8,8 @@ declare global {
         el: HTMLElement,
         opts: {
           sitekey: string;
+          theme?: "light" | "dark";
+          size?: "normal" | "compact";
           callback: (token: string) => void;
           "expired-callback": () => void;
           "error-callback": () => void;
@@ -15,21 +17,20 @@ declare global {
       ) => number;
       reset: (id?: number) => void;
     };
+    __lwhRecaptchaReady?: () => void;
   }
 }
 
 const SCRIPT_ID = "google-recaptcha-v2";
 
 function loadScript() {
-  const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
-  if (existing) return existing;
+  if (document.getElementById(SCRIPT_ID)) return;
   const script = document.createElement("script");
   script.id = SCRIPT_ID;
-  script.src = "https://www.google.com/recaptcha/api.js?render=explicit";
+  script.src = "https://www.google.com/recaptcha/api.js?onload=__lwhRecaptchaReady&render=explicit";
   script.async = true;
   script.defer = true;
   document.head.appendChild(script);
-  return script;
 }
 
 export function RecaptchaBox({
@@ -51,53 +52,63 @@ export function RecaptchaBox({
     let cancelled = false;
     setFailed(false);
     setMounted(false);
-    const script = loadScript();
 
     function mount() {
-      if (cancelled || !host.current || !window.grecaptcha?.render || widget.current != null) return;
-      const ready = window.grecaptcha.ready?.bind(window.grecaptcha) ?? ((cb: () => void) => cb());
-      ready(() => {
-        if (cancelled || !host.current || widget.current != null) return;
-        try {
-          widget.current = window.grecaptcha!.render(host.current, {
-            sitekey: siteKey,
-            callback: (token) => onTokenRef.current(token),
-            "expired-callback": () => onTokenRef.current(""),
-            "error-callback": () => {
-              onTokenRef.current("");
-              setFailed(true);
-            },
-          });
-          setMounted(true);
-          setFailed(false);
-        } catch {
-          setFailed(true);
-        }
-      });
+      if (cancelled || !host.current || !window.grecaptcha?.render || widget.current != null) return Boolean(widget.current != null);
+      try {
+        widget.current = window.grecaptcha.render(host.current, {
+          sitekey: siteKey,
+          theme: "light",
+          size: "normal",
+          callback: (token) => onTokenRef.current(token),
+          "expired-callback": () => onTokenRef.current(""),
+          "error-callback": () => {
+            onTokenRef.current("");
+            setFailed(true);
+          },
+        });
+        setMounted(true);
+        setFailed(false);
+        return true;
+      } catch {
+        return false;
+      }
     }
 
-    script.addEventListener("load", mount);
-    script.addEventListener("error", () => setFailed(true));
-    const timer = window.setInterval(mount, 250);
+    window.__lwhRecaptchaReady = () => {
+      window.grecaptcha?.ready(() => {
+        mount();
+      });
+    };
+    loadScript();
+    if (window.grecaptcha?.render) window.__lwhRecaptchaReady();
+
+    const timer = window.setInterval(() => {
+      if (mount()) window.clearInterval(timer);
+    }, 300);
     const timeout = window.setTimeout(() => {
       if (widget.current == null) setFailed(true);
-    }, 8000);
+    }, 10000);
 
     return () => {
       cancelled = true;
-      script.removeEventListener("load", mount);
       window.clearInterval(timer);
       window.clearTimeout(timeout);
     };
   }, [siteKey]);
 
   return (
-    <div className="overflow-visible">
-      <div ref={host} className="flex min-h-[78px] justify-center overflow-visible" />
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <div className="overflow-x-auto">
+        <div ref={host} className="g-recaptcha min-h-[78px]" />
+      </div>
+      {!mounted && !failed && (
+        <p className="mt-2 text-center text-xs text-slate-500">Loading I’m not a robot…</p>
+      )}
       {failed && !mounted && (
         <p className="mt-2 text-center text-xs text-rose-600">
-          The I’m not a robot box could not load. Confirm the key is reCAPTCHA v2 checkbox and the domain is
-          {" "}<span className="font-mono">linkboostgrowth.site</span> (no https).
+          The tick box could not load. Redeploy the site, and confirm the key is reCAPTCHA v2 checkbox with domain
+          {" "}<span className="font-mono">linkboostgrowth.site</span>.
         </p>
       )}
     </div>
