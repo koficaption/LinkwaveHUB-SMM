@@ -281,10 +281,11 @@ export function RegisterPage() {
         {recaptcha?.enabled && recaptcha.siteKey && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Google verification</p>
+            <p className="text-xs text-slate-500">Tick I’m not a robot, then create the account.</p>
             <RecaptchaBox siteKey={recaptcha.siteKey} onToken={setRecaptchaToken} />
           </div>
         )}
-        <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional. Gender sets your dashboard avatar.</p>
+        <p className="text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional. Gender sets your dashboard avatar.</p>
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
         </Button>

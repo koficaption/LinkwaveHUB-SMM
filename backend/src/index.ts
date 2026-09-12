@@ -41,11 +41,34 @@ app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://apis.google.com", "https://www.gstatic.com"],
-      frameSrc: ["'self'", "https://accounts.google.com"],
-      connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "https://www.googleapis.com"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://accounts.google.com",
+        "https://apis.google.com",
+        "https://www.google.com",
+        "https://www.gstatic.com",
+        "https://www.recaptcha.net",
+      ],
+      frameSrc: [
+        "'self'",
+        "https://accounts.google.com",
+        "https://www.google.com",
+        "https://recaptcha.google.com",
+        "https://www.gstatic.com",
+        "https://www.recaptcha.net",
+      ],
+      connectSrc: [
+        "'self'",
+        "https://accounts.google.com",
+        "https://oauth2.googleapis.com",
+        "https://www.googleapis.com",
+        "https://www.google.com",
+        "https://www.gstatic.com",
+        "https://www.recaptcha.net",
+      ],
       imgSrc: ["'self'", "data:", "https:"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://www.gstatic.com", "https://www.google.com"],
     },
   },
 }));
