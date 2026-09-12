@@ -1091,8 +1091,10 @@ function RecaptchaSettingsCard({
       <h2 className="font-bold">Google verification (stop bot signups)</h2>
       <p className="mt-1 text-sm text-slate-500">
         Adds the “I’m not a robot” box on Create account. Create a reCAPTCHA v2 checkbox key at
-        {" "}<a className="font-semibold text-brand-700" href="https://www.google.com/recaptcha/admin" target="_blank" rel="noreferrer">Google reCAPTCHA</a>
-        {" "}and add <span className="font-mono">linkboostgrowth.site</span> as a domain. Leave the secret blank to keep the saved one.
+        {" "}<a className="font-semibold text-brand-700" href="https://www.google.com/recaptcha/admin" target="_blank" rel="noreferrer">Google reCAPTCHA</a>.
+        For Domains type only <span className="font-mono">linkboostgrowth.site</span>
+        {" "}— no <span className="font-mono">https://</span> and no slash. You can also add <span className="font-mono">www.linkboostgrowth.site</span>.
+        Leave the secret blank to keep the saved one.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="block">
