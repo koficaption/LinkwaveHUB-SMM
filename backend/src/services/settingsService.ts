@@ -265,9 +265,13 @@ export async function getAdminSettings() {
   mail.pass = "";
   mail.passSet = passSet;
   const security = { ...((all.security as Record<string, unknown> | undefined) ?? {}) };
-  const secretSet = Boolean(security.recaptchaSecretKey);
+  const captcha = await getRecaptchaConfig();
+  const dbSecretSet = Boolean(security.recaptchaSecretKey);
+  security.recaptchaSiteKey = String(security.recaptchaSiteKey || captcha.siteKey || "").trim();
   security.recaptchaSecretKey = "";
-  security.recaptchaSecretSet = secretSet;
+  security.recaptchaSecretSet = dbSecretSet || Boolean(config.recaptchaSecretKey) || captcha.required;
+  security.recaptchaReady = captcha.required;
+  security.recaptchaFromEnv = Boolean(config.recaptchaSiteKey && config.recaptchaSecretKey);
   return { ...all, mail, security };
 }
 

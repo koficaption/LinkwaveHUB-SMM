@@ -1090,11 +1090,24 @@ function RecaptchaSettingsCard({
     <Card>
       <h2 className="font-bold">Google verification (stop bot signups)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Adds the “I’m not a robot” box on Create account. Create a reCAPTCHA v2 checkbox key at
+        The “I’m not a robot” box is on the <strong>Register / Create account</strong> page, not Login.
+        If <span className="font-mono">RECAPTCHA_SITE_KEY</span> and <span className="font-mono">RECAPTCHA_SECRET_KEY</span> are already on Render, it is on — you do not have to paste the keys here again.
+        This is not the same as Continue with Google.
+      </p>
+      {source.recaptchaReady ? (
+        <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+          Verification is on{source.recaptchaFromEnv ? " from Render" : ""}. Open Register to see the checkbox.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-amber-700">
+          Not on yet. Add both keys on Render or paste them below, then redeploy.
+        </p>
+      )}
+      <p className="mt-2 text-sm text-slate-500">
+        Create a reCAPTCHA v2 checkbox key at
         {" "}<a className="font-semibold text-brand-700" href="https://www.google.com/recaptcha/admin" target="_blank" rel="noreferrer">Google reCAPTCHA</a>.
         For Domains type only <span className="font-mono">linkboostgrowth.site</span>
-        {" "}— no <span className="font-mono">https://</span> and no slash. You can also add <span className="font-mono">www.linkboostgrowth.site</span>.
-        Leave the secret blank to keep the saved one.
+        {" "}— no <span className="font-mono">https://</span> and no slash.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="block">

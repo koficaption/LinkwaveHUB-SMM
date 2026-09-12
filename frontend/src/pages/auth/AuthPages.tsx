@@ -362,7 +362,8 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
       </a>
       {forceHelp && (
         <p className="mt-3 text-center text-sm text-slate-500">
-          Google sign-in failed. Use email and password, or confirm this exact redirect URI is on the Web client:
+          Continue with Google failed. This is Google login, not the I’m not a robot box.
+          Use email and password, or add this exact URI on the Google Cloud <strong>OAuth</strong> Web client (APIs &amp; Services → Credentials), not on reCAPTCHA:
           {" "}<code className="break-all font-mono text-xs">{redirectUri}</code>
         </p>
       )}
