@@ -3,7 +3,7 @@ import { config, LIVE_HOSTS } from "../config.js";
 import { getRecaptchaConfig } from "./settingsService.js";
 
 function allowedRecaptchaHosts() {
-  const hosts = new Set<string>(["localhost", "127.0.0.1", ...LIVE_HOSTS]);
+  const hosts = new Set<string>(["localhost", "127.0.0.1", "testkey.google.com", ...LIVE_HOSTS]);
   for (const raw of [config.frontendUrl, config.googleRedirectUri]) {
     try {
       const host = new URL(raw).hostname.toLowerCase();
