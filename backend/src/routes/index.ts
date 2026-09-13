@@ -36,6 +36,8 @@ import {
   contactAdminSchema,
   userCreateSchema,
   userUpdateSchema,
+  userBulkDeleteSchema,
+  googleStartSchema,
   providerSchema,
   storefrontSchema,
   resellerPriceSchema,
@@ -59,8 +61,11 @@ import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
 import * as childPanels from "../services/childPanelService.js";
+import { verifyRecaptchaToken } from "../services/recaptchaService.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+const registerLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
+const googleStartLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
 
 function setAuthCookie(res: import("express").Response, token: string, req?: import("express").Request) {
@@ -144,7 +149,7 @@ router.get("/store/:slug", asyncHandler(async (req, res) => {
   res.json(ok(payload));
 }));
 
-router.post("/auth/register", authLimit, validate(registerSchema), asyncHandler(async (req, res) => {
+router.post("/auth/register", registerLimit, validate(registerSchema), asyncHandler(async (req, res) => {
   const storeSlug = req.body.storeSlug || storeSlugFromRequest(req);
   const result = await auth.registerUser({
     ...req.body,
@@ -185,18 +190,39 @@ router.get("/auth/google/config", (req, res) => {
     redirectUri: googleCallbackUri(req),
   }));
 });
-router.get("/auth/google/start", authLimit, (req, res) => {
+async function handleGoogleStart(req: import("express").Request, res: import("express").Response) {
   const origin = googleAppOrigin(req);
+  const wantsJson = req.method === "POST";
   if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
+    if (wantsJson) throw new AppError("Google sign-in is not configured yet. Ask the admin to add Google OAuth keys.", 501);
     return res.redirect(`${origin}/login?google=unconfigured`);
+  }
+  const token = typeof req.body?.recaptchaToken === "string"
+    ? req.body.recaptchaToken
+    : typeof req.query.recaptchaToken === "string"
+      ? req.query.recaptchaToken
+      : "";
+  try {
+    await verifyRecaptchaToken(token, clientIp(req));
+  } catch (error) {
+    if (wantsJson) throw error;
+    return res.redirect(`${origin}/login?google=captcha`);
   }
   const redirectUri = googleCallbackUri(req);
   const queryRef = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
+  const bodyRef = typeof req.body?.ref === "string" ? req.body.ref.trim() : "";
   const cookieRef = typeof req.cookies?.lwh_ref === "string" ? String(req.cookies.lwh_ref).trim() : "";
-  const storeSlug = storeSlugFromQuery(req);
-  const state = googleAuth.createGoogleState(redirectUri, queryRef || cookieRef, storeSlug);
-  res.redirect(googleAuth.googleRedirectUrl(state, redirectUri));
-});
+  const storeSlug = typeof req.body?.storeSlug === "string" && req.body.storeSlug.trim()
+    ? req.body.storeSlug.trim()
+    : storeSlugFromQuery(req);
+  const state = googleAuth.createGoogleState(redirectUri, bodyRef || queryRef || cookieRef, storeSlug);
+  const url = googleAuth.googleRedirectUrl(state, redirectUri);
+  if (wantsJson) return res.json(ok({ url }));
+  return res.redirect(url);
+}
+
+router.get("/auth/google/start", googleStartLimit, asyncHandler(handleGoogleStart));
+router.post("/auth/google/start", googleStartLimit, validate(googleStartSchema), asyncHandler(handleGoogleStart));
 router.get("/auth/google/callback", asyncHandler(async (req, res) => {
   const origin = googleAppOrigin(req);
   const error = typeof req.query.error === "string" ? req.query.error : "";
@@ -212,7 +238,7 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
     const googleState = googleAuth.verifyGoogleState(state);
     const referralCode = googleState.referralCode || referralCodeFromRequest(req);
     const storeSlug = googleState.storeSlug || "";
-    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, referralCode, storeSlug);
+    const result = await googleAuth.loginWithGoogleCode(code, googleState.redirectUri, referralCode, storeSlug, clientIp(req));
     if (referralCode) {
       await affiliates.attachReferrer(result.user.id, referralCode);
       await affiliates.settleMissedCommissionsForDepositor(result.user.id);
@@ -234,14 +260,17 @@ router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
     accessToken: z.string().optional(),
     referralCode: z.string().max(40).optional(),
     storeSlug: z.string().max(80).optional(),
+    recaptchaToken: z.string().optional(),
   }).parse(req.body);
+  await verifyRecaptchaToken(body.recaptchaToken, clientIp(req));
   const storeSlug = body.storeSlug || storeSlugFromQuery(req);
+  const ip = clientIp(req);
   const result = body.accessToken
-    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken, body.referralCode, storeSlug)
+    ? await googleAuth.loginWithGoogleAccessToken(body.accessToken, body.referralCode, storeSlug, ip)
     : body.credential
-      ? await googleAuth.loginWithGoogleIdToken(body.credential, body.referralCode, storeSlug)
+      ? await googleAuth.loginWithGoogleIdToken(body.credential, body.referralCode, storeSlug, ip)
       : body.code
-        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode, storeSlug)
+        ? await googleAuth.loginWithGoogleCode(body.code, "postmessage", body.referralCode, storeSlug, ip)
         : (() => { throw new AppError("Google credential is required", 400); })();
   const referralCode = body.referralCode || referralCodeFromRequest(req);
   if (referralCode) {
@@ -589,6 +618,9 @@ admin.get("/users/:id", asyncHandler(async (req, res) => {
 }));
 admin.patch("/users/:id", validate(userUpdateSchema), asyncHandler(async (req, res) => {
   res.json(ok(await users.updateUser(req.params.id, req.body, req.user!, clientIp(req))));
+}));
+admin.post("/users/bulk-delete", validate(userBulkDeleteSchema), asyncHandler(async (req, res) => {
+  res.json(ok(await users.deleteUsers(req.body.ids, req.user!, clientIp(req)), "Users removed"));
 }));
 admin.delete("/users/:id", asyncHandler(async (req, res) => {
   res.json(ok(await users.deleteUser(req.params.id, req.user!, clientIp(req)), "User removed"));

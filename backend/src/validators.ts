@@ -304,6 +304,16 @@ export const userUpdateSchema = z.object({
   status: z.enum(["active", "suspended", "pending"]).optional(),
 });
 
+export const userBulkDeleteSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+
+export const googleStartSchema = z.object({
+  recaptchaToken: optionalText(4000),
+  ref: optionalText(40),
+  storeSlug: optionalText(80, 2),
+});
+
 export const providerSchema = z.object({
   name: z.string().min(2).max(80),
   apiUrl: z.string().max(500).optional().nullable(),

@@ -151,6 +151,28 @@ export async function deleteUser(id: string, actor: AuthUser, ip?: string) {
   return { deleted: true };
 }
 
+export async function deleteUsers(ids: string[], actor: AuthUser, ip?: string) {
+  const unique = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!unique.length) throw new AppError("Select at least one user", 400);
+  const deleted: string[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  for (const id of unique) {
+    try {
+      await deleteUser(id, actor, ip);
+      deleted.push(id);
+    } catch (error) {
+      skipped.push({
+        id,
+        reason: error instanceof AppError ? error.message : "Could not delete user",
+      });
+    }
+  }
+  if (!deleted.length) {
+    throw new AppError(skipped[0]?.reason || "Could not delete users", 400);
+  }
+  return { deleted: deleted.length, skipped };
+}
+
 export async function restoreDeletedAccount(id: string, client?: Queryable) {
   await query(
     `UPDATE users

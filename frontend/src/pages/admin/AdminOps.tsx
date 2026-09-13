@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { api, formatDate, money, ApiError, errorMessage } from "@/api/client";
 import type { Order, Paginated, PaymentMethod, Platform, RefillRecord, User } from "@/types";
 import { Badge, Button, Card, ConfirmDialog, Input, Modal, Pagination, PasswordInput, Select, Textarea } from "@/components/ui";
@@ -304,26 +305,56 @@ function OrderDrawer({ order, onClose, onChanged }: { order: Order; onClose: () 
 
 export function AdminUsers() {
   const qc = useQueryClient();
+  const { me } = useAuth();
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const users = useQuery({
     queryKey: ["admin-users", search, role, status, page],
     queryFn: () => api<Paginated<User>>(`/admin/users?search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}&page=${page}&limit=50`),
   });
+  const items = users.data?.items ?? [];
+  const myId = me?.user.id;
+  const selectable = items.filter((u) => u.id !== myId);
+  const pageSelected = selectable.filter((u) => selected.includes(u.id));
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = pageSelected.length > 0 && pageSelected.length < selectable.length;
+    }
+  }, [pageSelected.length, selectable.length]);
   const removing = useMutation({
     mutationFn: (id: string) => api<{ deleted?: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       toast.success("User removed from the list. They can sign in or register again with the same email.");
       setConfirmId(null);
+      setSelected((ids) => ids.filter((value) => value !== id));
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["admin-wallets"] });
     },
     onError: (e) => toast.error(errorMessage(e, "Could not delete user")),
+  });
+  const removingMany = useMutation({
+    mutationFn: (ids: string[]) => api<{ deleted: number; skipped: { id: string; reason: string }[] }>("/admin/users/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+    onSuccess: (data, ids) => {
+      const extra = data.skipped.length ? ` ${data.skipped.length} skipped.` : "";
+      toast.success(`Removed ${data.deleted} user${data.deleted === 1 ? "" : "s"}.${extra}`);
+      setBulkOpen(false);
+      setSelected((current) => current.filter((id) => !ids.includes(id)));
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-wallets"] });
+    },
+    onError: (e) => toast.error(errorMessage(e, "Could not delete users")),
   });
   const confirmUser = users.data?.items.find((u) => u.id === confirmId);
   return (
@@ -336,7 +367,14 @@ export function AdminUsers() {
             {" "}Newest signups are first — older accounts stay on later pages.
           </p>
         </div>
-        <Button onClick={() => setOpen(true)}>Create user</Button>
+        <div className="flex flex-wrap gap-2">
+          {selected.length > 0 && (
+            <Button variant="danger" onClick={() => setBulkOpen(true)}>
+              Delete selected ({selected.length})
+            </Button>
+          )}
+          <Button onClick={() => setOpen(true)}>Create user</Button>
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <SearchField
@@ -359,10 +397,37 @@ export function AdminUsers() {
       </div>
       <Card className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="text-slate-500">{["Name","Email","Code","Role","Status","Joined",""].map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+          <thead>
+            <tr className="text-slate-500">
+              <th className="p-2">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  aria-label="Select all users on this page"
+                  checked={selectable.length > 0 && pageSelected.length === selectable.length}
+                  onChange={(e) => {
+                    const pageIds = selectable.map((u) => u.id);
+                    setSelected((current) => e.target.checked
+                      ? [...new Set([...current, ...pageIds])]
+                      : current.filter((id) => !pageIds.includes(id)));
+                  }}
+                />
+              </th>
+              {["Name","Email","Code","Role","Status","Joined",""].map((h) => <th key={h} className="p-2">{h}</th>)}
+            </tr>
+          </thead>
           <tbody>
             {users.data?.items.map((u) => (
               <tr key={u.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="p-2">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${u.full_name}`}
+                    checked={selected.includes(u.id)}
+                    disabled={u.id === myId}
+                    onChange={(e) => setSelected((current) => e.target.checked ? [...current, u.id] : current.filter((id) => id !== u.id))}
+                  />
+                </td>
                 <td className="p-2">{u.full_name}</td>
                 <td className="p-2">{u.email}</td>
                 <td className="p-2 font-mono text-xs font-semibold">{u.deposit_code || "—"}</td>
@@ -376,7 +441,7 @@ export function AdminUsers() {
               </tr>
             ))}
             {users.data && !users.data.items.length && (
-              <tr><td className="p-3 text-slate-500" colSpan={7}>No users match these filters.</td></tr>
+              <tr><td className="p-3 text-slate-500" colSpan={8}>No users match these filters.</td></tr>
             )}
           </tbody>
         </table>
@@ -393,6 +458,15 @@ export function AdminUsers() {
         confirmLabel={removing.isPending ? "Deleting…" : "Delete"}
         onClose={() => { if (!removing.isPending) setConfirmId(null); }}
         onConfirm={() => { if (confirmId && !removing.isPending) removing.mutate(confirmId); }}
+      />
+      <ConfirmDialog
+        open={bulkOpen}
+        title="Delete selected users"
+        body={`Remove ${selected.length} selected user${selected.length === 1 ? "" : "s"} from the list? They can sign in or register again with the same email. Your own account and the last admin are skipped.`}
+        danger
+        confirmLabel={removingMany.isPending ? "Deleting…" : "Delete selected"}
+        onClose={() => { if (!removingMany.isPending) setBulkOpen(false); }}
+        onConfirm={() => { if (selected.length && !removingMany.isPending) removingMany.mutate(selected); }}
       />
     </div>
   );
@@ -1090,13 +1164,14 @@ function RecaptchaSettingsCard({
     <Card>
       <h2 className="font-bold">Google verification (stop bot signups)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        The “I’m not a robot” box is on the <strong>Register / Create account</strong> page, not Login.
+        The “I’m not a robot” box is required for <strong>Create account</strong> and <strong>Continue with Google</strong>.
+        Bots were still signing up because Google login skipped the box — that hole is now closed.
+        Temporary emails are blocked, and one network can only create a few accounts per day.
         If <span className="font-mono">RECAPTCHA_SITE_KEY</span> and <span className="font-mono">RECAPTCHA_SECRET_KEY</span> are already on Render, it is on — you do not have to paste the keys here again.
-        This is not the same as Continue with Google.
       </p>
       {source.recaptchaReady ? (
         <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-          Verification is on{source.recaptchaFromEnv ? " from Render" : ""}. Open Register to see the checkbox.
+          Verification is on{source.recaptchaFromEnv ? " from Render" : ""}. Open Register or Login to see the checkbox.
         </p>
       ) : (
         <p className="mt-2 text-sm text-amber-700">

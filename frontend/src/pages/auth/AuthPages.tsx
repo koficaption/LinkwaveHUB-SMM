@@ -36,12 +36,15 @@ export function LoginPage() {
   const storeSlug = params.get("store") || activeStoreSlug();
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
+  const [recaptchaToken, setRecaptchaToken] = useState("");
+  const recaptcha = usePublicRecaptcha();
 
   useEffect(() => {
     const google = params.get("google");
     if (google === "unconfigured") toast.error("Google sign-in is not configured yet. Ask the admin to add Google OAuth keys.");
     if (google === "denied") toast.error("Google sign-in was cancelled.");
     if (google === "failed") toast.error("Google sign-in failed. Try again or use email and password.");
+    if (google === "captcha") toast.error("Tick I’m not a robot, then Continue with Google.");
   }, [params]);
 
   return (
@@ -55,7 +58,13 @@ export function LoginPage() {
           You’re signing in as a customer of {store.data.store_name}. Services and prices on this panel belong to this reseller.
         </p>
       )}
-      <GoogleSignIn forceHelp={["failed", "denied"].includes(params.get("google") || "")} />
+      <GoogleSignIn
+        forceHelp={["failed", "denied", "captcha"].includes(params.get("google") || "")}
+        recaptchaToken={recaptchaToken}
+        recaptchaRequired={Boolean(recaptcha?.enabled)}
+        onRecaptchaToken={setRecaptchaToken}
+        showRecaptcha
+      />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
@@ -207,11 +216,7 @@ export function RegisterPage() {
   const form = useForm({ resolver: zodResolver(registerSchema), defaultValues: { fullName: "", email: "", password: "", phone: "", whatsappNumber: "", gender: "", storeName: "" } });
   const [website, setWebsite] = useState("");
   const [recaptchaToken, setRecaptchaToken] = useState("");
-  const publicSettings = useQuery({
-    queryKey: ["public-settings"],
-    queryFn: () => api<PublicSettings>("/settings/public"),
-  });
-  const recaptcha = publicSettings.data?.security;
+  const recaptcha = usePublicRecaptcha();
   return (
     <AuthCard
       title={store.data ? `Join ${store.data.store_name}` : "Create your account"}
@@ -228,7 +233,16 @@ export function RegisterPage() {
           You were invited with code <span className="font-mono font-semibold">{invitedBy}</span>. You will be linked to that affiliate when you register.
         </p>
       )}
-      <GoogleSignIn />
+      {recaptcha?.enabled && recaptcha.siteKey && (
+        <div className="mb-4">
+          <RobotCheck
+            siteKey={recaptcha.siteKey}
+            onToken={setRecaptchaToken}
+            hint="Tick the box before Continue with Google or creating an account."
+          />
+        </div>
+      )}
+      <GoogleSignIn recaptchaToken={recaptchaToken} recaptchaRequired={Boolean(recaptcha?.enabled)} />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
@@ -278,13 +292,6 @@ export function RegisterPage() {
             <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
           </label>
         </div>
-        {recaptcha?.enabled && recaptcha.siteKey && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">I’m not a robot</p>
-            <p className="text-xs text-slate-500">Tick the box, wait for the check mark, then create the account.</p>
-            <RecaptchaBox siteKey={recaptcha.siteKey} onToken={setRecaptchaToken} />
-          </div>
-        )}
         <p className="text-xs text-slate-500">Use at least 8 characters. Phone and WhatsApp are optional. Gender sets your dashboard avatar.</p>
         <Button className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Creating..." : "Create account"}
@@ -328,8 +335,48 @@ export function AuthCallbackPage() {
 
 const LIVE_GOOGLE_CALLBACK = "https://linkboostgrowth.site/api/auth/google/callback";
 
-function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
+function usePublicRecaptcha() {
+  const publicSettings = useQuery({
+    queryKey: ["public-settings"],
+    queryFn: () => api<PublicSettings>("/settings/public"),
+  });
+  return publicSettings.data?.security;
+}
+
+function RobotCheck({
+  siteKey,
+  onToken,
+  hint,
+}: {
+  siteKey: string;
+  onToken: (token: string) => void;
+  hint: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">I’m not a robot</p>
+      <p className="text-xs text-slate-500">{hint}</p>
+      <RecaptchaBox siteKey={siteKey} onToken={onToken} />
+    </div>
+  );
+}
+
+function GoogleSignIn({
+  forceHelp = false,
+  recaptchaToken = "",
+  recaptchaRequired = false,
+  onRecaptchaToken,
+  showRecaptcha = false,
+}: {
+  forceHelp?: boolean;
+  recaptchaToken?: string;
+  recaptchaRequired?: boolean;
+  onRecaptchaToken?: (token: string) => void;
+  showRecaptcha?: boolean;
+}) {
   const [params] = useSearchParams();
+  const [starting, setStarting] = useState(false);
+  const recaptcha = usePublicRecaptcha();
   const config = useQuery({
     queryKey: ["google-config"],
     queryFn: () => api<{
@@ -345,22 +392,51 @@ function GoogleSignIn({ forceHelp = false }: { forceHelp?: boolean }) {
   if (urlRef) persistReferralCode(urlRef);
   const ref = urlRef || storedReferralCode();
   const storeSlug = params.get("store") || activeStoreSlug();
-  const qs = new URLSearchParams();
-  if (ref) qs.set("ref", ref);
-  if (storeSlug) qs.set("storeSlug", storeSlug);
-  const googleStart = qs.toString() ? `/api/auth/google/start?${qs.toString()}` : "/api/auth/google/start";
 
   if (!enabled && !config.isLoading) return null;
 
+  async function startGoogle() {
+    if (recaptchaRequired && !recaptchaToken) {
+      toast.error("Tick I’m not a robot, then Continue with Google.");
+      return;
+    }
+    setStarting(true);
+    try {
+      const data = await api<{ url: string }>("/auth/google/start", {
+        method: "POST",
+        body: JSON.stringify({
+          recaptchaToken: recaptchaToken || undefined,
+          ref: ref || undefined,
+          storeSlug: storeSlug || undefined,
+        }),
+      });
+      window.location.href = data.url;
+    } catch (error) {
+      setStarting(false);
+      toast.error(errorMessage(error, "Google sign-in failed"));
+    }
+  }
+
   return (
     <>
-      <a
-        href={googleStart}
-        className="btn flex w-full items-center justify-center gap-3 border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+      {showRecaptcha && recaptcha?.enabled && recaptcha.siteKey && onRecaptchaToken && (
+        <div className="mb-4">
+          <RobotCheck
+            siteKey={recaptcha.siteKey}
+            onToken={onRecaptchaToken}
+            hint="Tick the box before Continue with Google."
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={startGoogle}
+        disabled={starting}
+        className="btn flex w-full items-center justify-center gap-3 border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
       >
         <GoogleMark />
-        Continue with Google
-      </a>
+        {starting ? "Opening Google..." : "Continue with Google"}
+      </button>
       {forceHelp && (
         <p className="mt-3 text-center text-sm text-slate-500">
           Continue with Google failed. This is Google login, not the I’m not a robot box.

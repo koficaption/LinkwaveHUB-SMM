@@ -7,6 +7,7 @@ import { restoreDeletedAccount } from "./userService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { attachPanelCustomer } from "./resellerService.js";
+import { assertNewAccountIpLimit, normalizeClientIp } from "./signupGuard.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at, deposit_code`;
 
@@ -63,7 +64,7 @@ function googleDisplayName(profile: GoogleProfile) {
   );
 }
 
-export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string, storeSlug?: string) {
+export async function loginWithGoogleCode(code: string, redirectUri = config.googleRedirectUri, referralCode?: string, storeSlug?: string, ip?: string) {
   if (!config.googleClientId || !config.googleClientSecret) {
     throw new AppError("Google sign-in is not configured", 501);
   }
@@ -84,7 +85,7 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
     throw new AppError(tokenJson.error_description || "Google sign-in failed", 401);
   }
   if (tokenJson.id_token) {
-    return loginWithGoogleIdToken(tokenJson.id_token, referralCode, storeSlug);
+    return loginWithGoogleIdToken(tokenJson.id_token, referralCode, storeSlug, ip);
   }
   if (!tokenJson.access_token) throw new AppError("Google did not return a user token", 401);
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -94,10 +95,10 @@ export async function loginWithGoogleCode(code: string, redirectUri = config.goo
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile, referralCode, storeSlug);
+  return upsertGoogleUser(profile, referralCode, storeSlug, ip);
 }
 
-export async function loginWithGoogleAccessToken(accessToken: string, referralCode?: string, storeSlug?: string) {
+export async function loginWithGoogleAccessToken(accessToken: string, referralCode?: string, storeSlug?: string, ip?: string) {
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -105,10 +106,10 @@ export async function loginWithGoogleAccessToken(accessToken: string, referralCo
   if (!profileRes.ok || !profile.email || !profile.sub) {
     throw new AppError("Could not read Google profile", 401);
   }
-  return upsertGoogleUser(profile, referralCode, storeSlug);
+  return upsertGoogleUser(profile, referralCode, storeSlug, ip);
 }
 
-export async function loginWithGoogleIdToken(idToken: string, referralCode?: string, storeSlug?: string) {
+export async function loginWithGoogleIdToken(idToken: string, referralCode?: string, storeSlug?: string, ip?: string) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   const payload = (await res.json()) as GoogleProfile & { aud?: string; error?: string };
   if (!res.ok || payload.error || !payload.email || !payload.sub) {
@@ -117,11 +118,12 @@ export async function loginWithGoogleIdToken(idToken: string, referralCode?: str
   if (config.googleClientId && payload.aud !== config.googleClientId) {
     throw new AppError("Google credential does not match this app", 401);
   }
-  return upsertGoogleUser(payload, referralCode, storeSlug);
+  return upsertGoogleUser(payload, referralCode, storeSlug, ip);
 }
 
-async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, storeSlug?: string) {
+async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, storeSlug?: string, ip?: string) {
   const email = profile.email.toLowerCase();
+  const signupIp = normalizeClientIp(ip);
   const verified = profile.email_verified !== false && profile.email_verified !== "false";
   if (!verified) throw new AppError("Google email is not verified", 401);
 
@@ -146,11 +148,12 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
     }
 
     if (!user) {
+      await assertNewAccountIpLimit(signupIp);
       user = await queryOne(
-        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code, deposit_code)
-         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5, $6)
+        `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code, deposit_code, last_login_ip, last_login_at)
+         VALUES ($1, NULL, $2, 'customer', 'active', $3, 'google', TRUE, $4, $5, $6, $7, NOW())
          RETURNING ${publicUser}`,
-        [email, googleDisplayName(profile), profile.sub, profile.picture ?? null, newReferralCode(), newDepositCode()],
+        [email, googleDisplayName(profile), profile.sub, profile.picture ?? null, newReferralCode(), newDepositCode(), signupIp || null],
         client
       );
       await query(`INSERT INTO wallets (user_id, balance) VALUES ($1, 0)`, [user!.id], client);
@@ -162,10 +165,11 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
            auth_provider = CASE WHEN google_id IS NULL THEN 'google' ELSE auth_provider END,
            avatar_url = COALESCE(avatar_url, $3),
            email_verified = TRUE,
-           last_login_at = NOW()
+           last_login_at = NOW(),
+           last_login_ip = COALESCE($4, last_login_ip)
          WHERE id = $1
          RETURNING ${publicUser}`,
-        [user.id, profile.sub, profile.picture ?? null],
+        [user.id, profile.sub, profile.picture ?? null, signupIp || null],
         client
       );
     }

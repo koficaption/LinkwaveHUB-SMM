@@ -10,6 +10,7 @@ import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { getPublicSettings } from "./settingsService.js";
 import { verifyRecaptchaToken } from "./recaptchaService.js";
+import { assertNewAccountIpLimit, assertNotDisposableEmail, normalizeClientIp } from "./signupGuard.js";
 import { attachPanelCustomer, getPanelForUser } from "./resellerService.js";
 import type { AuthUser } from "../middleware/auth.js";
 
@@ -36,6 +37,8 @@ export async function registerUser(input: {
     throw new AppError("Unable to create account", 400);
   }
   await verifyRecaptchaToken(input.recaptchaToken, input.ip);
+  assertNotDisposableEmail(input.email);
+  const signupIp = normalizeClientIp(input.ip);
   const existing = await queryOne<{ id: string; deleted_at: string | null }>(
     `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [input.email]
@@ -52,6 +55,7 @@ export async function registerUser(input: {
          whatsapp_number = COALESCE($5, whatsapp_number),
          gender = COALESCE($6, gender),
          last_login_at = NOW(),
+         last_login_ip = COALESCE($7, last_login_ip),
          updated_at = NOW()
        WHERE id = $1
        RETURNING ${publicUser}`,
@@ -62,6 +66,7 @@ export async function registerUser(input: {
         input.phone ?? null,
         input.whatsappNumber ?? null,
         input.gender ?? null,
+        signupIp || null,
       ]
     );
     if (!user) throw new AppError("Unable to create account", 500);
@@ -76,15 +81,16 @@ export async function registerUser(input: {
     return { user, token };
   }
   if (existing) throw new AppError("An account with this email already exists", 409);
+  await assertNewAccountIpLimit(signupIp);
 
   const result = await withTransaction(async (client) => {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
     const user = await queryOne(
-      `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code, deposit_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)
+      `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code, deposit_code, last_login_ip, last_login_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9, $10, NOW())
        RETURNING ${publicUser}`,
-      [input.email.toLowerCase(), passwordHash, normalizePersonName(input.fullName), input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode(), newDepositCode()],
+      [input.email.toLowerCase(), passwordHash, normalizePersonName(input.fullName), input.phone ?? null, input.whatsappNumber ?? null, input.gender ?? null, role, newReferralCode(), newDepositCode(), signupIp || null],
       client
     );
     if (!user) throw new AppError("Unable to create account", 500);
