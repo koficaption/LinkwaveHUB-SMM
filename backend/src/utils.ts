@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import slugify from "slugify";
 import { config, LIVE_GOOGLE_CALLBACK, LIVE_HOSTS, LIVE_SITE_URL, isLocalHttpUrl } from "./config.js";
+import { AppError } from "./errors.js";
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -165,6 +166,21 @@ function headerValue(value: unknown): string {
 export function isLocalHostname(hostname: string) {
   const host = hostname.split(":")[0].toLowerCase();
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+export function assertBrowserOrigin(req: { get?: (name: string) => string | undefined; headers?: Record<string, unknown> }) {
+  if (!config.isProd) return;
+  const origin = String(req.get?.("origin") || headerValue(req.headers?.origin) || "").trim();
+  const referer = String(req.get?.("referer") || headerValue(req.headers?.referer) || "").trim();
+  const hosts = [origin, referer].flatMap((value) => {
+    try {
+      return [new URL(value).hostname.toLowerCase()];
+    } catch {
+      return [];
+    }
+  });
+  if (hosts.some((host) => isAllowedWebHost(host, origin))) return;
+  throw new AppError("Open the site in your browser and try again.", 400);
 }
 
 export function isAllowedWebHost(hostname: string, origin?: string): boolean {

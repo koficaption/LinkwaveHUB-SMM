@@ -37,6 +37,8 @@ export function LoginPage() {
   if (storeSlug) persistPanelSlug(storeSlug);
   const store = useStorePreview(storeSlug);
   const [recaptchaToken, setRecaptchaToken] = useState("");
+  const [recaptchaReset, setRecaptchaReset] = useState(0);
+  const [website, setWebsite] = useState("");
   const recaptcha = usePublicRecaptcha();
 
   useEffect(() => {
@@ -58,21 +60,38 @@ export function LoginPage() {
           You’re signing in as a customer of {store.data.store_name}. Services and prices on this panel belong to this reseller.
         </p>
       )}
+      {recaptcha?.enabled && recaptcha.siteKey && (
+        <div className="mb-4">
+          <RobotCheck
+            siteKey={recaptcha.siteKey}
+            onToken={setRecaptchaToken}
+            resetNonce={recaptchaReset}
+            hint="Tick the box before Continue with Google or logging in."
+          />
+        </div>
+      )}
       <GoogleSignIn
         forceHelp={["failed", "denied", "captcha"].includes(params.get("google") || "")}
         recaptchaToken={recaptchaToken}
         recaptchaRequired={Boolean(recaptcha?.enabled)}
-        onRecaptchaToken={setRecaptchaToken}
-        showRecaptcha
       />
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (values) => {
           try {
-            const me = await login(values.email, values.password);
+            if (recaptcha?.enabled && !recaptchaToken) {
+              toast.error("Tick I’m not a robot, then login.");
+              return;
+            }
+            const me = await login(values.email, values.password, {
+              recaptchaToken: recaptchaToken || undefined,
+              website: website || undefined,
+            });
             toast.success("Logged in");
             navigate(me.user.role === "admin" ? "/admin" : "/app");
           } catch (e) {
+            setRecaptchaToken("");
+            setRecaptchaReset((n) => n + 1);
             toast.error(e instanceof ApiError ? e.message : "Login failed");
           }
         })}
@@ -83,6 +102,12 @@ export function LoginPage() {
         <Field label="Password" error={form.formState.errors.password?.message}>
           <PasswordInput autoComplete="current-password" {...form.register("password")} />
         </Field>
+        <div className="h-0 overflow-hidden opacity-0" aria-hidden="true">
+          <label>
+            Website
+            <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          </label>
+        </div>
         <div className="-mt-2 text-right">
           <Link to="/forgot-password" className="text-sm font-semibold text-brand-700">Forgot password?</Link>
         </div>
@@ -347,16 +372,18 @@ function RobotCheck({
   siteKey,
   onToken,
   hint,
+  resetNonce = 0,
 }: {
   siteKey: string;
   onToken: (token: string) => void;
   hint: string;
+  resetNonce?: number;
 }) {
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">I’m not a robot</p>
       <p className="text-xs text-slate-500">{hint}</p>
-      <RecaptchaBox siteKey={siteKey} onToken={onToken} />
+      <RecaptchaBox siteKey={siteKey} onToken={onToken} resetNonce={resetNonce} />
     </div>
   );
 }

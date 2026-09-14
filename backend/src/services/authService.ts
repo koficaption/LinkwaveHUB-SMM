@@ -141,7 +141,18 @@ export async function registerUser(input: {
   return result;
 }
 
-export async function loginUser(email: string, password: string, ip?: string, userAgent?: string, storeSlug?: string) {
+export async function loginUser(
+  email: string,
+  password: string,
+  ip?: string,
+  userAgent?: string,
+  storeSlug?: string,
+  extra?: { recaptchaToken?: string; website?: string }
+) {
+  if (String(extra?.website || "").trim()) {
+    throw new AppError("Unable to sign in", 400);
+  }
+  await verifyRecaptchaToken(extra?.recaptchaToken, ip);
   const user = await queryOne<{
     id: string;
     email: string;

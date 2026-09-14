@@ -39,8 +39,8 @@ type Me = {
 type AuthContextValue = {
   me: Me | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<Me>;
-  loginWithGoogle: (payload: { credential?: string; code?: string; accessToken?: string }) => Promise<Me>;
+  login: (email: string, password: string, extras?: { recaptchaToken?: string; website?: string }) => Promise<Me>;
+  loginWithGoogle: (payload: { credential?: string; code?: string; accessToken?: string; recaptchaToken?: string }) => Promise<Me>;
   completeTokenLogin: (token: string) => Promise<Me>;
   register: (payload: Record<string, unknown>) => Promise<Me>;
   logout: () => Promise<void>;
@@ -76,10 +76,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       me: data ?? null,
       loading: isLoading,
-      async login(email, password) {
+      async login(email, password, extras) {
         const result = await api<{ user: User; token: string }>("/auth/login", {
           method: "POST",
-          body: JSON.stringify({ email, password, storeSlug: activeStoreSlug() }),
+          body: JSON.stringify({
+            email,
+            password,
+            storeSlug: activeStoreSlug(),
+            recaptchaToken: extras?.recaptchaToken,
+            website: extras?.website,
+          }),
         });
         const me = await finishLogin(result.token, qc);
         await claimStoredReferral();

@@ -36,9 +36,11 @@ function loadScript() {
 export function RecaptchaBox({
   siteKey,
   onToken,
+  resetNonce = 0,
 }: {
   siteKey: string;
   onToken: (token: string) => void;
+  resetNonce?: number;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const widget = useRef<number | null>(null);
@@ -52,6 +54,11 @@ export function RecaptchaBox({
     let cancelled = false;
     setFailed(false);
     setMounted(false);
+    if (widget.current != null) {
+      try { window.grecaptcha?.reset(widget.current); } catch { /* ignore */ }
+      widget.current = null;
+    }
+    if (host.current) host.current.innerHTML = "";
 
     function mount() {
       if (cancelled || !host.current || !window.grecaptcha?.render || widget.current != null) return Boolean(widget.current != null);
@@ -95,7 +102,7 @@ export function RecaptchaBox({
       window.clearInterval(timer);
       window.clearTimeout(timeout);
     };
-  }, [siteKey]);
+  }, [siteKey, resetNonce]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">

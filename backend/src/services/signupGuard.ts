@@ -1,7 +1,7 @@
 import { queryOne } from "../db.js";
 import { AppError } from "../errors.js";
 
-const MAX_NEW_ACCOUNTS_PER_IP_DAY = 6;
+const MAX_NEW_ACCOUNTS_PER_IP_DAY = 3;
 
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
   "10minemail.com",

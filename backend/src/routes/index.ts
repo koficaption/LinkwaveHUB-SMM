@@ -56,7 +56,7 @@ import * as affiliates from "../services/affiliateService.js";
 import * as loyalty from "../services/loyaltyService.js";
 import * as catalogImport from "../services/catalogImportService.js";
 import { config } from "../config.js";
-import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest, storeSlugFromQuery, storeSlugFromRequest, setPanelCookie } from "../utils.js";
+import { clientIp, googleAppOrigin, googleCallbackUri, publicAppOrigin, referralCodeFromRequest, storeSlugFromQuery, storeSlugFromRequest, setPanelCookie, assertBrowserOrigin } from "../utils.js";
 import { sendMail } from "../mailer.js";
 import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
@@ -64,6 +64,13 @@ import * as childPanels from "../services/childPanelService.js";
 import { verifyRecaptchaToken } from "../services/recaptchaService.js";
 
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+const loginLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
 const registerLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
 const googleStartLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
@@ -150,6 +157,7 @@ router.get("/store/:slug", asyncHandler(async (req, res) => {
 }));
 
 router.post("/auth/register", registerLimit, validate(registerSchema), asyncHandler(async (req, res) => {
+  assertBrowserOrigin(req);
   const storeSlug = req.body.storeSlug || storeSlugFromRequest(req);
   const result = await auth.registerUser({
     ...req.body,
@@ -161,9 +169,17 @@ router.post("/auth/register", registerLimit, validate(registerSchema), asyncHand
   setAuthCookie(res, result.token, req);
   res.status(201).json(ok(result, "Account created successfully"));
 }));
-router.post("/auth/login", authLimit, validate(loginSchema), asyncHandler(async (req, res) => {
+router.post("/auth/login", loginLimit, validate(loginSchema), asyncHandler(async (req, res) => {
+  assertBrowserOrigin(req);
   const storeSlug = storeSlugFromRequest(req, { includeCookie: false });
-  const result = await auth.loginUser(req.body.email, req.body.password, clientIp(req), req.get("user-agent") || undefined, storeSlug);
+  const result = await auth.loginUser(
+    req.body.email,
+    req.body.password,
+    clientIp(req),
+    req.get("user-agent") || undefined,
+    storeSlug,
+    { recaptchaToken: req.body.recaptchaToken, website: req.body.website }
+  );
   if (storeSlug) setPanelCookie(res, storeSlug);
   setAuthCookie(res, result.token, req);
   res.json(ok(result, "Logged in successfully"));
@@ -193,6 +209,7 @@ router.get("/auth/google/config", (req, res) => {
 async function handleGoogleStart(req: import("express").Request, res: import("express").Response) {
   const origin = googleAppOrigin(req);
   const wantsJson = req.method === "POST";
+  if (wantsJson) assertBrowserOrigin(req);
   if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
     if (wantsJson) throw new AppError("Google sign-in is not configured yet. Ask the admin to add Google OAuth keys.", 501);
     return res.redirect(`${origin}/login?google=unconfigured`);
@@ -253,7 +270,8 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
     return res.redirect(`${origin}/login?google=failed`);
   }
 }));
-router.post("/auth/google", authLimit, asyncHandler(async (req, res) => {
+router.post("/auth/google", loginLimit, asyncHandler(async (req, res) => {
+  assertBrowserOrigin(req);
   const body = z.object({
     credential: z.string().optional(),
     code: z.string().optional(),

@@ -1162,16 +1162,16 @@ function RecaptchaSettingsCard({
   const secretSet = Boolean(source.recaptchaSecretSet);
   return (
     <Card>
-      <h2 className="font-bold">Google verification (stop bot signups)</h2>
+      <h2 className="font-bold">Google verification (stop bot signups and logins)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        The “I’m not a robot” box is required for <strong>Create account</strong> and <strong>Continue with Google</strong>.
-        Bots were still signing up because Google login skipped the box — that hole is now closed.
+        The “I’m not a robot” box is required for <strong>Login</strong>, <strong>Create account</strong>, and <strong>Continue with Google</strong>.
+        Scripts can no longer skip the box and POST email/password.
         Temporary emails are blocked, and one network can only create a few accounts per day.
         If <span className="font-mono">RECAPTCHA_SITE_KEY</span> and <span className="font-mono">RECAPTCHA_SECRET_KEY</span> are already on Render, it is on — you do not have to paste the keys here again.
       </p>
       {source.recaptchaReady ? (
         <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-          Verification is on{source.recaptchaFromEnv ? " from Render" : ""}. Open Register or Login to see the checkbox.
+          Verification is on{source.recaptchaFromEnv ? " from Render" : ""}. Open Login or Register to see the checkbox.
         </p>
       ) : (
         <p className="mt-2 text-sm text-amber-700">
@@ -1186,9 +1186,9 @@ function RecaptchaSettingsCard({
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="block">
-          <span className="label">Require verification on register</span>
+          <span className="label">Require verification on login and register</span>
           <Select value={values.recaptchaEnabled} onChange={(e) => setForm({ ...values, recaptchaEnabled: e.target.value })}>
-            <option value="true">On — bots cannot create accounts without the box</option>
+            <option value="true">On — bots cannot login or create accounts without the box</option>
             <option value="false">Off</option>
           </Select>
         </label>

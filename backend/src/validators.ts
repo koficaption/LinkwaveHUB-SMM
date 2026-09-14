@@ -31,6 +31,8 @@ export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
   storeSlug: optionalText(80, 2),
+  recaptchaToken: optionalText(4000),
+  website: z.string().max(200).optional(),
 });
 
 export const changePasswordSchema = z.object({
