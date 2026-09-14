@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: linkboost-growth
+    runtime: node
+    # Starter (and above) stay running. Free instances sleep after 15 minutes idle
+    # and then linkboostgrowth.site shows Render’s “service waking up” page.
+    # Paying for a Render workspace (Hobby/Pro) does not change this — only the
+    # web service Instance type does. Starter is billed as compute (~$7/month).
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build
+    startCommand: npm start --prefix backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+      - key: PORT
+        value: 4000
+      - key: DEFAULT_CURRENCY
+        value: GHS
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://linkboostgrowth.site
+      - key: KORAPAY_PUBLIC_KEY
+        sync: false
+      - key: KORAPAY_SECRET_KEY
+        sync: false
+      - key: KORAPAY_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

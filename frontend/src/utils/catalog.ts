@@ -1,0 +1,114 @@
+const PROVIDER_NOISE = /resellers?mm|\bprovider\b|task\s*\/\s*farm|smm\s*panel/i;
+
+export function publicCategoryName(name?: string | null) {
+  const value = String(name || "").trim();
+  if (!value) return "Other";
+  if (PROVIDER_NOISE.test(value)) return "Other";
+  return value
+    .replace(/resellers?mm/gi, "")
+    .replace(/\bprovider\b/gi, "")
+    .replace(/\[[^\]]*(task|farm)[^\]]*\]/gi, "")
+    .replace(/imported from .+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim() || "Other";
+}
+
+export function isProviderCategory(name?: string | null) {
+  return PROVIDER_NOISE.test(String(name || ""));
+}
+
+export function isEachPrice(product?: {
+  price_unit?: string;
+  name?: string;
+  min_quantity?: number;
+  max_quantity?: number;
+  contact_admin?: boolean;
+  service_type?: string;
+} | null) {
+  if (!product) return false;
+  if (product.price_unit === "each") return true;
+  const type = product.service_type;
+  if (type === "account" || type === "digital_product") return true;
+  if (product.contact_admin) return true;
+  return /netflix/i.test(product.name || "");
+}
+
+export function orderTotal(unit: number, quantity: number, priceUnit?: string) {
+  if (priceUnit === "each") return unit * quantity;
+  return (unit * quantity) / 1000;
+}
+
+export function priceUnitSuffix(product?: { price_unit?: string; name?: string; min_quantity?: number; max_quantity?: number } | null) {
+  return isEachPrice(product) ? "per 1" : "/ 1,000";
+}
+
+export function publicProductDescription(description?: string | null) {
+  if (!description) return null;
+  const text = description.replace(/\s*·?\s*imported from .+$/i, "").trim();
+  if (!text || PROVIDER_NOISE.test(text)) return null;
+  return text;
+}
+
+/** Strip provider decorative wrappers (dashed lines, arrows, tildes) from service titles. */
+export function publicProductName(name?: string | null) {
+  const original = String(name ?? "").trim();
+  if (!original) return "";
+  let cleaned = original
+    .replace(/[↓↑➤►◀▶★☆✦✧✔✅✨🔹◄▼▲➔➜➡⬅⬆⬇⇨⇦⇧⇩]+/g, " ")
+    .replace(/[-_=~•·~—–−]{3,}/g, " ")
+    .replace(/[~]{2,}/g, " ")
+    .replace(/\[\s+/g, "[")
+    .replace(/\s+\]/g, "]")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || original;
+}
+
+export function isSellableProductName(name?: string | null) {
+  return /[A-Za-z]{3,}/.test(publicProductName(name));
+}
+
+function looksLikeUuidToken(value: string) {
+  return /^[0-9a-f]{8}(-[0-9a-f]{4}){0,3}(-[0-9a-f]{12})?$/i.test(value.trim());
+}
+
+export function looksLikeCustomComments(product?: {
+  name?: string | null;
+  description?: string | null;
+  features?: unknown;
+  custom_comments?: boolean | null;
+  category_name?: string | null;
+  category_slug?: string | null;
+} | null) {
+  if (!product) return false;
+  if (product.custom_comments === true) return true;
+  const features = Array.isArray(product.features)
+    ? product.features.map((item) => String(item)).join(" ")
+    : String(product.features || "");
+  const text = `${product.name || ""} ${product.description || ""} ${features} ${product.category_name || ""} ${product.category_slug || ""}`;
+  if (/no\s*custom\s*comments?/i.test(text)) return false;
+  return /custom\s*comments?/i.test(text);
+}
+
+export function parseCustomComments(text?: string | null) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** Customer-facing service ID. Never a UUID fragment. */
+export function publicServiceBadge(product: {
+  service_no?: number | string | null;
+  provider_service_id?: string | number | null;
+  id?: string;
+}) {
+  if (product.service_no != null && String(product.service_no).trim() !== "") {
+    return String(product.service_no).trim();
+  }
+  const provider = String(product.provider_service_id ?? "").trim();
+  if (provider && !looksLikeUuidToken(provider) && provider.length <= 16) return provider;
+  return "";
+}
