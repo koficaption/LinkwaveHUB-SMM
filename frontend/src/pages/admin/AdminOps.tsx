@@ -1165,7 +1165,7 @@ function RecaptchaSettingsCard({
       <h2 className="font-bold">Google verification (stop bot signups and logins)</h2>
       <p className="mt-1 text-sm text-slate-500">
         The “I’m not a robot” box is required for <strong>Login</strong>, <strong>Create account</strong>, and <strong>Continue with Google</strong>.
-        Scripts can no longer skip the box and POST email/password.
+        The server checks every token with Google before it creates an account. Skipping the page and calling the API does not work.
         Temporary emails are blocked, and one network can only create a few accounts per day.
         If <span className="font-mono">RECAPTCHA_SITE_KEY</span> and <span className="font-mono">RECAPTCHA_SECRET_KEY</span> are already on Render, it is on — you do not have to paste the keys here again.
       </p>

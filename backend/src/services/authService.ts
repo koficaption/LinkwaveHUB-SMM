@@ -83,10 +83,12 @@ export async function registerUser(input: {
   if (existing) throw new AppError("An account with this email already exists", 409);
   await assertNewAccountIpLimit(signupIp);
 
-  const result = await withTransaction(async (client) => {
+  let result: { user: { id: string; role: string; email: string }; token: string };
+  try {
+    result = await withTransaction(async (client) => {
     const passwordHash = await hashPassword(input.password);
     const role = input.asReseller ? "reseller" : "customer";
-    const user = await queryOne(
+    const user = await queryOne<{ id: string; role: string; email: string }>(
       `INSERT INTO users (email, password_hash, full_name, phone, whatsapp_number, gender, role, status, referral_code, deposit_code, last_login_ip, last_login_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9, $10, NOW())
        RETURNING ${publicUser}`,
@@ -127,7 +129,13 @@ export async function registerUser(input: {
 
     const token = signToken({ id: user.id, role: user.role, email: user.email });
     return { user, token };
-  });
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && (error as { code: string }).code === "23505") {
+      throw new AppError("An account with this email already exists", 409);
+    }
+    throw error;
+  }
 
   const panel = input.asReseller ? null : await attachPanelCustomer(result.user.id, input.storeSlug);
   await notify({

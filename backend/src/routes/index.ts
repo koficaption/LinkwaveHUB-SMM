@@ -71,8 +71,8 @@ const loginLimit = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
-const registerLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
-const googleStartLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false });
+const registerLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
+const googleStartLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
 const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
 
 function setAuthCookie(res: import("express").Response, token: string, req?: import("express").Request) {

@@ -30,15 +30,29 @@ export function googleRedirectUrl(state: string, redirectUri = config.googleRedi
 
 export function createGoogleState(redirectUri: string, referralCode?: string, storeSlug?: string) {
   return jwt.sign(
-    { typ: "google_oauth", redirectUri, referralCode: referralCode || undefined, storeSlug: storeSlug || undefined },
+    {
+      typ: "google_oauth",
+      captcha: true,
+      redirectUri,
+      referralCode: referralCode || undefined,
+      storeSlug: storeSlug || undefined,
+    },
     config.jwtSecret,
     { expiresIn: "10m" }
   );
 }
 
 export function verifyGoogleState(state: string) {
-  const payload = jwt.verify(state, config.jwtSecret) as { typ?: string; redirectUri?: string; referralCode?: string; storeSlug?: string };
-  if (payload.typ !== "google_oauth") throw new AppError("Invalid Google sign-in state", 400);
+  const payload = jwt.verify(state, config.jwtSecret) as {
+    typ?: string;
+    captcha?: boolean;
+    redirectUri?: string;
+    referralCode?: string;
+    storeSlug?: string;
+  };
+  if (payload.typ !== "google_oauth" || payload.captcha !== true) {
+    throw new AppError("Invalid Google sign-in state", 400);
+  }
   return {
     redirectUri: payload.redirectUri || config.googleRedirectUri,
     referralCode: payload.referralCode || "",
