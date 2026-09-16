@@ -21,11 +21,24 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", "Bearer " + token);
   }
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers,
-    credentials: "include",
-  });
+  const timeout = AbortSignal.timeout(20_000);
+  const signal = typeof AbortSignal.any === "function" && init.signal
+    ? AbortSignal.any([init.signal, timeout])
+    : timeout;
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("The server took too long to respond. Try again.", 504);
+    }
+    throw error;
+  }
   const json = (await res.json().catch(() => null)) as ApiSuccess<T> | { success: false; message: string; details?: unknown } | null;
   if (!res.ok || !json || json.success === false) {
     throw new ApiError(json && "message" in json ? json.message : "Request failed", res.status, json && "details" in json ? json.details : undefined);

@@ -26,7 +26,7 @@ import { AdminApiPage } from "@/pages/admin/AdminApiPage";
 import { AdminChildPanels } from "@/pages/admin/AdminChildPanels";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
+  defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 15_000 } },
 });
 
 export default function App() {

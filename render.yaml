@@ -10,14 +10,12 @@ services:
     region: frankfurt
     buildCommand: npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build
     startCommand: npm start --prefix backend
-    healthCheckPath: /api/health
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
-      - key: PORT
-        value: 4000
       - key: DEFAULT_CURRENCY
         value: GHS
       - key: DATABASE_URL

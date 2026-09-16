@@ -87,12 +87,13 @@ NODE_ENV=production npm start
 
 - **Build command:** `npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build`
 - **Start command:** `npm start --prefix backend`
+- **Health check path:** `/health`
 
-Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL=https://linkboostgrowth.site`. Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
+Set `DATABASE_URL` (hosted Supabase), `JWT_SECRET`, `ENCRYPTION_KEY` (keep this the same as now), and `FRONTEND_URL=https://linkboostgrowth.site`. Leave `PORT` unset so Render can assign it. Never set `FRONTEND_URL` or `GOOGLE_REDIRECT_URI` to `localhost` on Render. Never put secrets in git.
 
-Attach **linkboostgrowth.site** as a custom domain on that same Web Service. Do not create a second service for the domain.
+Attach **linkboostgrowth.site** as a custom domain on that same Web Service. Do not create a second service for the domain. `www` should redirect to the apex domain.
 
-The black Render **“service waking up”** page only appears when the **web service instance type** is **Free**. A paid **workspace** plan (Hobby / Pro) is a separate bill and does **not** stop sleep. Open the service that owns `linkboostgrowth.site` → **Settings** → **Instance type** and set **Starter** or higher (always on). `render.yaml` is set to `starter` so Blueprint deploys match that.
+The black Render **“service waking up”** page only appears when the **web service instance type** is **Free**. A paid **workspace** plan (Hobby / Pro) is a separate bill and does **not** stop sleep. Open the service that owns `linkboostgrowth.site` → **Settings** → **Instance type** and set **Starter** or higher (always on). `render.yaml` is set to `starter` so Blueprint deploys match that. GitHub keep-alive pings every 5 minutes only if that workflow exists on the **default** branch (`main`).
 
 ## Demo logins
 

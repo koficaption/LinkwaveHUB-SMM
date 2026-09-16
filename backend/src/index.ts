@@ -21,6 +21,35 @@ import { syncOpenOrdersFromProvider } from "./services/orderService.js";
 import { ensureKorapayPaymentMethod } from "./services/walletService.js";
 
 const app = express();
+let bootReady = false;
+
+function liveness(_req: express.Request, res: express.Response) {
+  res.status(200).json({
+    success: true,
+    message: "Success",
+    data: { status: "ok", service: "LinkBoost Growth API", ready: bootReady },
+  });
+}
+
+app.set("trust proxy", 1);
+app.get("/health", liveness);
+app.get("/api/health", liveness);
+app.head("/health", (_req, res) => res.status(200).end());
+app.head("/api/health", (_req, res) => res.status(200).end());
+
+app.use((req, res, next) => {
+  if (!config.isProd) return next();
+  if (req.path === "/health" || req.path === "/api/health") return next();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim()
+    .split(":")[0]
+    .toLowerCase();
+  if (host === "www.linkboostgrowth.site" || host.endsWith(".onrender.com")) {
+    return res.redirect(301, `https://linkboostgrowth.site${req.originalUrl || "/"}`);
+  }
+  return next();
+});
 
 function corsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
   if (!origin) return callback(null, true);
@@ -34,7 +63,6 @@ function corsOrigin(origin: string | undefined, callback: (err: Error | null, al
   callback(null, false);
 }
 
-app.set("trust proxy", 1);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
@@ -117,7 +145,7 @@ app.use((req, res, next) => {
 });
 const dashboardLimit = rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false });
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/v1")) return next();
+  if (req.path === "/health" || req.path === "/api/health" || req.path.startsWith("/api/v1")) return next();
   return dashboardLimit(req, res, next);
 });
 
@@ -144,19 +172,34 @@ if (fs.existsSync(path.join(frontendDist, "index.html"))) {
     res.setHeader("Cache-Control", "no-store");
     res.sendFile(path.join(frontendDist, "index.html"));
   });
+  app.head("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).end();
+  });
 }
 
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use(errorHandler);
 
 async function start() {
-  await migrate();
-  await seedIfEmpty();
-  await ensurePrimaryAdmin();
-  await ensureKorapayPaymentMethod();
-  app.listen(config.port, "0.0.0.0", () => {
-    console.log(`LinkBoost Growth API listening on http://0.0.0.0:${config.port}`);
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(config.port, "0.0.0.0", () => {
+      console.log(`LinkBoost Growth API listening on http://0.0.0.0:${config.port}`);
+      resolve();
+    });
+    server.on("error", reject);
   });
+  try {
+    await migrate();
+    await seedIfEmpty();
+    await ensurePrimaryAdmin();
+    await ensureKorapayPaymentMethod();
+    bootReady = true;
+  } catch (err) {
+    console.error("Failed to start API", err);
+    process.exit(1);
+  }
   setInterval(() => {
     syncRefillStatuses().catch((err) => console.error("Refill status sync failed", err));
   }, 60_000);

@@ -15,8 +15,9 @@ function sslFor(url: string) {
 
 export const pool = new Pool({
   connectionString: config.databaseUrl,
-  max: 20,
+  max: config.isProd ? 8 : 20,
   idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
   ssl: sslFor(config.databaseUrl),
 });
 

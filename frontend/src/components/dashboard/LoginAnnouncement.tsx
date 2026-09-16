@@ -125,7 +125,7 @@ export function LoginAnnouncement() {
     queryKey: ["public-settings"],
     queryFn: () => api<PublicSettings>("/settings/public"),
     enabled: Boolean(me && !me.panel),
-    refetchInterval: 20_000,
+    staleTime: 5 * 60_000,
   });
   const notes = useQuery({
     queryKey: ["notifications"],
