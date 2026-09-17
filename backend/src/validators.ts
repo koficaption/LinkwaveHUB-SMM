@@ -42,6 +42,8 @@ export const changePasswordSchema = z.object({
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email(),
+  recaptchaToken: optionalText(4000),
+  website: z.string().max(200).optional(),
 });
 
 export const resetPasswordSchema = z.object({

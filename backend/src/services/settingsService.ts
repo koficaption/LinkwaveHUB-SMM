@@ -212,7 +212,8 @@ export async function getRecaptchaConfig() {
   const security = ((all.security as Record<string, unknown> | undefined) ?? {});
   const siteKey = String(security.recaptchaSiteKey || config.recaptchaSiteKey || "").trim();
   const secret = readRecaptchaSecret(security.recaptchaSecretKey) || String(config.recaptchaSecretKey || "").trim();
-  const enabled = security.recaptchaEnabled !== false;
+  const adminEnabled = security.recaptchaEnabled !== false;
+  const enabled = config.isProd || adminEnabled;
   const required = enabled && Boolean(siteKey && secret);
   return { enabled, siteKey, secret, required };
 }

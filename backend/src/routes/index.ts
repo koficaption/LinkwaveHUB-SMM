@@ -62,18 +62,53 @@ import { developerRouter } from "./developer.js";
 import * as apiDev from "../services/apiDeveloperService.js";
 import * as childPanels from "../services/childPanelService.js";
 import { verifyRecaptchaToken } from "../services/recaptchaService.js";
+import { assertHumanUserAgent } from "../services/signupGuard.js";
 
-const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+function ipRateKey(req: import("express").Request) {
+  return clientIp(req) || req.ip || "unknown";
+}
+
 const loginLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 8,
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  keyGenerator: ipRateKey,
+  validate: false,
 });
-const registerLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
-const googleStartLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
-const forgotLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false });
+const registerLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: ipRateKey,
+  validate: false,
+});
+const googleStartLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: ipRateKey,
+  validate: false,
+});
+const forgotLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: ipRateKey,
+  validate: false,
+});
+const resetLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: ipRateKey,
+  validate: false,
+});
 
 function setAuthCookie(res: import("express").Response, token: string, req?: import("express").Request) {
   const forwardedProto = typeof req?.headers["x-forwarded-proto"] === "string" ? req.headers["x-forwarded-proto"] : "";
@@ -158,6 +193,7 @@ router.get("/store/:slug", asyncHandler(async (req, res) => {
 
 router.post("/auth/register", registerLimit, validate(registerSchema), asyncHandler(async (req, res) => {
   assertBrowserOrigin(req);
+  assertHumanUserAgent(req.get("user-agent"), config.isProd);
   const storeSlug = req.body.storeSlug || storeSlugFromRequest(req);
   const result = await auth.registerUser({
     ...req.body,
@@ -171,6 +207,7 @@ router.post("/auth/register", registerLimit, validate(registerSchema), asyncHand
 }));
 router.post("/auth/login", loginLimit, validate(loginSchema), asyncHandler(async (req, res) => {
   assertBrowserOrigin(req);
+  assertHumanUserAgent(req.get("user-agent"), config.isProd);
   const storeSlug = storeSlugFromRequest(req, { includeCookie: false });
   const result = await auth.loginUser(
     req.body.email,
@@ -185,14 +222,18 @@ router.post("/auth/login", loginLimit, validate(loginSchema), asyncHandler(async
   res.json(ok(result, "Logged in successfully"));
 }));
 router.post("/auth/forgot-password", forgotLimit, validate(forgotPasswordSchema), asyncHandler(async (req, res) => {
+  assertBrowserOrigin(req);
+  assertHumanUserAgent(req.get("user-agent"), config.isProd);
   const result = await auth.requestPasswordReset({
     email: req.body.email,
     origin: publicAppOrigin(req.get("origin")),
     ip: clientIp(req),
+    recaptchaToken: req.body.recaptchaToken,
+    website: req.body.website,
   });
   res.json(ok(result, result.message));
 }));
-router.post("/auth/reset-password", authLimit, validate(resetPasswordSchema), asyncHandler(async (req, res) => {
+router.post("/auth/reset-password", resetLimit, validate(resetPasswordSchema), asyncHandler(async (req, res) => {
   await auth.resetPasswordWithToken(req.body.token, req.body.password);
   res.json(ok(null, "Password updated. You can sign in now."));
 }));
@@ -209,22 +250,16 @@ router.get("/auth/google/config", (req, res) => {
 async function handleGoogleStart(req: import("express").Request, res: import("express").Response) {
   const origin = googleAppOrigin(req);
   const wantsJson = req.method === "POST";
-  if (wantsJson) assertBrowserOrigin(req);
-  if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
-    if (wantsJson) throw new AppError("Google sign-in is not configured yet. Ask the admin to add Google OAuth keys.", 501);
-    return res.redirect(`${origin}/login?google=unconfigured`);
-  }
-  const token = typeof req.body?.recaptchaToken === "string"
-    ? req.body.recaptchaToken
-    : typeof req.query.recaptchaToken === "string"
-      ? req.query.recaptchaToken
-      : "";
-  try {
-    await verifyRecaptchaToken(token, clientIp(req));
-  } catch (error) {
-    if (wantsJson) throw error;
+  if (req.method !== "POST") {
     return res.redirect(`${origin}/login?google=captcha`);
   }
+  assertBrowserOrigin(req);
+  assertHumanUserAgent(req.get("user-agent"), config.isProd);
+  if (!googleAuth.googleEnabled() || !config.googleClientSecret) {
+    throw new AppError("Google sign-in is not configured yet. Ask the admin to add Google OAuth keys.", 501);
+  }
+  const token = typeof req.body?.recaptchaToken === "string" ? req.body.recaptchaToken : "";
+  await verifyRecaptchaToken(token, clientIp(req));
   const redirectUri = googleCallbackUri(req);
   const queryRef = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
   const bodyRef = typeof req.body?.ref === "string" ? req.body.ref.trim() : "";
@@ -272,6 +307,7 @@ router.get("/auth/google/callback", asyncHandler(async (req, res) => {
 }));
 router.post("/auth/google", loginLimit, asyncHandler(async (req, res) => {
   assertBrowserOrigin(req);
+  assertHumanUserAgent(req.get("user-agent"), config.isProd);
   const body = z.object({
     credential: z.string().optional(),
     code: z.string().optional(),

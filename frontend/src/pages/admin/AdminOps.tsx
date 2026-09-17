@@ -1164,10 +1164,10 @@ function RecaptchaSettingsCard({
     <Card>
       <h2 className="font-bold">Google verification (stop bot signups and logins)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        The “I’m not a robot” box is required for <strong>Login</strong>, <strong>Create account</strong>, and <strong>Continue with Google</strong>.
-        The server checks every token with Google before it creates an account. Skipping the page and calling the API does not work.
-        Temporary emails are blocked, and one network can only create a few accounts per day.
-        If <span className="font-mono">RECAPTCHA_SITE_KEY</span> and <span className="font-mono">RECAPTCHA_SECRET_KEY</span> are already on Render, it is on — you do not have to paste the keys here again.
+        The “I’m not a robot” box is required for <strong>Login</strong>, <strong>Create account</strong>, <strong>Forgot password</strong>, and <strong>Continue with Google</strong>.
+        The server checks every token with Google before it creates an account or starts a reset. Skipping the page and calling the API does not work.
+        Temporary emails and Gmail aliases of existing accounts are blocked, failed logins lock the email for a while, and one network can only create a few accounts per day.
+        On the live site this check cannot be turned off. Connect SMTP in Mail settings so password-reset links go to email only — the API will never return a reset link in production.
       </p>
       {source.recaptchaReady ? (
         <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
@@ -1189,7 +1189,7 @@ function RecaptchaSettingsCard({
           <span className="label">Require verification on login and register</span>
           <Select value={values.recaptchaEnabled} onChange={(e) => setForm({ ...values, recaptchaEnabled: e.target.value })}>
             <option value="true">On — bots cannot login or create accounts without the box</option>
-            <option value="false">Off</option>
+            <option value="false">Off (local only — live site always requires the box)</option>
           </Select>
         </label>
         <label className="block">

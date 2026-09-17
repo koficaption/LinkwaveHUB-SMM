@@ -7,7 +7,7 @@ import { restoreDeletedAccount } from "./userService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { attachPanelCustomer } from "./resellerService.js";
-import { assertNewAccountIpLimit, normalizeClientIp } from "./signupGuard.js";
+import { assertEmailAvailable, assertNewAccountIpLimit, assertNotDisposableEmail, normalizeClientIp } from "./signupGuard.js";
 
 const publicUser = `id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at, deposit_code`;
 
@@ -140,6 +140,7 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
   const signupIp = normalizeClientIp(ip);
   const verified = profile.email_verified !== false && profile.email_verified !== "false";
   if (!verified) throw new AppError("Google email is not verified", 401);
+  assertNotDisposableEmail(email);
 
   const result = await withTransaction(async (client) => {
     let user = await queryOne<{
@@ -156,12 +157,15 @@ async function upsertGoogleUser(profile: GoogleProfile, referralCode?: string, s
     let created = false;
 
     if (user?.deleted_at) {
+      await assertNewAccountIpLimit(signupIp);
       await restoreDeletedAccount(user.id, client);
       user.status = "active";
       user.deleted_at = null;
+      created = true;
     }
 
     if (!user) {
+      await assertEmailAvailable(email);
       await assertNewAccountIpLimit(signupIp);
       user = await queryOne(
         `INSERT INTO users (email, password_hash, full_name, role, status, google_id, auth_provider, email_verified, avatar_url, referral_code, deposit_code, last_login_ip, last_login_at)

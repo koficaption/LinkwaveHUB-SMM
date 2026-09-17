@@ -4,15 +4,31 @@ import { AppError } from "../errors.js";
 import { config } from "../config.js";
 import { passwordResetEmail, sendMail, mailConfigured } from "../mailer.js";
 import { hashPassword, makeSlug, newDepositCode, normalizePersonName, signToken, uniqueSlug, verifyPassword } from "../utils.js";
-import { restoreDeletedAccount } from "./userService.js";
 import { writeAudit } from "./auditService.js";
 import { notify } from "./notificationService.js";
 import { attachReferrer, newReferralCode } from "./affiliateService.js";
 import { getPublicSettings } from "./settingsService.js";
 import { verifyRecaptchaToken } from "./recaptchaService.js";
-import { assertNewAccountIpLimit, assertNotDisposableEmail, normalizeClientIp } from "./signupGuard.js";
+import {
+  assertEmailAvailable,
+  assertNewAccountIpLimit,
+  assertNotAutomatedSignup,
+  assertNotDisposableEmail,
+  normalizeClientIp,
+} from "./signupGuard.js";
+import {
+  assertLoginAllowed,
+  assertPasswordResetAllowed,
+  assertRegisterAllowed,
+  clearFailedLogins,
+  recordFailedLogin,
+  recordPasswordResetAttempt,
+  recordRegisterAttempt,
+} from "./authAbuseService.js";
 import { attachPanelCustomer, getPanelForUser } from "./resellerService.js";
 import type { AuthUser } from "../middleware/auth.js";
+
+const LOGIN_TIMING_HASH = "$2a$10$AAdVDAM.ReKQxkcPIcw9AOFPot7gGf9xN3OMvNSL.kRThogEuGTO6";
 
 const publicUser = `
   id, email, full_name, phone, whatsapp_number, gender, role, status, avatar_url, last_login_at, created_at, deposit_code
@@ -38,12 +54,13 @@ export async function registerUser(input: {
   }
   await verifyRecaptchaToken(input.recaptchaToken, input.ip);
   assertNotDisposableEmail(input.email);
+  assertNotAutomatedSignup({ fullName: input.fullName, email: input.email });
+  await assertRegisterAllowed(input.email, input.ip);
+  await recordRegisterAttempt(input.email, input.ip);
   const signupIp = normalizeClientIp(input.ip);
-  const existing = await queryOne<{ id: string; deleted_at: string | null }>(
-    `SELECT id, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
-    [input.email]
-  );
+  const existing = await assertEmailAvailable(input.email);
   if (existing?.deleted_at) {
+    await assertNewAccountIpLimit(signupIp);
     const passwordHash = await hashPassword(input.password);
     const user = await queryOne(
       `UPDATE users SET
@@ -80,7 +97,6 @@ export async function registerUser(input: {
     });
     return { user, token };
   }
-  if (existing) throw new AppError("An account with this email already exists", 409);
   await assertNewAccountIpLimit(signupIp);
 
   let result: { user: { id: string; role: string; email: string }; token: string };
@@ -161,6 +177,7 @@ export async function loginUser(
     throw new AppError("Unable to sign in", 400);
   }
   await verifyRecaptchaToken(extra?.recaptchaToken, ip);
+  await assertLoginAllowed(email, ip);
   const user = await queryOne<{
     id: string;
     email: string;
@@ -177,20 +194,22 @@ export async function loginUser(
     `SELECT ${publicUser}, password_hash, deleted_at FROM users WHERE LOWER(email) = LOWER($1)`,
     [email]
   );
-  if (!user) {
+  if (!user || user.deleted_at) {
+    await verifyPassword(password, LOGIN_TIMING_HASH);
+    await recordFailedLogin(email, ip);
     throw new AppError("Invalid email or password", 401);
   }
-  if (user.deleted_at) {
-    await restoreDeletedAccount(user.id);
-    user.status = "active";
-    user.deleted_at = null;
-  }
   if (!user.password_hash) {
+    await recordFailedLogin(email, ip);
     throw new AppError("This account uses Google sign-in. Continue with Google instead.", 401);
   }
   const valid = await verifyPassword(password, user.password_hash);
-  if (!valid) throw new AppError("Invalid email or password", 401);
+  if (!valid) {
+    await recordFailedLogin(email, ip);
+    throw new AppError("Invalid email or password", 401);
+  }
   if (user.status === "suspended") throw new AppError("Account is suspended", 403);
+  await clearFailedLogins(email);
 
   await query(`UPDATE users SET last_login_at = NOW(), last_login_ip = $2 WHERE id = $1`, [user.id, ip ?? null]);
 
@@ -266,20 +285,28 @@ export async function changePassword(userId: string, current: string, next: stri
 
 const GENERIC_RESET_MESSAGE = "If an account exists for that email, we sent a reset link.";
 
-export async function requestPasswordReset(input: { email: string; origin?: string; ip?: string }) {
+export async function requestPasswordReset(input: {
+  email: string;
+  origin?: string;
+  ip?: string;
+  recaptchaToken?: string;
+  website?: string;
+}) {
+  if (String(input.website || "").trim()) {
+    throw new AppError("Unable to start password reset", 400);
+  }
+  await verifyRecaptchaToken(input.recaptchaToken, input.ip);
   const email = input.email.trim().toLowerCase();
+  await assertPasswordResetAllowed(email, input.ip);
+  await recordPasswordResetAttempt(email, input.ip);
   const user = await queryOne<{ id: string; email: string; full_name: string; status: string; deleted_at: string | null }>(
     `SELECT id, email, full_name, status, deleted_at FROM users WHERE LOWER(email) = $1`,
     [email]
   );
 
-  if (!user) {
-    return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
-  }
-  if (user.deleted_at) {
-    await restoreDeletedAccount(user.id);
-  } else if (user.status === "suspended") {
-    return { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
+  const generic = { message: GENERIC_RESET_MESSAGE, emailSent: await mailConfigured() };
+  if (!user || user.deleted_at || user.status === "suspended") {
+    return generic;
   }
 
   await query(
@@ -307,18 +334,16 @@ export async function requestPasswordReset(input: { email: string; origin?: stri
     const result = await sendMail({ to: user.email, ...mail });
     emailSent = result.sent;
     if (!result.sent) {
-      console.info(`[password-reset] Email not sent. Reset link created for ${user.email}`);
+      console.info("[password-reset] Email not sent; reset token stored");
     }
   } catch (error) {
-    console.error("[password-reset] Failed to send email", error);
+    console.error("[password-reset] Failed to send email");
   }
 
   return {
-    message: emailSent
-      ? GENERIC_RESET_MESSAGE
-      : "Email sending is not connected yet. Use the reset link below.",
+    message: GENERIC_RESET_MESSAGE,
     emailSent,
-    resetUrl: emailSent ? undefined : resetUrl,
+    resetUrl: config.isProd || emailSent ? undefined : resetUrl,
   };
 }
 

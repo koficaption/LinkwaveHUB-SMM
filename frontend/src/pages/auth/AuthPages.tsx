@@ -131,6 +131,9 @@ const resetSchema = z
 export function ForgotPasswordPage() {
   const form = useForm({ resolver: zodResolver(forgotSchema), defaultValues: { email: "" } });
   const [result, setResult] = useState<{ emailSent: boolean; resetUrl?: string; message: string } | null>(null);
+  const [recaptchaToken, setRecaptchaToken] = useState("");
+  const [website, setWebsite] = useState("");
+  const recaptcha = usePublicRecaptcha();
 
   return (
     <AuthCard title="Forgot password" subtitle="Enter your email to reset your password">
@@ -157,9 +160,17 @@ export function ForgotPasswordPage() {
           className="space-y-4"
           onSubmit={form.handleSubmit(async (values) => {
             try {
+              if (recaptcha?.enabled && !recaptchaToken) {
+                toast.error("Tick I’m not a robot, then send the reset link.");
+                return;
+              }
               const data = await api<{ emailSent: boolean; resetUrl?: string; message: string }>("/auth/forgot-password", {
                 method: "POST",
-                body: JSON.stringify({ email: values.email }),
+                body: JSON.stringify({
+                  email: values.email,
+                  recaptchaToken: recaptchaToken || undefined,
+                  website: website || undefined,
+                }),
               });
               setResult(data);
               toast.success(data.emailSent ? "Check your email for a reset link" : data.resetUrl ? "Use the reset link on this page" : "Request received");
@@ -168,9 +179,22 @@ export function ForgotPasswordPage() {
             }
           })}
         >
+          {recaptcha?.enabled && recaptcha.siteKey && (
+            <RobotCheck
+              siteKey={recaptcha.siteKey}
+              onToken={setRecaptchaToken}
+              hint="Tick the box before sending a reset link."
+            />
+          )}
           <Field label="Email" error={form.formState.errors.email?.message}>
             <Input type="email" autoComplete="email" {...form.register("email")} />
           </Field>
+          <div className="h-0 overflow-hidden opacity-0" aria-hidden="true">
+            <label>
+              Website
+              <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+            </label>
+          </div>
           <Button className="w-full" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Sending..." : "Send reset link"}
           </Button>
