@@ -1,0 +1,21 @@
+# Pings the custom domain so a Free Render web service is less likely to sleep.
+# Scheduled workflows only run from the repository default branch (usually main).
+# This does not replace a paid Starter instance — Render can still show the
+# black “service waking up” page if the service has already gone to sleep.
+
+name: Keep live site awake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Wake Render
+        run: |
+          curl -fsS --max-time 90 https://linkboostgrowth.site/health
+          curl -fsS --max-time 90 -o /dev/null https://linkboostgrowth.site/
