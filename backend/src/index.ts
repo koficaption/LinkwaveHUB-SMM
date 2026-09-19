@@ -63,6 +63,11 @@ function corsOrigin(origin: string | undefined, callback: (err: Error | null, al
   callback(null, false);
 }
 
+const KORAPAY_CSP = [
+  "https://korablobstorage.blob.core.windows.net",
+  "https://checkout.korapay.com",
+  "https://api.korapay.com",
+];
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
@@ -77,6 +82,7 @@ app.use(helmet({
         "https://www.google.com",
         "https://www.gstatic.com",
         "https://www.recaptcha.net",
+        ...KORAPAY_CSP,
       ],
       scriptSrcElem: [
         "'self'",
@@ -86,6 +92,7 @@ app.use(helmet({
         "https://www.google.com",
         "https://www.gstatic.com",
         "https://www.recaptcha.net",
+        ...KORAPAY_CSP,
       ],
       frameSrc: [
         "'self'",
@@ -94,6 +101,7 @@ app.use(helmet({
         "https://recaptcha.google.com",
         "https://www.gstatic.com",
         "https://www.recaptcha.net",
+        ...KORAPAY_CSP,
       ],
       childSrc: [
         "'self'",
@@ -101,6 +109,7 @@ app.use(helmet({
         "https://recaptcha.google.com",
         "https://www.gstatic.com",
         "https://www.recaptcha.net",
+        ...KORAPAY_CSP,
       ],
       connectSrc: [
         "'self'",
@@ -110,6 +119,7 @@ app.use(helmet({
         "https://www.google.com",
         "https://www.gstatic.com",
         "https://www.recaptcha.net",
+        ...KORAPAY_CSP,
       ],
       imgSrc: ["'self'", "data:", "https:"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://www.gstatic.com", "https://www.google.com"],

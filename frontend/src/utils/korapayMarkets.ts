@@ -12,7 +12,7 @@ export type KorapayMarket = {
 };
 
 export const KORAPAY_MARKETS: KorapayMarket[] = [
-  { country: "Ghana", countryCode: "GH", currency: "GHS", currencyName: "Ghanaian cedi", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: null },
+  { country: "Ghana", countryCode: "GH", currency: "GHS", currencyName: "Ghanaian cedi", methods: "Mobile Money or card", channels: ["mobile_money", "card"], defaultChannel: "mobile_money", usdPerUnit: null },
   { country: "Nigeria", countryCode: "NG", currency: "NGN", currencyName: "Nigerian naira", methods: "Card or bank transfer", channels: ["card", "bank_transfer"], defaultChannel: "card", usdPerUnit: 0.00062 },
   { country: "Kenya", countryCode: "KE", currency: "KES", currencyName: "Kenyan shilling", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: 0.0077 },
   { country: "Cameroon", countryCode: "CM", currency: "XAF", currencyName: "Central African CFA", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: 0.0017 },

@@ -13,8 +13,8 @@ import { useParams } from "react-router-dom";
 import { ContactLinks, panelHelp, usePublicSettings } from "@/components/ContactLinks";
 import { LinkedText } from "@/components/dashboard/LoginAnnouncement";
 import { safeHttpUrl } from "@/utils/httpUrl";
-import type { PaymentMethod } from "@/types";
-import { checkoutReturnUrl, usePaystackReturn, usePendingKorapayVerify } from "@/hooks/usePaystackReturn";
+import type { KorapayStandardCheckout, PaymentMethod } from "@/types";
+import { checkoutReturnUrl, completeKorapayInit, usePaystackReturn, usePendingKorapayVerify } from "@/hooks/usePaystackReturn";
 import { BalanceCard, OrdersCard, SpentCard, WelcomeCard } from "@/components/dashboard/StatCards";
 import { WaveDivider } from "@/components/dashboard/WaveDivider";
 import { NewOrderPanel } from "@/components/dashboard/NewOrderPanel";
@@ -463,7 +463,12 @@ export function WalletPage() {
     if (checkoutCurrency !== selectedMarket.currency) setCheckoutCurrency(selectedMarket.currency);
   }, [selectedMarket?.currency]);
   const deposit = useMutation({
-    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null; depositCode?: string }>("/payments/deposit", {
+    mutationFn: () => api<{
+      instructions?: string;
+      checkoutUrl?: string | null;
+      depositCode?: string;
+      standardCheckout?: KorapayStandardCheckout | null;
+    }>("/payments/deposit", {
       method: "POST",
       body: JSON.stringify({
         amount: Number(amount),
@@ -473,11 +478,7 @@ export function WalletPage() {
       }),
     }),
     onSuccess: async (data) => {
-      if (data.checkoutUrl) {
-        toast.success("Redirecting to Korapay…");
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
+      if (await completeKorapayInit(data, qc)) return;
       if (isCardMethod(selected?.adapter)) {
         toast.success("Waiting for Korapay. Your wallet is credited automatically — no admin approval.");
         await qc.invalidateQueries({ queryKey: ["wallet"] });
@@ -892,7 +893,7 @@ type UpgradeOffer = {
     method_name?: string | null;
     adapter?: string | null;
     deposit_code?: string | null;
-    payment_metadata?: { instructions?: string; checkoutUrl?: string | null };
+    payment_metadata?: { instructions?: string; checkoutUrl?: string | null; standardCheckout?: KorapayStandardCheckout | null };
     created_at: string;
   } | null;
 };
@@ -938,7 +939,12 @@ export function BecomeResellerPage() {
   }, [offer.data?.application?.status, refresh, navigate]);
 
   const apply = useMutation({
-    mutationFn: () => api<{ instructions?: string; checkoutUrl?: string | null; payment?: { checkoutUrl?: string | null } }>("/account/reseller-upgrade", {
+    mutationFn: () => api<{
+      instructions?: string;
+      checkoutUrl?: string | null;
+      standardCheckout?: KorapayStandardCheckout | null;
+      payment?: { checkoutUrl?: string | null; standardCheckout?: KorapayStandardCheckout | null };
+    }>("/account/reseller-upgrade", {
       method: "POST",
       body: JSON.stringify({
         storeName,
@@ -950,12 +956,10 @@ export function BecomeResellerPage() {
       }),
     }),
     onSuccess: async (data) => {
-      const url = data.checkoutUrl || data.payment?.checkoutUrl;
-      if (url) {
-        toast.success("Redirecting to Korapay…");
-        window.location.assign(url);
-        return;
-      }
+      if (await completeKorapayInit({
+        checkoutUrl: data.checkoutUrl || data.payment?.checkoutUrl,
+        standardCheckout: data.standardCheckout || data.payment?.standardCheckout,
+      }, qc)) return;
       toast.success(data.instructions || (Number(offer.data?.upgradeFee ?? 0) === 0
         ? "Application submitted. An admin will activate your reseller dashboard."
         : "Application submitted. Pay by Mobile Money, then wait for admin confirmation."));
@@ -971,6 +975,7 @@ export function BecomeResellerPage() {
   const pending = application?.status === "pending_review" || application?.status === "pending_payment";
   const instructions = application?.payment_metadata?.instructions;
   const pendingCheckout = application?.payment_metadata?.checkoutUrl;
+  const pendingStandard = application?.payment_metadata?.standardCheckout;
   const upgradeLocal = selectedMarket
     ? convertGhsToKorapay(Number(data?.upgradeFee ?? 0), selectedMarket.currency)
     : Number(data?.upgradeFee ?? 0);
@@ -978,7 +983,7 @@ export function BecomeResellerPage() {
     ? quoteKorapayFees(upgradeLocal, selected?.config)
     : null;
   const paymentCode = me?.user.deposit_code || application?.deposit_code || "";
-  const korapayPending = Boolean(pending && (pendingCheckout || isCardMethod(application?.adapter ?? undefined)));
+  const korapayPending = Boolean(pending && (pendingCheckout || pendingStandard || isCardMethod(application?.adapter ?? undefined)));
   usePendingKorapayVerify(korapayPending ? [application?.payment_reference] : []);
 
   return (
@@ -998,16 +1003,18 @@ export function BecomeResellerPage() {
       {pending && application && (
         <Card>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-bold">{korapayPending ? (pendingCheckout ? "Finish Korapay payment" : "Waiting for Korapay") : "Waiting for admin confirmation"}</h2>
+            <h2 className="font-bold">{korapayPending ? (pendingCheckout || pendingStandard ? "Finish Korapay payment" : "Waiting for Korapay") : "Waiting for admin confirmation"}</h2>
             <Badge className={statusTone[application.status] ?? statusTone.pending}>{prettyStatus(application.status)}</Badge>
           </div>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Store: <strong>{application.store_name}</strong>
           </p>
-          {!pendingCheckout && !korapayPending && <div className="mt-3"><UniquePaymentCode code={paymentCode} /></div>}
+          {!pendingCheckout && !pendingStandard && !korapayPending && <div className="mt-3"><UniquePaymentCode code={paymentCode} /></div>}
           {instructions && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{instructions}</p>}
           {pendingCheckout ? (
             <Button className="mt-3" onClick={() => window.location.assign(pendingCheckout)}>Continue to Korapay</Button>
+          ) : pendingStandard ? (
+            <Button className="mt-3" onClick={() => void completeKorapayInit({ standardCheckout: pendingStandard }, qc)}>Continue to Korapay</Button>
           ) : korapayPending ? (
             <p className="mt-3 text-sm text-slate-500">Korapay confirms this automatically. Your dashboard switches to reseller after payment — no admin approval.</p>
           ) : (

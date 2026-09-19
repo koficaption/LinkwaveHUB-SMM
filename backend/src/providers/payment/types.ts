@@ -20,12 +20,28 @@ export type PaymentInitInput = {
   };
 };
 
+export type KorapayStandardCheckout = {
+  key: string;
+  reference: string;
+  amount: number;
+  currency: string;
+  customerName: string;
+  customerEmail: string;
+  notificationUrl: string;
+  narration?: string;
+  channels?: string[];
+  defaultChannel?: string;
+  merchantBearsCost: boolean;
+  metadata?: Record<string, string>;
+};
+
 export type PaymentInitResult = {
   reference: string;
   checkoutUrl?: string | null;
   instructions?: string | null;
   providerRef?: string | null;
   autoComplete?: boolean;
+  standardCheckout?: KorapayStandardCheckout | null;
 };
 
 export type PaymentVerifyResult = {

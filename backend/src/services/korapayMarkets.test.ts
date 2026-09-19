@@ -4,6 +4,7 @@ import {
   korapayChargeAmount,
   korapayCheckoutError,
   korapayInitializeAttempts,
+  korapayStandardCheckoutOptions,
   parseKorapayCurrencies,
 } from "./korapayMarkets.js";
 
@@ -16,11 +17,18 @@ test("legacy all-country Korapay list becomes Ghana and Nigeria", () => {
   assert.deepEqual(parseKorapayCurrencies([]), ["GHS", "NGN"]);
 });
 
-test("Ghana checkout never omits channels (Korapay would default to bank_transfer)", () => {
+test("Ghana checkout retries card and never omits channels", () => {
   const attempts = korapayInitializeAttempts("GHS", ["mobile_money"], "mobile_money");
-  assert.ok(attempts.length >= 1);
-  assert.ok(attempts.every((item) => item.channels.includes("mobile_money")));
+  assert.ok(attempts.length >= 2);
+  assert.ok(attempts[0].channels.includes("mobile_money"));
+  assert.ok(attempts.some((item) => item.channels.length === 1 && item.channels[0] === "card"));
   assert.ok(attempts.every((item) => item.channels.length > 0));
+});
+
+test("Ghana hosted checkout offers Mobile Money and card", () => {
+  const options = korapayStandardCheckoutOptions("GHS");
+  assert.deepEqual(options.channels, ["mobile_money", "card"]);
+  assert.equal(options.defaultChannel, undefined);
 });
 
 test("Nigeria retries card without pay_with_bank", () => {
@@ -39,4 +47,5 @@ test("channel error is rewritten for Ghana Mobile Money", () => {
   assert.match(message, /Ghana/i);
   assert.match(message, /Mobile Money/i);
   assert.doesNotMatch(message, /please contact support/i);
+  assert.doesNotMatch(message, /Pay from Ghana \(Mobile Money\)/);
 });

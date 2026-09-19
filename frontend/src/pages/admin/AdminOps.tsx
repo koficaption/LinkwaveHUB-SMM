@@ -1322,9 +1322,9 @@ function KorapayFeesSettingsCard({
     <Card>
       <h2 className="font-bold">Korapay (automatic)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Wallet stays in GHS. Customers pick <strong>Ghana (Mobile Money)</strong> or <strong>Nigeria (card/bank)</strong> unless you have asked Korapay to turn on another country.
-        Ticking a country that is off on your Korapay dashboard shows “you don’t have any channel enabled for checkout payment”.
-        Ghana MoMo must be enabled by Korapay support for this merchant.
+        Wallet stays in GHS. Customers pick <strong>Ghana (Mobile Money or card)</strong> or <strong>Nigeria (card/bank)</strong> unless you have asked Korapay to turn on another country.
+        If Korapay Redirect rejects Ghana Mobile Money, checkout still opens in the Korapay window with whatever methods this merchant has.
+        Ghana MoMo must be enabled by Korapay support for STK prompts; otherwise customers can use card or the published manual MTN number.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <label className="block">

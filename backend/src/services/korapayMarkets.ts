@@ -17,8 +17,8 @@ export const KORAPAY_MARKETS: KorapayMarket[] = [
     countryCode: "GH",
     currency: "GHS",
     currencyName: "Ghanaian cedi",
-    methods: "Mobile Money",
-    channels: ["mobile_money"],
+    methods: "Mobile Money or card",
+    channels: ["mobile_money", "card"],
     defaultChannel: "mobile_money",
     usdPerUnit: null,
   },
@@ -159,8 +159,22 @@ export function korapayInitializeAttempts(
     add(["card"], "card");
     add(["bank_transfer"], "bank_transfer");
   }
-  if (currency === "GHS") add(["mobile_money"], "mobile_money");
+  if (currency === "GHS") {
+    add(["mobile_money"], "mobile_money");
+    add(["card"], "card");
+    add(["mobile_money", "card"], "mobile_money");
+  }
   return attempts;
+}
+
+/** Channels for Korapay Checkout Standard. Omitting channels defaults to bank_transfer. */
+export function korapayStandardCheckoutOptions(currency: string): KorapayChannelAttempt {
+  if (currency === "GHS") return { channels: ["mobile_money", "card"] };
+  const market = KORAPAY_MARKETS.find((item) => item.currency === currency);
+  return {
+    channels: market?.channels?.length ? market.channels : ["mobile_money"],
+    defaultChannel: market?.defaultChannel,
+  };
 }
 
 export function korapayChargeAmount(amount: number) {
@@ -173,9 +187,12 @@ export function korapayCheckoutError(currency: string, message?: string) {
   const market = KORAPAY_MARKETS.find((item) => item.currency === currency);
   const text = String(message || "").trim();
   if (/channel enabled/i.test(text) || /no channel/i.test(text)) {
+    if (currency === "GHS") {
+      return "Korapay Ghana checkout is not enabled on this merchant. Use Mobile Money on Add Funds and send to the published number, pay from Nigeria (card/bank), or ask Korapay to enable Ghana Mobile Money.";
+    }
     const country = market?.country || currency;
     const methods = market?.methods || "that payment method";
-    return `Korapay does not have ${methods} turned on for ${country} (${currency}). Pay from Ghana (Mobile Money) or Nigeria (card/bank), or ask Korapay to enable ${country} on this merchant account.`;
+    return `Korapay does not have ${methods} turned on for ${country} (${currency}). Pay from Nigeria (card/bank) or Ghana Mobile Money (manual), or ask Korapay to enable ${country} on this merchant account.`;
   }
   return text || `Korapay could not start checkout for ${currency}. Enable that currency on your Korapay dashboard.`;
 }

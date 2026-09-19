@@ -405,6 +405,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
   let methodCode: string | null = input.methodCode ?? null;
   let instructions: string | null = null;
   let checkoutUrl: string | null = null;
+  let standardCheckout: Awaited<ReturnType<typeof initiateDirectedPayment>>["standardCheckout"] = null;
   let reference: string | null = null;
   let methodAdapter: string | null = null;
 
@@ -420,6 +421,7 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
     methodAdapter = String(started.method.adapter);
     instructions = started.instructions ?? null;
     checkoutUrl = started.checkoutUrl ?? null;
+    standardCheckout = started.standardCheckout ?? null;
     reference = started.depositCode || String(started.payment!.reference);
   }
 
@@ -460,9 +462,10 @@ export async function applyForResellerUpgrade(user: AuthUser, input: {
     });
     return {
       application,
-      payment: paymentId ? { id: paymentId, reference, amount: fee, instructions, checkoutUrl } : null,
+      payment: paymentId ? { id: paymentId, reference, amount: fee, instructions, checkoutUrl, standardCheckout } : null,
       instructions,
       checkoutUrl,
+      standardCheckout,
     };
   } catch (error) {
     if (paymentId) {

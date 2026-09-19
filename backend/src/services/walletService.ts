@@ -264,6 +264,7 @@ export async function initiateDirectedPayment(
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
+        standardCheckout: init.standardCheckout ?? null,
         depositCode,
         walletAmountGhs: amount,
         checkoutCurrency: charge.currency,
@@ -278,6 +279,7 @@ export async function initiateDirectedPayment(
     payment,
     method,
     checkoutUrl: init.checkoutUrl,
+    standardCheckout: init.standardCheckout ?? null,
     instructions: init.instructions,
     feeQuote: charge.feeQuote,
     depositCode,
@@ -349,6 +351,7 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
       JSON.stringify({
         instructions: init.instructions,
         checkoutUrl: init.checkoutUrl,
+        standardCheckout: init.standardCheckout ?? null,
         depositCode,
         walletAmountGhs: amount,
         checkoutCurrency: charge.currency,
@@ -384,6 +387,7 @@ export async function initiateDeposit(user: AuthUser, amount: number, methodCode
   return {
     payment,
     checkoutUrl: init.checkoutUrl,
+    standardCheckout: init.standardCheckout ?? null,
     instructions: init.instructions,
     feeQuote: charge.feeQuote,
     depositCode,

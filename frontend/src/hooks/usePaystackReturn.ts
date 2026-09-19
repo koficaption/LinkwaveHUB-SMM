@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/api/client";
+import { openKorapayCheckout, type KorapayStandardCheckout } from "@/utils/korapayCheckout";
 
 export function checkoutReturnUrl(path: string) {
   return `${window.location.origin}${path}`;
@@ -16,6 +17,46 @@ async function refreshAfterPayment(qc: ReturnType<typeof useQueryClient>) {
     qc.invalidateQueries({ queryKey: ["reseller-upgrade"] }),
     qc.invalidateQueries({ queryKey: ["notifications"] }),
   ]);
+}
+
+export async function completeKorapayInit(
+  data: { checkoutUrl?: string | null; standardCheckout?: KorapayStandardCheckout | null },
+  qc: ReturnType<typeof useQueryClient>
+) {
+  if (data.standardCheckout) {
+    toast.success("Opening Korapay…");
+    const result = await openKorapayCheckout(data.standardCheckout);
+    if (result === "success") {
+      try {
+        const verified = await api<{ purpose?: string }>("/payments/verify", {
+          method: "POST",
+          body: JSON.stringify({ reference: data.standardCheckout.reference }),
+        });
+        toast.success(
+          verified.purpose === "reseller_upgrade"
+            ? "Korapay payment received. Your account is now a reseller."
+            : "Wallet funded. Korapay credited your balance automatically."
+        );
+      } catch {
+        toast.success("Payment sent. Waiting for Korapay to credit your wallet.");
+      }
+      await refreshAfterPayment(qc);
+      return true;
+    }
+    if (result === "failed") {
+      toast.error("Korapay could not complete that payment. Use Mobile Money on Add Funds, or pay from Nigeria (card/bank).");
+      return true;
+    }
+    toast.message("Korapay closed. If you paid, your wallet will update automatically.");
+    await refreshAfterPayment(qc);
+    return true;
+  }
+  if (data.checkoutUrl) {
+    toast.success("Redirecting to Korapay…");
+    window.location.assign(data.checkoutUrl);
+    return true;
+  }
+  return false;
 }
 
 export function usePaystackReturn() {
