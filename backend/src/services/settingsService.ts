@@ -3,6 +3,7 @@ import { writeAudit } from "./auditService.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { decryptSecret, encryptSecret, looksEncrypted, safeHttpUrl } from "../utils.js";
+import { parseKorapayCurrencies } from "./korapayMarkets.js";
 
 const defaults: Record<string, unknown> = {
   general: {
@@ -27,7 +28,7 @@ const defaults: Record<string, unknown> = {
     korapayCustomerPaysFees: true,
     korapayFeePercent: 1.5,
     korapayVatPercent: 15,
-    korapayCurrencies: ["GHS", "NGN", "KES", "XAF", "XOF", "EGP", "TZS", "ZAR", "USD"],
+    korapayCurrencies: ["GHS", "NGN"],
   },
   orders: {
     autoProcessing: true,
@@ -183,7 +184,7 @@ export async function getPublicSettings() {
       korapayCustomerPaysFees: payments.korapayCustomerPaysFees !== false,
       korapayFeePercent: Number(payments.korapayFeePercent ?? 1.5),
       korapayVatPercent: Number(payments.korapayVatPercent ?? 15),
-      korapayCurrencies: payments.korapayCurrencies,
+      korapayCurrencies: parseKorapayCurrencies(payments.korapayCurrencies),
     },
     resellers: {
       upgradeEnabled: (all.resellers as Record<string, unknown>).upgradeEnabled !== false,
@@ -273,7 +274,9 @@ export async function getAdminSettings() {
   security.recaptchaSecretSet = dbSecretSet || Boolean(config.recaptchaSecretKey) || captcha.required;
   security.recaptchaReady = captcha.required;
   security.recaptchaFromEnv = Boolean(config.recaptchaSiteKey && config.recaptchaSecretKey);
-  return { ...all, mail, security };
+  const payments = { ...((all.payments as Record<string, unknown> | undefined) ?? {}) };
+  payments.korapayCurrencies = parseKorapayCurrencies(payments.korapayCurrencies);
+  return { ...all, mail, security, payments };
 }
 
 export async function updateSettings(key: string, value: unknown, actor: AuthUser, ip?: string) {

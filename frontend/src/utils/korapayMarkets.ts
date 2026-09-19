@@ -13,7 +13,7 @@ export type KorapayMarket = {
 
 export const KORAPAY_MARKETS: KorapayMarket[] = [
   { country: "Ghana", countryCode: "GH", currency: "GHS", currencyName: "Ghanaian cedi", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: null },
-  { country: "Nigeria", countryCode: "NG", currency: "NGN", currencyName: "Nigerian naira", methods: "Card, bank transfer, Pay with Bank", channels: ["card", "bank_transfer", "pay_with_bank"], defaultChannel: "card", usdPerUnit: 0.00062 },
+  { country: "Nigeria", countryCode: "NG", currency: "NGN", currencyName: "Nigerian naira", methods: "Card or bank transfer", channels: ["card", "bank_transfer"], defaultChannel: "card", usdPerUnit: 0.00062 },
   { country: "Kenya", countryCode: "KE", currency: "KES", currencyName: "Kenyan shilling", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: 0.0077 },
   { country: "Cameroon", countryCode: "CM", currency: "XAF", currencyName: "Central African CFA", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: 0.0017 },
   { country: "Côte d'Ivoire", countryCode: "CI", currency: "XOF", currencyName: "West African CFA", methods: "Mobile Money", channels: ["mobile_money"], defaultChannel: "mobile_money", usdPerUnit: 0.0017 },
@@ -44,7 +44,9 @@ export function storeKorapayCurrency(code: string) {
 
 export function pickKorapayMarket(markets: KorapayMarket[], preferred?: string | null) {
   const code = String(preferred || readStoredKorapayCurrency() || "GHS").toUpperCase();
-  return markets.find((item) => item.currency === code) ?? markets.find((item) => item.currency === "GHS") ?? markets[0];
+  return markets.find((item) => item.currency === code)
+    ?? markets.find((item) => item.currency === "GHS")
+    ?? markets[0];
 }
 
 export function convertGhsToKorapay(amountGhs: number, currency: string, usdToGhs = getUsdToGhsRate()) {

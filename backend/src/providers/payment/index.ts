@@ -2,6 +2,7 @@ import type { PaymentAdapter, PaymentInitInput, PaymentInitResult, PaymentVerify
 import { AppError } from "../../errors.js";
 import { config } from "../../config.js";
 import { decryptSecret, looksEncrypted } from "../../utils.js";
+import { korapayChargeAmount, korapayCheckoutError, korapayInitializeAttempts } from "../../services/korapayMarkets.js";
 
 function resolveKorapaySecret(cfg?: Record<string, unknown>) {
   const raw = String(cfg?.secretKey || process.env.KORAPAY_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "");
@@ -73,14 +74,14 @@ export const korapayAdapter: PaymentAdapter = {
       throw new AppError("Automatic Korapay checkout is not configured. Add KORAPAY_SECRET_KEY on the server.", 503);
     }
     const quote = input.feeQuote;
-    const chargeAmount = Number((quote?.chargedAmount ?? input.amount).toFixed(2));
+    const chargeAmount = korapayChargeAmount(quote?.chargedAmount ?? input.amount);
     const walletAmount = Number((quote?.walletAmount ?? input.amount).toFixed(2));
     const currency = String(input.currency || "GHS").toUpperCase();
     const merchantBearsCost = input.merchantBearsCost !== false;
     const metadata = korapayMetadata(input.metadata);
     const notificationUrl = `${config.frontendUrl.replace(/\/$/, "")}/api/payments/webhooks/korapay`;
     const walletGhs = Number(input.metadata?.walletAmountGhs ?? walletAmount);
-    const payload = {
+    const payload: Record<string, unknown> = {
       amount: chargeAmount,
       currency,
       reference: input.reference,
@@ -94,15 +95,17 @@ export const korapayAdapter: PaymentAdapter = {
       },
       metadata,
     };
-    const withChannels = input.channels?.length
-      ? { ...payload, channels: input.channels, default_channel: input.defaultChannel || input.channels[0] }
-      : payload;
-    let json = await korapayInitialize(secret, withChannels);
-    if ((!json?.status || !json.data?.checkout_url) && input.channels?.length) {
-      json = await korapayInitialize(secret, payload);
+
+    let json: KorapayInitJson | null = null;
+    const attempts = korapayInitializeAttempts(currency, input.channels, input.defaultChannel);
+    for (const attempt of attempts) {
+      const body: Record<string, unknown> = { ...payload, channels: attempt.channels };
+      if (attempt.defaultChannel) body.default_channel = attempt.defaultChannel;
+      json = await korapayInitialize(secret, body);
+      if (json?.status && json.data?.checkout_url) break;
     }
     if (!json?.status || !json.data?.checkout_url) {
-      throw new AppError(json?.message || "Korapay could not start checkout for this country. Enable that currency on your Korapay dashboard.", 400);
+      throw new AppError(korapayCheckoutError(currency, json?.message), 400);
     }
     const extras = quote && quote.chargedAmount > quote.walletAmount
       ? ` Korapay fee ${currency} ${quote.fee.toFixed(2)} + tax ${currency} ${quote.vat.toFixed(2)} are included. You pay ${currency} ${chargeAmount.toFixed(2)}.`

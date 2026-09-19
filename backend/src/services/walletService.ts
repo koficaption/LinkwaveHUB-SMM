@@ -171,6 +171,9 @@ async function korapayInitOptions(adapter: string, walletAmountGhs: number, chec
   const market = getKorapayMarket(checkoutCurrency, enabled);
   if (!market) throw new AppError("That Korapay country is not enabled");
   const localAmount = convertGhsToKorapay(walletAmountGhs, market.currency, usdToGhs);
+  if (market.currency === "GHS" && walletAmountGhs < 10) {
+    throw new AppError("Korapay Mobile Money needs at least GHS 10.");
+  }
   if (localAmount < 1) {
     throw new AppError(`Amount is too small to collect in ${market.currency}. Enter a higher GHS amount.`);
   }

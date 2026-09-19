@@ -1306,7 +1306,7 @@ function KorapayFeesSettingsCard({
   };
   const enabledCurrencies = Array.isArray(source.korapayCurrencies) && source.korapayCurrencies.length
     ? source.korapayCurrencies.map((code) => String(code).toUpperCase())
-    : KORAPAY_MARKETS.map((item) => item.currency);
+    : ["GHS", "NGN"];
   const [currencies, setCurrencies] = useState<string[] | null>(null);
   const selectedCurrencies = currencies ?? enabledCurrencies;
   const toggleCurrency = (code: string) => {
@@ -1322,7 +1322,9 @@ function KorapayFeesSettingsCard({
     <Card>
       <h2 className="font-bold">Korapay (automatic)</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Wallet stays in GHS. Customers pick Ghana, Nigeria, or another Korapay country; they pay in that currency and the wallet is credited in GHS after Korapay confirms. Enable the same currencies on your Korapay dashboard.
+        Wallet stays in GHS. Customers pick <strong>Ghana (Mobile Money)</strong> or <strong>Nigeria (card/bank)</strong> unless you have asked Korapay to turn on another country.
+        Ticking a country that is off on your Korapay dashboard shows “you don’t have any channel enabled for checkout payment”.
+        Ghana MoMo must be enabled by Korapay support for this merchant.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <label className="block">

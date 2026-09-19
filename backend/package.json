@@ -12,6 +12,7 @@
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/services/*.test.ts",
     "test:auth": "tsx --test src/services/authSecurity.test.ts",
     "test:auth:http": "tsx scripts/auth-http-check.ts",
     "import:resellersmm": "tsx scripts/sync-resellersmm.ts",

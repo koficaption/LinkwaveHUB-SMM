@@ -26,7 +26,6 @@ import { CancelOrderDialog, cancelErrorMessage } from "@/components/dashboard/Ca
 import { isUnreadNote, useNotifications } from "@/hooks/useNotifications";
 import { quoteKorapayFees } from "@/utils/korapayFees";
 import { convertGhsToKorapay, filterKorapayMarkets, pickKorapayMarket, storeKorapayCurrency } from "@/utils/korapayMarkets";
-import { getDisplayCurrency } from "@/utils/currency";
 import { hasManualPaymentDetails, isManualPaymentMethod, normalizeManualPaymentConfig } from "@/utils/paymentDetails";
 
 function isCardMethod(adapter?: string | null) {
@@ -457,7 +456,7 @@ export function WalletPage() {
     (selected?.config?.markets ?? []).map((item) => item.currency)
   );
   const selectedMarket = isCardMethod(selected?.adapter)
-    ? pickKorapayMarket(korapayMarkets, checkoutCurrency || getDisplayCurrency())
+    ? pickKorapayMarket(korapayMarkets, checkoutCurrency)
     : null;
   useEffect(() => {
     if (!selectedMarket) return;
@@ -925,7 +924,7 @@ export function BecomeResellerPage() {
   const cfg = selected?.config ?? {};
   const cardCheckout = isCardMethod(selected?.adapter);
   const korapayMarkets = filterKorapayMarkets((selected?.config?.markets ?? []).map((item) => item.currency));
-  const selectedMarket = cardCheckout ? pickKorapayMarket(korapayMarkets, checkoutCurrency || getDisplayCurrency()) : null;
+  const selectedMarket = cardCheckout ? pickKorapayMarket(korapayMarkets, checkoutCurrency) : null;
 
   useEffect(() => {
     if (me?.panel) navigate("/app", { replace: true });
