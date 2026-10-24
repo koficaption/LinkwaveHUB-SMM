@@ -81,8 +81,8 @@ export const config = {
   uploadDir: process.env.VERCEL === "1"
     ? path.join("/tmp", "linkwavehub-uploads")
     : path.resolve(__dirname, "../../uploads"),
-  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "",
   googleRedirectUri: configuredGoogleRedirectUri(publicUrl),
   recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY || process.env.RECAPTCHA_SITEKEY || "",
   recaptchaSecretKey: process.env.RECAPTCHA_SECRET_KEY || process.env.RECAPTCHA_SECRET || "",
