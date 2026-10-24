@@ -192,6 +192,8 @@ if (fs.existsSync(path.join(frontendDist, "index.html"))) {
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use(errorHandler);
 
+export { app };
+
 async function start() {
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(config.port, "0.0.0.0", () => {
@@ -224,7 +226,9 @@ async function start() {
   }, 60_000);
 }
 
-start().catch((err) => {
-  console.error("Failed to start API", err);
-  process.exit(1);
-});
+if (process.env.VERCEL !== "1") {
+  start().catch((err) => {
+    console.error("Failed to start API", err);
+    process.exit(1);
+  });
+}
