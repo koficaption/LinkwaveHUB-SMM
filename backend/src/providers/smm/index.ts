@@ -193,7 +193,7 @@ export const genericHttpAdapter: SmmProviderAdapter = {
     requireLiveCredentials(credentials);
     const json = await panelRequest<Record<string, unknown>>(credentials, {
       action: "cancel",
-      orders: providerOrderId,
+      order: providerOrderId,
     });
     if (json.error) throw new Error(String(json.error));
     const row = json[providerOrderId] && typeof json[providerOrderId] === "object" && !Array.isArray(json[providerOrderId])
@@ -296,6 +296,7 @@ function parseStatusMap(json: unknown, ids: string[]): Record<string, SmmStatusR
 const smmAdapters: Record<string, SmmProviderAdapter> = {
   mock: mockSmmAdapter,
   generic_http: genericHttpAdapter,
+  boostcenter2: genericHttpAdapter,
 };
 
 export function getSmmAdapter(name: string): SmmProviderAdapter {

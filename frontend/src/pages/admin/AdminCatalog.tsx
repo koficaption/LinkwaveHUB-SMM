@@ -510,8 +510,8 @@ export function AdminProviders() {
 function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: String(row?.name ?? "ResellersMM"),
-    apiUrl: String(row?.api_url ?? "https://resellersmm.com/api/v2"),
+    name: String(row?.name ?? "BoostCenter2"),
+    apiUrl: String(row?.api_url ?? "https://boostcenter2.com/api/v2"),
     apiKey: "",
     adapter: String(row?.adapter ?? "generic_http"),
     currency: String(row?.currency ?? "USD"),
@@ -527,7 +527,8 @@ function ProviderForm({ row, onClose }: { row: Record<string, unknown> | null; o
         <label className="block"><span className="label">API key</span><Input type="password" placeholder={row?.has_api_key ? "Leave blank to keep the saved key" : "Paste panel API key"} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></label>
         <label className="block"><span className="label">Adapter</span>
           <Select value={form.adapter} onChange={(e) => setForm({ ...form, adapter: e.target.value })}>
-            <option value="generic_http">generic_http (resellersmm / PerfectPanel v2)</option>
+            <option value="boostcenter2">BoostCenter2 (boostcenter2.com/api/v2)</option>
+            <option value="generic_http">generic_http (ResellerSMM / PerfectPanel v2)</option>
             <option value="mock">mock (no live orders)</option>
           </Select>
         </label>
