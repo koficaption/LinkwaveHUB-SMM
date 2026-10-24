@@ -3,18 +3,24 @@ import { config } from "./config.js";
 
 const { Pool } = pg;
 
+function databaseConnection(url: string) {
+  return url.replace(/([?&])sslmode=[^&]*/gi, "$1").replace(/[?&]$/, "");
+}
+
 function sslFor(url: string) {
   try {
     const parsed = new URL(url.replace(/^postgres(ql)?:/, "http:"));
     if (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") return undefined;
   } catch {
-    if (!url.includes("supabase") && !url.includes("sslmode=require")) return undefined;
+    if (!url.includes("supabase") && !url.includes("sslmode")) return undefined;
   }
   return { rejectUnauthorized: false };
 }
 
+const connectionString = databaseConnection(config.databaseUrl);
+
 export const pool = new Pool({
-  connectionString: config.databaseUrl,
+  connectionString,
   max: config.isProd ? 8 : 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
