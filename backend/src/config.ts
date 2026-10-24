@@ -76,7 +76,9 @@ export const config = {
   currency: process.env.DEFAULT_CURRENCY ?? "GHS",
   supabaseUrl: process.env.SUPABASE_URL ?? "",
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
-  uploadDir: path.resolve(__dirname, "../../uploads"),
+  uploadDir: process.env.VERCEL === "1"
+    ? path.join("/tmp", "linkwavehub-uploads")
+    : path.resolve(__dirname, "../../uploads"),
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: configuredGoogleRedirectUri(publicUrl),

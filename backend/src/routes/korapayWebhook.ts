@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "../config.js";
 import { AppError } from "../errors.js";
 import { completeVerifiedPayment } from "../services/walletService.js";
@@ -15,15 +15,20 @@ export async function handleKorapayWebhook(req: Request, res: Response) {
   const raw = Buffer.isBuffer(req.body)
     ? req.body
     : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body ?? {}));
-  const payload = JSON.parse(raw.toString("utf8")) as {
+  const hash = createHmac("sha256", config.korapaySecretKey).update(raw).digest("hex");
+  const received = Buffer.from(signature, "utf8");
+  const expected = Buffer.from(hash, "utf8");
+  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+    throw new AppError("Invalid Korapay signature", 401);
+  }
+  let payload: {
     event?: string;
     data?: { reference?: string; status?: string };
   };
-  const hash = createHmac("sha256", config.korapaySecretKey)
-    .update(JSON.stringify(payload.data ?? {}))
-    .digest("hex");
-  if (hash !== signature) {
-    throw new AppError("Invalid Korapay signature", 401);
+  try {
+    payload = JSON.parse(raw.toString("utf8")) as typeof payload;
+  } catch {
+    throw new AppError("Invalid Korapay webhook payload", 400);
   }
 
   if (payload.event === "charge.success" && payload.data?.reference) {
