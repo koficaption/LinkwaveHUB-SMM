@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+uploads/
+!backend/uploads/.gitkeep
+.DS_Store
+coverage/
+.vite/
+*.tsbuildinfo
+backend/uploads/*
+!backend/uploads/.gitkeep

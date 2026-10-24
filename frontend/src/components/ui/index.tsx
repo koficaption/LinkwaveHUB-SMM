@@ -1,0 +1,193 @@
+import { cn } from "@/utils/cn";
+import { Eye, EyeOff } from "lucide-react";
+import { forwardRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+
+export function Button({
+  variant = "primary",
+  className,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" | "outline" }) {
+  const styles = {
+    primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/25",
+    secondary: "bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900",
+    ghost: "bg-transparent hover:bg-brand-50 dark:hover:bg-slate-800",
+    danger: "bg-rose-600 text-white hover:bg-rose-700",
+    outline: "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800",
+  };
+  return <button className={cn("btn", styles[variant], className)} {...props} />;
+}
+
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className, ...props },
+  ref
+) {
+  return <input ref={ref} className={cn("input", className)} {...props} />;
+});
+
+export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function PasswordInput({ className, ...props }, ref) {
+    const [visible, setVisible] = useState(false);
+    return (
+      <div className="relative">
+        <input
+          ref={ref}
+          className={cn("input pr-11", className)}
+          {...props}
+          type={visible ? "text" : "password"}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted hover:text-slate-700 dark:hover:text-slate-200"
+          aria-label={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+    );
+  }
+);
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, ...props }, ref) {
+    return <select ref={ref} className={cn("input", className)} {...props} />;
+  }
+);
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea({ className, ...props }, ref) {
+    return <textarea ref={ref} className={cn("input min-h-28", className)} {...props} />;
+  }
+);
+
+export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize", className)}>
+      {children}
+    </span>
+  );
+}
+
+export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("card p-5", className)}>{children}</div>;
+}
+
+export function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-200 bg-white px-6 py-16 text-center dark:border-slate-700 dark:bg-slate-900">
+      <p className="text-base font-semibold">{title}</p>
+      <p className="mt-1 max-w-md text-sm text-muted">{body}</p>
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("animate-pulse rounded-xl bg-brand-50 dark:bg-slate-800", className)} />;
+}
+
+export const LoadingSkeleton = Skeleton;
+
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
+  return (
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="page-title">{title}</h1>
+        {subtitle && <p className="page-subtitle">{subtitle}</p>}
+      </div>
+      {actions}
+    </div>
+  );
+}
+
+export function DataTable({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("overflow-x-auto", className)}>
+      <table className="w-full min-w-[640px] text-left text-sm">{children}</table>
+    </div>
+  );
+}
+
+export function Modal({
+  open,
+  title,
+  children,
+  onClose,
+  size = "lg",
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  size?: "md" | "lg" | "xl";
+}) {
+  if (!open) return null;
+  const widths = { md: "max-w-lg", lg: "max-w-3xl", xl: "max-w-5xl" };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
+      <div className={cn("relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900", widths[size])}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-brand-800 dark:text-brand-200">{title}</h3>
+          <button onClick={onClose} className="text-muted hover:text-slate-700">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  body,
+  confirmLabel = "Confirm",
+  danger,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  body: React.ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open={open} title={title} onClose={onClose}>
+      <div className="text-sm text-slate-600 dark:text-slate-300">{body}</div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+export function Pagination({
+  page,
+  total,
+  limit,
+  onPage,
+}: {
+  page: number;
+  total: number;
+  limit: number;
+  onPage: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+  if (!total) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 pt-4 text-sm">
+      <span className="text-muted">{total.toLocaleString()} results</span>
+      {pages > 1 && (
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</Button>
+          <span className="px-2 py-2">{page} / {pages}</span>
+          <Button variant="outline" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next</Button>
+        </div>
+      )}
+    </div>
+  );
+}
