@@ -92,7 +92,7 @@ export function LoginPage() {
           } catch (e) {
             setRecaptchaToken("");
             setRecaptchaReset((n) => n + 1);
-            toast.error(e instanceof ApiError ? e.message : "Login failed");
+            toast.error(errorMessage(e, "Login failed. Please try again."));
           }
         })}
       >
@@ -444,7 +444,25 @@ function GoogleSignIn({
   const ref = urlRef || storedReferralCode();
   const storeSlug = params.get("store") || activeStoreSlug();
 
-  if (!enabled && !config.isLoading) return null;
+  if (!enabled && !config.isLoading) {
+    return (
+      <>
+        <button
+          type="button"
+          disabled
+          className="btn flex w-full items-center justify-center gap-3 border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+          title="Google sign-in needs to be configured by an administrator"
+        >
+          <GoogleMark />
+          Continue with Google
+        </button>
+        <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+          Google sign-in is temporarily unavailable until the administrator configures OAuth credentials.
+        </p>
+        <Divider />
+      </>
+    );
+  }
 
   async function startGoogle() {
     if (recaptchaRequired && !recaptchaToken) {

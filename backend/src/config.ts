@@ -61,10 +61,12 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProd: process.env.NODE_ENV === "production",
   port: Number(process.env.PORT ?? 4000),
-  databaseUrl: required(
-    "DATABASE_URL",
-    "postgres://linkwave:linkwave_dev_password@127.0.0.1:5432/linkwavehub"
-  ),
+  databaseUrl:
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_PRISMA_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.POSTGRES_URL_NON_POOLING ??
+    "postgres://linkwave:linkwave_dev_password@127.0.0.1:5432/linkwavehub",
   jwtSecret: required("JWT_SECRET", "linkwavehub-dev-jwt-secret-change-me"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   encryptionKey: required(
