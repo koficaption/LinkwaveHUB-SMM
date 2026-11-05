@@ -237,10 +237,12 @@ async function panelRequest<T>(
   timeoutMs = 30_000
 ): Promise<T> {
   requireLiveCredentials(credentials);
-  const body = new URLSearchParams({ key: credentials.apiKey as string, ...extra });
+  const apiKey = String(credentials.apiKey).trim();
+  const apiUrl = String(credentials.apiUrl).trim().replace(/\/$/, "");
+  const body = new URLSearchParams({ key: apiKey, ...extra });
   let response: Response;
   try {
-    response = await fetch(String(credentials.apiUrl), {
+    response = await fetch(apiUrl, {
       method: "POST",
       body,
       signal: AbortSignal.timeout(timeoutMs),
