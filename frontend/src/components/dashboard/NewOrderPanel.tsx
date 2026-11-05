@@ -56,8 +56,8 @@ export function NewOrderPanel() {
 
   const visibleProducts = [...(products.data?.items ?? [])]
     .filter((p) => {
-      if (platformId && p.platform_id !== platformId) return false;
-      if (categoryId && p.category_id !== categoryId) return false;
+      if (platformId && String(p.platform_id) !== String(platformId)) return false;
+      if (categoryId && String(p.category_id) !== String(categoryId)) return false;
       return true;
     })
     .sort((a, b) => publicProductName(a.name).localeCompare(publicProductName(b.name)));
