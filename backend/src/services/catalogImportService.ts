@@ -125,9 +125,11 @@ export async function importProviderPackages(
       }
       const rateUsd = Number(service.rate ?? 0);
       const cost = money4(rateUsd * usdToGhs);
+      if (!Number.isFinite(rateUsd) || !Number.isFinite(cost) || cost >= 9_000_000_000) continue;
       const priced = money4(cost * (1 + markup / 100));
       const price = money4(Math.max(priced, cost + minProfit));
       const reseller = money4(Math.max(cost * (1 + resellerMarkup / 100), cost));
+      if (![priced, price, reseller].every((value) => Number.isFinite(value) && value < 9_000_000_000)) continue;
       let minQty = Math.max(1, Number(service.min ?? 1) || 1);
       let maxQty = Math.max(minQty, Number(service.max ?? minQty) || minQty);
       const providerRefill = parsePanelFlag(service.refill);
