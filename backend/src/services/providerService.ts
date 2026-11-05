@@ -37,7 +37,7 @@ export async function listProviders() {
 }
 
 export async function createProvider(input: Record<string, unknown>, actor: AuthUser, ip?: string) {
-  const encrypted = input.apiKey ? encryptSecret(String(input.apiKey)) : null;
+  const encrypted = input.apiKey ? encryptSecret(String(input.apiKey).trim()) : null;
   const row = await queryOne(
     `INSERT INTO providers (name, slug, api_url, api_key_encrypted, adapter, status, currency, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
@@ -59,7 +59,7 @@ export async function createProvider(input: Record<string, unknown>, actor: Auth
 export async function updateProvider(id: string, input: Record<string, unknown>, actor: AuthUser, ip?: string) {
   const current = await queryOne(`SELECT * FROM providers WHERE id = $1`, [id]);
   if (!current) throw new AppError("Provider not found", 404);
-  const encrypted = input.apiKey ? encryptSecret(String(input.apiKey)) : current.api_key_encrypted;
+  const encrypted = input.apiKey ? encryptSecret(String(input.apiKey).trim()) : current.api_key_encrypted;
   const row = await queryOne(
     `UPDATE providers SET
       name = COALESCE($2, name),
