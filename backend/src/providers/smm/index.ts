@@ -296,6 +296,7 @@ function parseStatusMap(json: unknown, ids: string[]): Record<string, SmmStatusR
 const smmAdapters: Record<string, SmmProviderAdapter> = {
   mock: mockSmmAdapter,
   generic_http: genericHttpAdapter,
+  resellersmm: genericHttpAdapter,
   boostcenter2: genericHttpAdapter,
 };
 
