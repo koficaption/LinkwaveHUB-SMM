@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/utils/cn";
@@ -8,6 +8,7 @@ export type OrderOption = {
   label: string;
   badge?: string;
   hint?: string;
+  group?: string;
 };
 
 const triggerClass =
@@ -147,19 +148,25 @@ export function OrderSelect({
             {placeholder}
           </SelectOption>
         ) : null}
-        {filtered.map((option) => (
-          <SelectOption
-            key={option.value}
-            selected={option.value === value}
-            stacked={sheet}
-            onPick={() => pick(option.value)}
-          >
-            {option.badge ? <IdBadge>{option.badge}</IdBadge> : null}
-            <span className="min-w-0 flex-1">
-              <span className="block whitespace-normal leading-snug">{option.label}</span>
-              {option.hint ? <span className="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400">{option.hint}</span> : null}
-            </span>
-          </SelectOption>
+        {filtered.map((option, index) => (
+          <Fragment key={option.value}>
+            {option.group && filtered[index - 1]?.group !== option.group ? (
+              <li aria-hidden="true" className="px-3 pb-1 pt-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                {option.group}
+              </li>
+            ) : null}
+            <SelectOption
+              selected={option.value === value}
+              stacked={sheet}
+              onPick={() => pick(option.value)}
+            >
+              {option.badge ? <IdBadge>{option.badge}</IdBadge> : null}
+              <span className="min-w-0 flex-1">
+                <span className="block whitespace-normal leading-snug">{option.label}</span>
+                {option.hint ? <span className="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400">{option.hint}</span> : null}
+              </span>
+            </SelectOption>
+          </Fragment>
         ))}
         {filtered.length === 0 ? (
           <li className="px-3 py-6 text-center text-sm text-slate-500">No matching {label.toLowerCase()}</li>
