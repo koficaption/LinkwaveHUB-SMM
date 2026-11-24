@@ -57,9 +57,8 @@ export function ServiceCatalogFilters({
   const visibleCategories = [...categories]
     .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platform, platforms))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-  const showType = platform
-    ? (!hideCategoryIfSingle || visibleCategories.length > 1)
-    : !hideCategoryIfSingle;
+  const showType = Boolean(platform)
+    && (!hideCategoryIfSingle || visibleCategories.length > 1);
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,19 +68,19 @@ export function ServiceCatalogFilters({
         <SearchField key={search} defaultValue={search} onCommit={onSearchCommit} />
       )}
       <OrderSelect
-        label="Category"
+        label="Platform"
         value={platform}
         onChange={onPlatform}
-        placeholder="Select a category"
+        placeholder="Select a platform"
         leadingCheck
         options={visiblePlatforms.map((p) => ({ value: optionValue(p), label: p.name }))}
       />
       {showType ? (
         <OrderSelect
-          label="Type"
+          label="Service category"
           value={category}
           onChange={onCategory}
-          placeholder="All types"
+          placeholder="Select a category"
           options={visibleCategories.map((c) => {
             const plat = resolvePlatform(platforms, platform);
             const count = plat
