@@ -54,13 +54,9 @@ export function NewOrderPanel() {
     enabled: me?.user.role === "customer" && !me.panel,
   });
 
-  const visibleProducts = [...(products.data?.items ?? [])]
-    .filter((p) => {
-      if (platformId && String(p.platform_id) !== String(platformId)) return false;
-      if (categoryId && String(p.category_id) !== String(categoryId)) return false;
-      return true;
-    })
-    .sort((a, b) => publicProductName(a.name).localeCompare(publicProductName(b.name)));
+  const visibleProducts = [...(products.data?.items ?? [])].sort((a, b) =>
+    publicProductName(a.name).localeCompare(publicProductName(b.name))
+  );
 
   const selected = visibleProducts.find((p) => p.id === productId);
   const customComments = looksLikeCustomComments(selected);
@@ -184,8 +180,13 @@ export function NewOrderPanel() {
               : "."}
           </p>
         )}
-        {!products.isLoading && canLoadServices && visibleProducts.length === 0 && (
-          <p className="mt-2 text-sm text-muted">No services match that search or category.</p>
+        {!products.isLoading && products.isError && canLoadServices && (
+          <p role="alert" className="mt-2 text-sm text-red-600">
+            {errorMessage(products.error, "Could not load services. Please try again.")}
+          </p>
+        )}
+        {!products.isLoading && !products.isError && canLoadServices && visibleProducts.length === 0 && (
+          <p className="mt-2 text-sm text-muted">No services are available for this category yet.</p>
         )}
       </div>
 
