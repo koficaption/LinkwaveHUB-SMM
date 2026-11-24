@@ -39,7 +39,7 @@ export function NewOrderPanel() {
     queryKey: ["categories", platformId],
     queryFn: () => api<Category[]>(`/categories${platformId ? `?platformId=${platformId}` : ""}`),
   });
-  const canLoadServices = Boolean(platformId && categoryId) || Boolean(debounced);
+  const canLoadServices = Boolean(platformId) || Boolean(debounced);
   const products = useQuery({
     queryKey: ["order-products", platformId, categoryId, debounced],
     queryFn: () =>
