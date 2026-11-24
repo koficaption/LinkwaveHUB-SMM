@@ -10,7 +10,7 @@ import { CancelBadge } from "@/components/dashboard/CancelBadge";
 import { productCancel } from "@/utils/cancel";
 import { ServiceDescription } from "@/components/dashboard/ServiceDescription";
 import { InstagramFollowersNotice } from "@/components/dashboard/InstagramFollowersNotice";
-import { ServiceCatalogFilters, categoryMatchesPlatform } from "@/components/dashboard/ServiceCatalogFilters";
+import { ServiceCatalogFilters } from "@/components/dashboard/ServiceCatalogFilters";
 import { OrderSelect } from "@/components/dashboard/OrderSelect";
 import { productRefill } from "@/utils/refill";
 import { publicProductName, publicServiceBadge, isEachPrice, isProviderCategory, priceUnitSuffix, looksLikeCustomComments, parseCustomComments } from "@/utils/catalog";
@@ -46,11 +46,15 @@ export function NewOrderPanel() {
   }, [search]);
 
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: () => api<Platform[]>("/platforms") });
-  const categories = useQuery({
-    queryKey: ["categories", platformId],
-    queryFn: () => api<Category[]>(`/categories${platformId ? `?platformId=${platformId}` : ""}`),
+  const catalogProducts = useQuery({
+    queryKey: ["order-category-products", platformId],
+    queryFn: () =>
+      api<Paginated<Product>>(
+        `/products?limit=2000&page=1&sort=catalog&platformId=${encodeURIComponent(platformId)}`
+      ),
+    enabled: Boolean(platformId),
   });
-  const canLoadServices = Boolean(platformId) || Boolean(debounced);
+  const canLoadServices = Boolean(platformId && categoryId) || Boolean(debounced);
   const products = useQuery({
     queryKey: ["order-products", platformId, categoryId, debounced],
     queryFn: () =>
@@ -116,12 +120,32 @@ export function NewOrderPanel() {
     onError: (e) => toast.error(errorMessage(e, e instanceof ApiError ? e.message : "Could not place order")),
   });
 
-  const visibleCategories = useMemo(
-    () =>
-      (categories.data ?? [])
-        .filter((c) => !isProviderCategory(c.name) && categoryMatchesPlatform(c, platformId, platforms.data ?? [])),
-    [categories.data, platformId, platforms.data]
-  );
+  const visibleCategories = useMemo(() => {
+    const grouped = new Map<string, Category>();
+    for (const product of catalogProducts.data?.items ?? []) {
+      if (!product.category_id || isProviderCategory(product.category_name)) continue;
+      const existing = grouped.get(product.category_id);
+      if (existing) {
+        existing.product_count = Number(existing.product_count ?? 0) + 1;
+        existing.platform_counts![platformId] = existing.product_count;
+        continue;
+      }
+      const name = product.category_name || "Other";
+      grouped.set(product.category_id, {
+        id: product.category_id,
+        name,
+        slug: product.category_slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        is_active: true,
+        sort_order: 0,
+        product_count: 1,
+        platform_ids: [platformId],
+        platform_counts: { [platformId]: 1 },
+      });
+    }
+    return [...grouped.values()].sort(
+      (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
+    );
+  }, [catalogProducts.data, platformId]);
 
   useEffect(() => {
     if (!platformId || visibleCategories.length !== 1) return;
@@ -143,10 +167,9 @@ export function NewOrderPanel() {
         platform={platformId}
         category={categoryId}
         platforms={platforms.data ?? []}
-        categories={categories.data ?? []}
+        categories={visibleCategories}
         useIds
         showCounts
-        hideCategoryIfSingle
         onSearchChange={setSearch}
         onPlatform={(value) => {
           setPlatformId(value);
