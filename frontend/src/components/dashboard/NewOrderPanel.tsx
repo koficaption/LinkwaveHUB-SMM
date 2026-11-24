@@ -17,6 +17,17 @@ import { publicProductName, publicServiceBadge, isEachPrice, isProviderCategory,
 import { ContactAdminPanel, isContactAdminProduct } from "@/components/dashboard/ContactAdminPanel";
 import { localOrderTotal, useOrderQuote } from "@/hooks/useOrderQuote";
 
+const serviceGroupOrder = ["Followers", "Likes", "Views", "Comments", "Other"];
+
+function serviceGroup(product: Product) {
+  const text = `${product.name} ${product.category_name}`.toLowerCase();
+  if (/\bfollowers?\b|\bsubscribers?\b/.test(text)) return "Followers";
+  if (/\blikes?\b|\breactions?\b/.test(text)) return "Likes";
+  if (/\bviews?\b|\bplays?\b|\bwatch ?time\b/.test(text)) return "Views";
+  if (/\bcomments?\b/.test(text)) return "Comments";
+  return "Other";
+}
+
 export function NewOrderPanel() {
   const { me } = useAuth();
   const qc = useQueryClient();
@@ -54,9 +65,10 @@ export function NewOrderPanel() {
     enabled: me?.user.role === "customer" && !me.panel,
   });
 
-  const visibleProducts = [...(products.data?.items ?? [])].sort((a, b) =>
-    publicProductName(a.name).localeCompare(publicProductName(b.name))
-  );
+  const visibleProducts = [...(products.data?.items ?? [])].sort((a, b) => {
+    const groupDifference = serviceGroupOrder.indexOf(serviceGroup(a)) - serviceGroupOrder.indexOf(serviceGroup(b));
+    return groupDifference || publicProductName(a.name).localeCompare(publicProductName(b.name));
+  });
 
   const selected = visibleProducts.find((p) => p.id === productId);
   const customComments = looksLikeCustomComments(selected);
@@ -164,6 +176,7 @@ export function NewOrderPanel() {
               value: p.id,
               badge: publicServiceBadge(p) || undefined,
               label: serviceLabel(p),
+              group: serviceGroup(p),
               hint: `${money(p.display_price_per_1000 ?? p.price_per_1000)} ${priceUnitSuffix(p)}`,
             }))}
           />
